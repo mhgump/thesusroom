@@ -1,13 +1,16 @@
 import { useGameStore } from '../store/gameStore'
 import { Joystick } from './Joystick'
-import { ActionButtons } from './ActionButtons'
 import { Notifications } from './Notifications'
+import { EliminationOverlay } from './EliminationOverlay'
+import { DEFAULT_WORLD } from '../game/DefaultWorld'
 
 export function HUD() {
-  const { connected, currentRound } = useGameStore((s) => ({
+  const { connected, currentRoomId } = useGameStore((s) => ({
     connected: s.connected,
-    currentRound: s.currentRound,
+    currentRoomId: s.currentRoomId,
   }))
+
+  const roomName = DEFAULT_WORLD.rooms.find(r => r.id === currentRoomId)?.name ?? currentRoomId
 
   return (
     <div
@@ -39,14 +42,14 @@ export function HUD() {
           }}
         />
         <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
-          R{currentRound}
+          {roomName}
         </span>
       </div>
 
-      {/* Touch notifications — vertical column, center top */}
       <Notifications />
+      <EliminationOverlay />
 
-      {/* Joystick — bottom-left, respects safe area */}
+      {/* Joystick — bottom-left */}
       <div
         style={{
           position: 'absolute',
@@ -56,18 +59,6 @@ export function HUD() {
         }}
       >
         <Joystick />
-      </div>
-
-      {/* Action buttons — bottom-right */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 'calc(28px + env(safe-area-inset-bottom, 0px))',
-          right: 'calc(28px + env(safe-area-inset-right, 0px))',
-          pointerEvents: 'auto',
-        }}
-      >
-        <ActionButtons />
       </div>
     </div>
   )

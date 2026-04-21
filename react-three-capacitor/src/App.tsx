@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { GameScene } from './scene/GameScene';
 import { HUD } from './hud/HUD';
+import { PlayerHudOverlay } from './hud/PlayerHudOverlay';
 import { useWebSocket } from './network/useWebSocket';
 
 export default function App() {
@@ -33,6 +34,7 @@ export default function App() {
       </Canvas>
 
       {sceneReady && <HUD />}
+      <PlayerHudOverlay />
 
       {!sceneReady && (
         <div

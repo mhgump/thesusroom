@@ -33,17 +33,13 @@ export function useWebSocket(): void {
           store.setPlayerId(msg.playerId)
           store.setLocalColor(msg.color)
           store.setInitialPosition(msg.x, msg.z)
+          store.setPlayerHp(msg.playerId, msg.hp)
           store.setConnected(true)
-          break
-
-        case 'round_config':
-          store.setCurrentRound(msg.round)
-          store.setAvailableActions(msg.actions)
           break
 
         case 'player_joined':
           store.addRemotePlayer(msg.playerId, msg.color, msg.animState)
-          // player_joined carries no server timestamps; use current estimate
+          store.setPlayerHp(msg.playerId, msg.hp)
           pushRemotePosition(msg.playerId, msg.x, msg.z, estimatedServerTime())
           break
 
@@ -53,7 +49,6 @@ export function useWebSocket(): void {
           break
 
         case 'move_ack':
-          // update events (move_ack, player_update) are authoritative for server time
           setMoveAck(msg.seq, msg.x, msg.z, msg.events, msg.endTime)
           break
 
@@ -65,11 +60,7 @@ export function useWebSocket(): void {
       }
     })
 
-    return () => {
-      remove()
-      client.disconnect()
-      store.setConnected(false)
-    }
+    return () => { remove() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 }
@@ -77,8 +68,6 @@ export function useWebSocket(): void {
 export function useWsSend() {
   const client = getClient()
   return {
-    sendAction: (action: string) =>
-      client.send({ type: 'action', action }),
     sendMove: (seq: number, jx: number, jz: number, dt: number) =>
       client.send({ type: 'move', seq, jx, jz, dt }),
   }

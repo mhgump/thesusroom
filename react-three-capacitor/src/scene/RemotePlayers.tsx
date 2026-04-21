@@ -7,18 +7,14 @@ import { getInterpolatedPos, consumeRemoteEvents } from '../network/positionBuff
 import { CapsuleFallback } from './animation/CapsuleFallback'
 import type { AnimationState } from '../game/World'
 
-const CAPSULE_CENTER_Y = 0.35 + 1.0 / 2 // CAPSULE_RADIUS + CAPSULE_LENGTH / 2
+const CAPSULE_CENTER_Y = 0.35 + 1.0 / 2
 
 // Positions are interpolated at (estimatedServerTime − DELAY_MS).
 // Events are consumed once max(receiptTime, serverStartTime + DELAY_MS) is reached,
 // keeping both streams temporally aligned to server time.
 const DELAY_MS = 250
 
-interface RemotePlayerMeshProps {
-  info: RemotePlayerInfo
-}
-
-function RemotePlayerMesh({ info }: RemotePlayerMeshProps) {
+function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
   const { id, color, initialAnimState } = info
   const groupRef = useRef<THREE.Group>(null)
   const animStateRef = useRef<AnimationState>(initialAnimState)
@@ -28,14 +24,12 @@ function RemotePlayerMesh({ info }: RemotePlayerMeshProps) {
     const g = groupRef.current
     if (!g) return
 
-    // Update visual position via interpolated snapshot buffer
     const pos = getInterpolatedPos(id, DELAY_MS)
     if (pos !== null) {
       g.visible = true
       g.position.set(pos.x, CAPSULE_CENTER_Y, pos.z)
     }
 
-    // Consume world events whose play window has been reached
     const events = consumeRemoteEvents(id, DELAY_MS)
     for (const { event } of events) {
       if (event.type === 'update_animation_state' && event.animState !== animStateRef.current) {
@@ -43,6 +37,8 @@ function RemotePlayerMesh({ info }: RemotePlayerMeshProps) {
         setAnimState(event.animState)
       } else if (event.type === 'touched') {
         useGameStore.getState().addNotification('Touched!')
+      } else if (event.type === 'damage') {
+        useGameStore.getState().applyDamage(event.targetId, event.newHp)
       }
     }
   })

@@ -23,9 +23,7 @@ export class GameServer {
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString()) as ClientMessage
-        if (msg.type === 'action') {
-          room.onAction(playerId, msg.action)
-        } else if (msg.type === 'move') {
+        if (msg.type === 'move') {
           room.processMove(playerId, msg.seq, msg.jx, msg.jz, msg.dt)
         }
       } catch {

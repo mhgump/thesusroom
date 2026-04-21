@@ -1,30 +1,30 @@
 # Spec
 
 - Clients and the server share the exact same world implementation — the same physics constants and event logic run on both sides.
-- The world holds per-player state: position (`x`, `z`) and animation state (`IDLE` | `WALKING`).
-- A move is processed given a joystick direction `(jx, jz)` and a delta time `dt`. It updates position (clamped to room bounds, max speed 4 m/s, `dt` capped at 100 ms) and evaluates animation state.
-- "Update animation state" is a world event emitted when a move causes a transition between `IDLE` and `WALKING`. It is not emitted for moves that leave animation state unchanged.
+- The world tracks each player's position and animation state (idle or walking).
+- A move is processed given a joystick direction and a delta time. It updates position (clamped to room bounds, max speed 4 m/s, delta capped at 100 ms) and evaluates animation state.
+- An animation state change event is emitted when a move causes a transition between idle and walking. It is not emitted for moves that leave animation state unchanged.
 - "Touched" is a world event emitted when two players' capsules first overlap during a move (leading edge only — sustained overlap does not re-emit). Touch pairs are tracked internally; a pair resets when either player's position is teleported.
 - World instances can disable individual event types. Disabled types are still simulated; they simply do not appear in the returned event list.
 - Client world instances disable "Touched". A Touched event is only ever received from the server, never produced locally.
-- Every client move is sent to the server with a monotonically increasing sequence number (`seq`), joystick components (`jx`, `jz`), and frame delta time (`dt`).
-- The server refuses to process any move whose `seq` is not exactly the next expected value for that player. Out-of-order moves receive an error and are dropped; the expected seq is not advanced.
+- Every client move is sent to the server with a monotonically increasing sequence number, joystick direction, and frame delta time.
+- The server refuses to process any move whose sequence number is not exactly the next expected value for that player. Out-of-order moves receive an error and are dropped; the expected sequence is not advanced.
 - The server processes accepted moves against its authoritative world simulation.
-- For each accepted move the server sends the move originator a `move_ack` containing: the echoed `seq`, the server-authoritative final position, the triggered events array, and the server wall-clock timestamps `startTime`/`endTime` bracketing the `processMove` call.
-- The server forwards the same result to every other connected client as a `player_update` containing the moving player's id, the authoritative position, the events array, and the same `startTime`/`endTime` timestamps.
+- For each accepted move the server sends the originator a move acknowledgement containing the echoed sequence number, the authoritative position, the triggered events, and server timestamps bracketing the move.
+- The server forwards the same result to every other connected client as a position broadcast containing the moving player's id, the authoritative position, the events, and the same timestamps.
 - There is no periodic broadcast loop. All position and event updates are sent strictly in response to client moves.
-- `move_ack` and `player_update` are **update events**. They carry authoritative server timestamps and drive the client's server-time estimate.
-- "Update animation state" and "Touched" are **internal events** (WorldEvents). When carried inside an update event, they inherit that update event's `startTime`/`endTime`.
+- Move acknowledgements and position broadcasts are update events. They carry authoritative server timestamps and drive the client's server-time estimate.
+- Animation state changes and touch events are internal world events. When carried inside an update event, they inherit that update event's timestamps.
 - The client maintains a running estimate of current server time. This estimate is anchored to the `endTime` of the most recently received update event and is advanced from that anchor using the local wall clock.
 - The client applies every move through its own local world instance immediately when the move is sent (client-side prediction). The local player's visual position and animation state follow this predicted state each frame.
-- The client maintains an input history of up to 180 frames (≈3 s at 60 fps), recording `(seq, jx, jz, dt)` for each sent move.
-- When the client receives a `move_ack`, it immediately teleports the local world to the server-authoritative position at `ack.seq`, replays all recorded inputs with `seq > ack.seq`, then snaps the visual if the corrected-prediction differs from the current visual by more than 2 cm. Server events in the ack are processed in the same frame with no delay.
-- Remote player positions are stored as snapshots keyed by the server `endTime` of the update event that carried them.
-- Remote positions are rendered at `(estimated server time − 250 ms)` via linear interpolation between the two bracketing snapshots.
-- Remote internal events are held in a per-player consumed queue and delivered exactly once when `max(receiptTime, serverStartTime + 250 ms)` has elapsed. If an event arrives late (its `receiptTime` is already past `serverStartTime + 250 ms`), it is delivered immediately.
-- Each consumed event carries a `remainingMs` value: how much of its server-time window was left at the moment of delivery. This value is computed but not yet used by any current event handler.
+- The client maintains an input history of up to 180 frames (≈3 s at 60 fps), recording the sequence number, joystick direction, and delta time for each sent move.
+- When the client receives a move acknowledgement, it immediately teleports the local world to the authoritative position, replays all recorded inputs after the acknowledged sequence, then snaps the visual if the corrected position differs from the current visual by more than 2 cm. Server events in the acknowledgement are processed in the same frame with no delay.
+- Remote player positions are stored as snapshots keyed by the server timestamp of the update event that carried them.
+- Remote positions are rendered at estimated server time minus 250 ms via linear interpolation between the two bracketing snapshots.
+- Remote internal events are held in a per-player queue and delivered exactly once when the later of receipt time and server start time plus 250 ms has elapsed. Late-arriving events are delivered immediately.
+- Each delivered event carries how much of its server-time window remained at the moment of delivery.
 - Both the position and event streams use the same 250 ms delay, keeping them temporally aligned: an animation change becomes visible at the same moment the matching movement becomes visible.
-- When a client receives a "Touched" event through the remote buffer, it is subject to the 250 ms delay. When a client receives a "Touched" event in a `move_ack`, it is processed immediately.
+- When a client receives a Touched event through the remote buffer, it is subject to the 250 ms delay. When a client receives a Touched event in a move acknowledgement, it is processed immediately.
 - Touched events are presented as notifications rendered in a column at the top center of the screen. Each notification expires after 2 seconds.
 - On connection the server sends the new player: (1) a `welcome` with their assigned id, color, and spawn position; (2) a `round_config` with the current round id and available actions; (3) a `player_joined` for each already-connected player with that player's current position and animation state.
 - On connection the server sends a `player_joined` to every already-connected player describing the new player's id, color, spawn position, and initial animation state. `player_joined` carries no server timestamps.

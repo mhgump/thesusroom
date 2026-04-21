@@ -1,5 +1,7 @@
+import type { WalkableArea } from './WorldSpec'
+
 export type AnimationState = 'IDLE' | 'WALKING'
-export type WorldEventType = 'update_animation_state' | 'touched'
+export type WorldEventType = 'update_animation_state' | 'touched' | 'damage'
 
 export interface UpdateAnimationStateEvent {
   type: 'update_animation_state'
@@ -13,21 +15,24 @@ export interface TouchedEvent {
   playerIdB: string
 }
 
-export type WorldEvent = UpdateAnimationStateEvent | TouchedEvent
+export interface DamageEvent {
+  type: 'damage'
+  targetId: string
+  newHp: 0 | 1 | 2
+}
+
+export type WorldEvent = UpdateAnimationStateEvent | TouchedEvent | DamageEvent
 
 export interface WorldPlayerState {
   id: string
   x: number
   z: number
   animState: AnimationState
+  hp: 0 | 1 | 2
 }
 
-const MOVE_SPEED = 4
-const ROOM_WIDTH = 20
-const ROOM_DEPTH = 12
-const CAPSULE_RADIUS = 0.35
-const BOUND_X = ROOM_WIDTH / 2 - CAPSULE_RADIUS
-const BOUND_Z = ROOM_DEPTH / 2 - CAPSULE_RADIUS
+const MOVE_SPEED = 8        // must match server/src/World.ts
+const CAPSULE_RADIUS = 0.35 // must match server/src/World.ts
 const ANIM_THRESHOLD = 0.05
 const TOUCH_RADIUS = CAPSULE_RADIUS * 2 + 0.1
 
@@ -35,13 +40,15 @@ export class World {
   readonly players: Map<string, WorldPlayerState> = new Map()
   private readonly disabledEvents: Set<WorldEventType>
   private readonly touchingPairs: Set<string> = new Set()
+  private readonly walkable: WalkableArea
 
-  constructor(disabledEvents: WorldEventType[] = []) {
+  constructor(walkable: WalkableArea, disabledEvents: WorldEventType[] = []) {
+    this.walkable = walkable
     this.disabledEvents = new Set(disabledEvents)
   }
 
   addPlayer(id: string, x = 0, z = 0): void {
-    this.players.set(id, { id, x, z, animState: 'IDLE' })
+    this.players.set(id, { id, x, z, animState: 'IDLE', hp: 2 })
   }
 
   removePlayer(id: string): void {
@@ -56,12 +63,10 @@ export class World {
     return this.players.get(id)
   }
 
-  // Teleports a player; clears their touch pairs since position jumped.
   setPlayerPosition(id: string, x: number, z: number): void {
     const p = this.players.get(id)
     if (!p) return
-    p.x = x
-    p.z = z
+    p.x = x; p.z = z
     for (const key of [...this.touchingPairs]) {
       const [a, b] = key.split(':')
       if (a === id || b === id) this.touchingPairs.delete(key)
@@ -75,8 +80,16 @@ export class World {
     const events: WorldEvent[] = []
     const safeDt = Math.min(dt, 0.1)
 
-    player.x = Math.max(-BOUND_X, Math.min(BOUND_X, player.x + jx * MOVE_SPEED * safeDt))
-    player.z = Math.max(-BOUND_Z, Math.min(BOUND_Z, player.z + jz * MOVE_SPEED * safeDt))
+    const nx = player.x + jx * MOVE_SPEED * safeDt
+    const nz = player.z + jz * MOVE_SPEED * safeDt
+
+    if (this.inWalkable(nx, nz)) {
+      player.x = nx; player.z = nz
+    } else if (this.inWalkable(nx, player.z)) {
+      player.x = nx
+    } else if (this.inWalkable(player.x, nz)) {
+      player.z = nz
+    }
 
     const newAnimState: AnimationState = Math.hypot(jx, jz) > ANIM_THRESHOLD ? 'WALKING' : 'IDLE'
     if (newAnimState !== player.animState) {
@@ -89,7 +102,6 @@ export class World {
     if (!this.disabledEvents.has('touched')) {
       for (const [otherId, other] of this.players) {
         if (otherId === playerId) continue
-        // Canonical pair key: smaller id first, so both players share the same key
         const a = playerId < otherId ? playerId : otherId
         const b = playerId < otherId ? otherId : playerId
         const pairKey = `${a}:${b}`
@@ -105,5 +117,12 @@ export class World {
     }
 
     return events
+  }
+
+  private inWalkable(x: number, z: number): boolean {
+    for (const r of this.walkable.rects) {
+      if (Math.abs(x - r.cx) <= r.hw && Math.abs(z - r.cz) <= r.hd) return true
+    }
+    return false
   }
 }

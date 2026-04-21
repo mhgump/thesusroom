@@ -1,10 +1,7 @@
 import { create } from 'zustand'
 import type { AnimationState } from '../game/World'
 
-interface JoystickInput {
-  x: number
-  y: number
-}
+interface JoystickInput { x: number; y: number }
 
 export interface RemotePlayerInfo {
   id: string
@@ -23,22 +20,23 @@ interface GameState {
   playerId: string | null
   localColor: string
   initialPosition: { x: number; z: number }
-  currentRound: number
-  availableActions: string[]
+  currentRoomId: string
   joystickInput: JoystickInput
   remotePlayers: Record<string, RemotePlayerInfo>
   notifications: Notification[]
+  playerHp: Record<string, 0 | 1 | 2>
 
   setConnected: (v: boolean) => void
   setPlayerId: (id: string) => void
   setLocalColor: (color: string) => void
   setInitialPosition: (x: number, z: number) => void
-  setCurrentRound: (round: number) => void
-  setAvailableActions: (actions: string[]) => void
+  setCurrentRoomId: (roomId: string) => void
   setJoystickInput: (input: JoystickInput) => void
   addRemotePlayer: (id: string, color: string, animState: AnimationState) => void
   removeRemotePlayer: (id: string) => void
   addNotification: (message: string) => void
+  setPlayerHp: (id: string, hp: 0 | 1 | 2) => void
+  applyDamage: (targetId: string, newHp: 0 | 1 | 2) => void
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -46,18 +44,17 @@ export const useGameStore = create<GameState>((set) => ({
   playerId: null,
   localColor: '#cccccc',
   initialPosition: { x: 0, z: 0 },
-  currentRound: 0,
-  availableActions: ['SKIP'],
+  currentRoomId: 'room1',
   joystickInput: { x: 0, y: 0 },
   remotePlayers: {},
   notifications: [],
+  playerHp: {},
 
   setConnected: (v) => set({ connected: v }),
   setPlayerId: (id) => set({ playerId: id }),
   setLocalColor: (color) => set({ localColor: color }),
   setInitialPosition: (x, z) => set({ initialPosition: { x, z } }),
-  setCurrentRound: (round) => set({ currentRound: round }),
-  setAvailableActions: (actions) => set({ availableActions: actions }),
+  setCurrentRoomId: (roomId) => set({ currentRoomId: roomId }),
   setJoystickInput: (input) => set({ joystickInput: input }),
 
   addRemotePlayer: (id, color, animState) =>
@@ -66,8 +63,10 @@ export const useGameStore = create<GameState>((set) => ({
   removeRemotePlayer: (id) =>
     set((s) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { [id]: _, ...rest } = s.remotePlayers
-      return { remotePlayers: rest }
+      const { [id]: _r, ...remotePlayers } = s.remotePlayers
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _h, ...playerHp } = s.playerHp
+      return { remotePlayers, playerHp }
     }),
 
   addNotification: (message) => {
@@ -78,4 +77,8 @@ export const useGameStore = create<GameState>((set) => ({
       set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }))
     }, 2000)
   },
+
+  setPlayerHp: (id, hp) => set((s) => ({ playerHp: { ...s.playerHp, [id]: hp } })),
+
+  applyDamage: (targetId, newHp) => set((s) => ({ playerHp: { ...s.playerHp, [targetId]: newHp } })),
 }))
