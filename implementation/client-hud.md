@@ -32,6 +32,16 @@ The pad is 120 px across with a 50 px knob. On every pointer/touch move, the kno
 
 `addNotification` in `gameStore.ts` appends `{ id, message, expiresAt: Date.now() + 2000 }` and schedules a `setTimeout` to remove the entry. The `Notifications` component is a pure renderer over the store array — it adds no timers. Pills use `backdrop-filter: blur(6px)`, bold white text, and `white-space: nowrap`.
 
+## Rule Popup
+
+`RulePopup.tsx` reads `activeRuleEvent` from the store. When non-null it renders a full-screen backdrop (`rgba(0,0,0,0.75)`, `z-index: 200`) with a centred column of cards (`width: min(640px, 90vw)`). Each card shows two lines:
+- A small header: `0.65 rem`, bold, `letter-spacing: 0.12em`, uppercase, `opacity: 0.7` — the `label` field (`RULE`, `COMMAND`, or `FACT`).
+- The rule text: `1 rem`, `line-height: 1.4`.
+
+Cards cycle through five dark background colours. A close button (`×`) in the top-right corner calls `dismissRule`.
+
+`useWebSocket.ts` converts incoming `instruction` server messages into `showRule` calls with a single `COMMAND`-labelled card instead of routing them to `addNotification`.
+
 ## Status Bar
 
 A `div` fixed to the top-right reads `connected` from the store. The dot is an 8 px circle: `#22ee88` when connected, `#ee4444` otherwise.

@@ -15,10 +15,12 @@ export type ShowChoiceEvent = {
   options: ChoiceOption[]
 }
 
+export type RuleLabel = 'RULE' | 'COMMAND' | 'FACT'
+
 export type ShowRuleEvent = {
   type: 'show_rule'
   eventId: string
-  rules: { text: string }[]
+  rules: { label: RuleLabel; text: string }[]
 }
 
 export type GlobalGameEvent = ShowChoiceEvent | ShowRuleEvent
@@ -30,6 +32,7 @@ export type ServerMessage =
   | { type: 'move_ack'; seq: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
   | { type: 'player_update'; playerId: string; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
   | { type: 'game_event'; event: GlobalGameEvent; serverTime: number }
+  | { type: 'instruction'; text: string }
   | { type: 'error'; message: string }
 
 export type ClientMessage =

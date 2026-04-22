@@ -15,3 +15,4 @@
 - The camera approaches its constrained target position smoothly rather than snapping instantly; boundary crossings and physics noise near edges do not cause visible jitter.
 - Camera position is continuous across all rooms — no sudden jumps occur when crossing room boundaries.
 - The scene has ambient and directional lighting with shadows.
+- Vote regions defined in the game spec are rendered as coloured circles on the floor, each with a text label centred inside the disc.

@@ -4,6 +4,9 @@ import { World } from './World.js'
 import type { WalkableArea } from './World.js'
 import { NpcManager } from './npc/NpcManager.js'
 import type { NpcSpec } from './npc/NpcSpec.js'
+import { GameScriptManager } from './GameScriptManager.js'
+import type { GameSpec } from './GameSpec.js'
+import type { GameScript } from './GameScript.js'
 
 const COLOR_PALETTE = [
   '#e74c3c', '#2ecc71', '#3498db', '#f1c40f',
@@ -40,14 +43,25 @@ export class Room {
 
   private expectedSeq: Map<string, number> = new Map()
   private npcManager: NpcManager
+  private gameScriptManager: GameScriptManager | null = null
 
-  constructor(roomId: string, walkable: WalkableArea, npcs: NpcSpec[] = []) {
+  constructor(roomId: string, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, gameScript?: GameScript) {
     this.roomId = roomId
     this.world = new World(walkable)
     this.npcManager = new NpcManager(this.world, (npcId, x, z, events, time) => {
       this.broadcast({ type: 'player_update', playerId: npcId, x, z, events, startTime: time, endTime: time })
     })
     this.npcManager.spawnAll(npcs)
+    if (gameSpec) {
+      this.gameScriptManager = new GameScriptManager(
+        this.world,
+        gameScript ?? null,
+        gameSpec.voteRegions,
+        gameSpec.instructionSpecs,
+        (playerId, text) => this.sendToPlayer(playerId, { type: 'instruction', text }),
+        (playerId) => this.removePlayer(playerId),
+      )
+    }
   }
 
   processMove(playerId: string, seq: number, jx: number, jz: number, dt: number): void {
@@ -74,6 +88,10 @@ export class Room {
       if (event.type === 'damage' && event.newHp === 0 && this.players.has(event.targetId)) {
         this.removePlayer(event.targetId)
       }
+    }
+
+    if (this.gameScriptManager && this.players.has(playerId)) {
+      this.gameScriptManager.onPlayerMoved(playerId)
     }
   }
 
@@ -110,10 +128,12 @@ export class Room {
       })
     }
 
+    this.gameScriptManager?.onPlayerConnect(playerId)
     console.log(`[Room:${this.roomId}] +player ${playerId} color:${color} (total:${this.players.size})`)
   }
 
   removePlayer(playerId: string): void {
+    this.gameScriptManager?.onPlayerDisconnect(playerId)
     this.players.delete(playerId)
     this.world.removePlayer(playerId)
     this.expectedSeq.delete(playerId)

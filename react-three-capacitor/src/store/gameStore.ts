@@ -39,7 +39,7 @@ interface GameState {
   setJoystickInput: (input: JoystickInput) => void
   addRemotePlayer: (id: string, color: string, animState: AnimationState, isNpc?: boolean, hasHealth?: boolean) => void
   removeRemotePlayer: (id: string) => void
-  addNotification: (message: string) => void
+  addNotification: (message: string, durationMs?: number) => void
   setPlayerHp: (id: string, hp: 0 | 1 | 2) => void
   applyDamage: (targetId: string, newHp: 0 | 1 | 2) => void
   showChoice: (event: ShowChoiceEvent) => void
@@ -80,13 +80,13 @@ export const useGameStore = create<GameState>((set) => ({
       return { remotePlayers, playerHp }
     }),
 
-  addNotification: (message) => {
+  addNotification: (message, durationMs = 2000) => {
     const id = Math.random().toString(36).slice(2)
-    const expiresAt = Date.now() + 2000
+    const expiresAt = Date.now() + durationMs
     set((s) => ({ notifications: [...s.notifications, { id, message, expiresAt }] }))
     setTimeout(() => {
       set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }))
-    }, 2000)
+    }, durationMs)
   },
 
   setPlayerHp: (id, hp) => set((s) => ({ playerHp: { ...s.playerHp, [id]: hp } })),

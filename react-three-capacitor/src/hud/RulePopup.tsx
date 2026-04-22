@@ -67,14 +67,32 @@ export function RulePopup() {
               style={{
                 background: RULE_COLORS[i % RULE_COLORS.length],
                 borderRadius: '6px',
-                padding: '18px 32px',
+                padding: '14px 32px 18px',
                 color: '#fff',
-                textAlign: 'center',
-                fontSize: '1rem',
-                lineHeight: 1.4,
               }}
             >
-              {rule.text}
+              <div
+                style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  opacity: 0.7,
+                  textAlign: 'center',
+                  marginBottom: '8px',
+                }}
+              >
+                {rule.label}
+              </div>
+              <div
+                style={{
+                  fontSize: '1rem',
+                  lineHeight: 1.4,
+                  textAlign: 'center',
+                }}
+              >
+                {rule.text}
+              </div>
             </div>
           ))}
         </div>

@@ -66,6 +66,14 @@ export function useWebSocket(): void {
           }, delayMs)
           break
         }
+
+        case 'instruction':
+          store.showRule({
+            type: 'show_rule',
+            eventId: `instruction-${Date.now()}`,
+            rules: [{ label: 'COMMAND', text: msg.text }],
+          })
+          break
       }
     })
 

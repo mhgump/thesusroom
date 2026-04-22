@@ -9,5 +9,6 @@ The following elements can appear on the HUD overlay:
 - **Touch notifications**: small pills in a stacking column near the top-centre; each expires and disappears automatically; non-interactive.
 - **HP heart overlays**: one per visible player, projected from world-space position to screen coordinates and rendered at the player's feet. Full health (2) shows a full heart; half health (1) shows a half heart; zero health (0) shows no heart. NPCs with `has_health: false` show no heart regardless of HP.
 - **Elimination overlay**: full-screen element shown to the local player when their HP reaches zero.
+- **Rule popup**: full-screen modal overlay showing one or more rule cards stacked vertically. Each card has a small category label (`RULE`, `COMMAND`, or `FACT`) above the rule text. The player must explicitly dismiss the popup. At most one rule popup is visible at a time.
 
 All HUD elements respect device safe areas (notches, home indicators).

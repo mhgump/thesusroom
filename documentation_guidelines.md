@@ -84,9 +84,14 @@ NPC framework: entity registration, tick triggers, context API, action/helper sy
 - Covers: NPC identity, trigger types, `allowedActions`/`allowedHelpers`, event emission, UX flags.
 - Does not cover: specific NPC behavior in the demo world (→ `demo_world`), game damage rules (→ `game`).
 
+### `game_script`
+Game script framework: one script per world, vote regions, instruction events, callbacks.
+- Covers: `GameScript` interface, `GameScriptContext` API, vote region tracking, instruction delivery, `after` timer, `onVoteChanged` callback, `ToggleVoteRegionOn/Off` and `InstructionEvent` event types, `GameSpec` structure.
+- Does not cover: specific demo script behavior (→ `demo_world`), player elimination mechanics (→ `game`), network delivery of instruction messages (→ `server-client`).
+
 ### `demo_world` *(assumptions only)*
-Concrete configuration of the default world: room dimensions, connections, NPC specs, routing policy.
-- Covers: Room 1/2/3 sizes, door widths, StillDamager behavior, player spawn point, world routing.
+Concrete configuration of the default world: room dimensions, connections, NPC specs, routing policy, game script config.
+- Covers: Room 1/2/3/south_hall/south_room sizes, door widths, StillDamager behavior, player spawn point, world routing, vote regions, demo game script rules.
 - Has no `spec/` or `implementation/` counterpart; all content lives in `assumptions/demo_world.md`.
 
 ---

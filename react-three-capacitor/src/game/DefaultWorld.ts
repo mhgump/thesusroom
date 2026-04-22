@@ -37,6 +37,24 @@ export const DEFAULT_WORLD: WorldSpec = {
         zMin: -VIEWPORT_DEPTH / 2, zMax: VIEWPORT_DEPTH / 2,
       },
     },
+    {
+      id: 'south_hall', name: 'South Hall',
+      floorWidth: VIEWPORT_W * 0.25,   // 5 — identical to room2
+      floorDepth: VIEWPORT_DEPTH,
+      barrierHeight: 0.3, barrierThickness: 0.3,
+      cameraRect: {
+        xMin: -VIEWPORT_W * 0.125, xMax: VIEWPORT_W * 0.125,
+        zMin: -VIEWPORT_DEPTH / 2,  zMax: VIEWPORT_DEPTH / 2,
+      },
+    },
+    {
+      id: 'south_room', name: 'South Room',
+      floorWidth: VIEWPORT_W,          // 20
+      floorDepth: VIEWPORT_DEPTH,
+      barrierHeight: 0.3, barrierThickness: 0.3,
+      // Room exactly fills the viewport — camera stays fixed at room centre.
+      cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+    },
   ],
   connections: [
     // Room 1 north ↔ Room 2 south, centered; doorway = Room 2's full width.
@@ -70,11 +88,43 @@ export const DEFAULT_WORLD: WorldSpec = {
         ],
       },
     },
+    // Room 1 south ↔ South Hall north, centered; doorway = South Hall's full width.
+    // Transition: triangle bridging room1's centre point to south_hall's north camera rect edge.
+    // Corners are in room1-local coordinates (room1 is at world origin).
+    {
+      roomIdA: 'room1', wallA: 'south', positionA: 0.5,
+      roomIdB: 'south_hall', wallB: 'north', positionB: 0.5,
+      width: VIEWPORT_W * 0.25,
+      cameraTransition: {
+        corners: [
+          { x:  0,                   z:  0              },   // room1 camera rect (point)
+          { x:  VIEWPORT_W * 0.125,  z: +ROOM_DEPTH / 2 },  // south_hall rect NE
+          { x: -VIEWPORT_W * 0.125,  z: +ROOM_DEPTH / 2 },  // south_hall rect NW
+        ],
+      },
+    },
+    // South Hall south ↔ South Room north, centered.
+    // Transition: triangle bridging south_hall's south camera rect edge to south_room's centre point.
+    // Corners are in south_hall-local coordinates (origin at south_hall centre).
+    {
+      roomIdA: 'south_hall', wallA: 'south', positionA: 0.5,
+      roomIdB: 'south_room', wallB: 'north', positionB: 0.5,
+      width: VIEWPORT_W * 0.25,
+      cameraTransition: {
+        corners: [
+          { x: -VIEWPORT_W * 0.125, z: +VIEWPORT_DEPTH / 2 },  // south_hall rect SW
+          { x:  VIEWPORT_W * 0.125, z: +VIEWPORT_DEPTH / 2 },  // south_hall rect SE
+          { x:  0,                   z: +VIEWPORT_DEPTH      },  // south_room camera point
+        ],
+      },
+    },
   ],
   visibility: {
-    room1: ['room2'],
+    room1: ['room2', 'south_hall'],
     room2: ['room1', 'room3'],
     room3: [],
+    south_hall: ['room1', 'south_room'],
+    south_room: [],
   },
 }
 

@@ -7,8 +7,10 @@ src/scene/
   GameScene.tsx      — Root scene component; room rendering, camera, lighting
   Player.tsx         — Local player: world simulation, move dispatch, room tracking
   localPlayerPos.ts  — Mutable shared object { x, z, roomId } written each frame
+  VoteRegions.tsx    — Renders vote region discs, border rings, and text labels from DEFAULT_GAME_SPEC
 src/game/
   DefaultWorld.ts    — Client-side world spec, WalkableArea, and CameraConstraintShapes
+  DefaultGame.ts     — DEFAULT_GAME_SPEC: vote region definitions using DEFAULT_ROOM_POSITIONS
   WorldSpec.ts       — Room position BFS, walkable area computation, world types
   RoomSpec.ts        — RoomSpec and RoomConnection type definitions
   CameraConstraint.ts — buildCameraConstraintShapes, clampToShapes
@@ -67,6 +69,16 @@ The smoothed target is initialised to the first-frame clamped position to preven
 ## localPlayerPos
 
 `localPlayerPos.ts` exports a mutable `{ x, z, roomId }` object. `Player.tsx` writes to it every frame. `GameScene.tsx` reads it in `useFrame` for camera follow. When `getDefaultRoomAtPosition` returns a different `roomId`, `store.setCurrentRoomId` is also called to trigger JSX room-set updates.
+
+## Vote Regions
+
+`VoteRegions.tsx` reads `DEFAULT_GAME_SPEC.voteRegions` and renders each as a `<group>` at its world-space `(x, 0, z)` position. Each group contains three meshes flat on the XZ plane (all rotated `[-π/2, 0, 0]`):
+
+1. **Fill disc** (`CircleGeometry`, 64 segments) at Y = 0.002; `meshBasicMaterial` with the region colour, `transparent`, `opacity: 0.35`.
+2. **Border ring** (`RingGeometry`, inner radius = `r − 0.12`, outer = `r`, 64 segments) at Y = 0.003; opaque region colour.
+3. **Label** (`Text` from `@react-three/drei`) at Y = 0.004; `fontSize: 1.5`, region colour, centred on both axes.
+
+Vote regions are always rendered regardless of which regions are currently enabled on the server; visibility is decorative, not coupled to server game state.
 
 ## Ground Texture
 

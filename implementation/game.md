@@ -4,19 +4,20 @@
 
 ```
 server/src/
-  World.ts         — HP tracking, touch-pair detection, move physics, per-player action sets
-  Room.ts          — processMove: sequence validation, event collection and dispatch
-  GameServer.ts    — Action management, player routing, DemoRoom
-  types.ts         — WorldEvent union (touched, update_animation_state, DamageEvent)
+  World.ts              — HP tracking, touch-pair detection, move physics, per-player action sets
+  Room.ts               — processMove: sequence validation, event collection and dispatch, game script hooks
+  GameServer.ts         — Action management, player routing, DemoRoom
+  GameScriptManager.ts  — Vote region tracking, player assignment, game script lifecycle
+  types.ts              — WorldEvent union (touched, update_animation_state, DamageEvent)
 src/game/
-  World.ts         — Client-side world: identical physics, touched event disabled
+  World.ts              — Client-side world: identical physics, touched event disabled
 src/network/
-  useWebSocket.ts  — Routes player_actions and DamageEvent into the store
+  useWebSocket.ts       — Routes player_actions, DamageEvent, and instruction into the store
 src/store/
-  gameStore.ts     — playerHp map, availableActions
+  gameStore.ts          — playerHp map, availableActions, addNotification(message, durationMs)
 src/scene/
-  Player.tsx       — Correction step: processes events from move_ack immediately
-  RemotePlayers.tsx — consumeRemoteEvents: processes buffered events from player_update
+  Player.tsx            — Correction step: processes events from move_ack immediately
+  RemotePlayers.tsx     — consumeRemoteEvents: processes buffered events from player_update
 ```
 
 ## Move Physics

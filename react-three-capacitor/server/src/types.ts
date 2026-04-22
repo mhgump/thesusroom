@@ -8,6 +8,7 @@ export type ServerMessage =
   | { type: 'player_left'; playerId: string }
   | { type: 'move_ack'; seq: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
   | { type: 'player_update'; playerId: string; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
+  | { type: 'instruction'; text: string }
   | { type: 'error'; message: string }
 
 export type ClientMessage =

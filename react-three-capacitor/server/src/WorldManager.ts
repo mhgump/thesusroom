@@ -1,5 +1,7 @@
 import type { WalkableArea } from './World.js'
 import type { NpcSpec } from './npc/NpcSpec.js'
+import type { GameSpec } from './GameSpec.js'
+import type { GameScript } from './GameScript.js'
 import { Room } from './Room.js'
 
 // Server-side world definition. One world = one Room = one WebSocket room.
@@ -7,6 +9,8 @@ export interface ServerWorldSpec {
   worldId: string
   walkable: WalkableArea
   npcs: NpcSpec[]
+  gameSpec?: GameSpec
+  gameScript?: GameScript
 }
 
 export class WorldManager {
@@ -15,7 +19,7 @@ export class WorldManager {
 
   constructor(specs: ServerWorldSpec[]) {
     for (const spec of specs) {
-      this.worlds.set(spec.worldId, new Room(spec.worldId, spec.walkable, spec.npcs))
+      this.worlds.set(spec.worldId, new Room(spec.worldId, spec.walkable, spec.npcs, spec.gameSpec, spec.gameScript))
     }
     this.defaultWorldId = specs[0]?.worldId ?? ''
   }

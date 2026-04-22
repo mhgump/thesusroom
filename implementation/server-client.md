@@ -16,7 +16,7 @@ src/store/
   gameStore.ts           — Player list, connection state (UI-only state; no position/event buffers)
 server/src/
   World.ts               — Shared physics (identical to client copy; all events enabled)
-  Room.ts                — Move processing, sequence validation, player management, NPC event merge
+  Room.ts                — Move processing, sequence validation, player management, NPC event merge, game script hooks
   GameServer.ts          — WebSocket server, room routing
   types.ts               — ServerMessage / ClientMessage types (mirrors src/network/types.ts)
 ```
@@ -27,9 +27,11 @@ The same source lives at `src/game/World.ts` and `server/src/World.ts` and must 
 
 ## Server (`Room.ts`, `GameServer.ts`)
 
-`Room` owns a `World` instance (all events enabled), a player map (id → WebSocket + colour), and an expected-sequence map. `processMove` validates seq, advances it, captures timestamps around `world.processMove`, appends NPC events, sends `move_ack` to the sender and `player_update` to all others via `broadcastExcept`. There is no `setInterval` broadcast loop.
+`Room` owns a `World` instance (all events enabled), a player map (id → WebSocket + colour), and an expected-sequence map. `processMove` validates seq, advances it, captures timestamps around `world.processMove`, appends NPC events, sends `move_ack` to the sender and `player_update` to all others via `broadcastExcept`, then calls `GameScriptManager.onPlayerMoved` if a game script is active. There is no `setInterval` broadcast loop.
 
-`addPlayer` inserts the player at (0, 0), sends `welcome` + `player_actions`, then exchanges `player_joined` messages between the new player and each existing player (human and NPC). `removePlayer` deletes from both maps and broadcasts `player_left`; it is called on both disconnection and elimination.
+`addPlayer` inserts the player at (0, 0), sends `welcome` + `player_actions`, then exchanges `player_joined` messages between the new player and each existing player (human and NPC), then calls `GameScriptManager.onPlayerConnect`. `removePlayer` calls `GameScriptManager.onPlayerDisconnect` first, then deletes from both maps and broadcasts `player_left`; it is called on both disconnection and elimination.
+
+The `instruction` message is sent directly to a single player by `Room.sendToPlayer`; it is not broadcast and not subject to the 250 ms delay. It is triggered by the game script's `sendInstruction` capability and displayed on the client as a notification. The `addNotification` method in `gameStore.ts` accepts an optional `durationMs` parameter (default 2000 ms); `instruction` messages display for 5000 ms.
 
 ## Client Network Layer (`positionBuffer.ts`, `useWebSocket.ts`)
 

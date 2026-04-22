@@ -7,6 +7,7 @@ import { BgPlane, RoomOutsideTextures } from './Boundary';
 import { Player } from './Player';
 import { RemotePlayers } from './RemotePlayers';
 import { PlayerHudUpdater } from './PlayerHudUpdater';
+import { VoteRegions } from './VoteRegions';
 import { DEFAULT_WORLD, DEFAULT_ROOM_POSITIONS, DEFAULT_CAMERA_SHAPES } from '../game/DefaultWorld';
 import { getRoomWallOpenings } from '../game/WorldSpec';
 import { localPlayerPos } from '../game/localPlayerPos';
@@ -91,6 +92,7 @@ export function GameScene() {
           </group>
         );
       })}
+      <VoteRegions />
       <Player />
       <RemotePlayers />
       <PlayerHudUpdater />

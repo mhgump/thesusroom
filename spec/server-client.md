@@ -21,4 +21,5 @@
 - On connection the server sends `player_joined` to every already-connected player describing the new player. `player_joined` carries no server timestamps.
 - On disconnection the server removes the player from the world and broadcasts `player_left` to all remaining players.
 - On elimination (HP reaches zero) the server removes the player from the world and broadcasts `player_left` to all remaining players.
+- The server can send an `instruction` message to a specific player at any time; the message carries a text string to display. Instruction messages are targeted (not broadcast) and are delivered immediately without the 250 ms delay.
 - All messages are JSON-encoded WebSocket frames.
