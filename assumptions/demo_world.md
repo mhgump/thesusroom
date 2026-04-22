@@ -1,8 +1,11 @@
 # Demo World — Assumptions
 
-## World Routing
+## Scenario Routing
 
-- All connecting players are assigned to the single default world (`worldId: 'default'`); there is no per-player routing logic in the demo.
+- The server pre-warms the `demo` scenario on startup; its room is always open for new connections.
+- Connecting players are routed to the open room instance for the scenario name parsed from the WebSocket URL path (first path segment). An empty or missing segment defaults to `demo`.
+- Three scenarios are registered at startup: `demo`, `scenario1`, and `scenario2`. Connections to any other scenario name are rejected with close code 4004.
+- The client derives the scenario name from `window.location.pathname` and appends it to `VITE_WS_URL` (default `ws://localhost:8080`) as a path segment.
 
 ## Room Dimensions
 

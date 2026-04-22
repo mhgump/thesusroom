@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { AnimationState } from '../game/World'
 import type { ShowChoiceEvent, ShowRuleEvent } from '../network/types'
+import type { FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState } from '../game/GameSpec'
+import type { WalkableArea } from '../game/WorldSpec'
 
 interface JoystickInput { x: number; y: number }
 
@@ -28,8 +30,15 @@ interface GameState {
   remotePlayers: Record<string, RemotePlayerInfo>
   notifications: Notification[]
   playerHp: Record<string, 0 | 1 | 2>
+  eliminated: boolean
   activeChoiceEvent: ShowChoiceEvent | null
   activeRuleEvent: ShowRuleEvent | null
+  geometryObjects: FloorGeometrySpec[]
+  geometryVisibility: Record<string, boolean>
+  activeWalkable: WalkableArea | null
+  buttonSpecs: Record<string, ButtonSpec>
+  buttonStates: Record<string, { state: ButtonState; occupancy: number }>
+  localButtonPressing: Record<string, boolean>
 
   setConnected: (v: boolean) => void
   setPlayerId: (id: string) => void
@@ -46,6 +55,13 @@ interface GameState {
   dismissChoice: () => void
   showRule: (event: ShowRuleEvent) => void
   dismissRule: () => void
+  setGeometryObjects: (objects: FloorGeometrySpec[]) => void
+  applyGeometryUpdates: (updates: Array<{ id: string; visible: boolean }>) => void
+  setActiveWalkable: (area: WalkableArea | null) => void
+  initButtons: (buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }>) => void
+  applyButtonStateUpdate: (id: string, state: ButtonState, occupancy: number) => void
+  applyButtonConfigUpdate: (id: string, changes: Partial<ButtonConfig>) => void
+  setLocalButtonPressing: (id: string, pressing: boolean) => void
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -58,8 +74,15 @@ export const useGameStore = create<GameState>((set) => ({
   remotePlayers: {},
   notifications: [],
   playerHp: {},
+  eliminated: false,
   activeChoiceEvent: null,
   activeRuleEvent: null,
+  geometryObjects: [],
+  geometryVisibility: {},
+  activeWalkable: null,
+  buttonSpecs: {},
+  buttonStates: {},
+  localButtonPressing: {},
 
   setConnected: (v) => set({ connected: v }),
   setPlayerId: (id) => set({ playerId: id }),
@@ -81,6 +104,7 @@ export const useGameStore = create<GameState>((set) => ({
     }),
 
   addNotification: (message, durationMs = 2000) => {
+    if (useGameStore.getState().eliminated) return
     const id = Math.random().toString(36).slice(2)
     const expiresAt = Date.now() + durationMs
     set((s) => ({ notifications: [...s.notifications, { id, message, expiresAt }] }))
@@ -91,10 +115,52 @@ export const useGameStore = create<GameState>((set) => ({
 
   setPlayerHp: (id, hp) => set((s) => ({ playerHp: { ...s.playerHp, [id]: hp } })),
 
-  applyDamage: (targetId, newHp) => set((s) => ({ playerHp: { ...s.playerHp, [targetId]: newHp } })),
+  applyDamage: (targetId, newHp) => set((s) => {
+    const playerHp = { ...s.playerHp, [targetId]: newHp }
+    if (newHp === 0 && targetId === s.playerId) {
+      return { playerHp, eliminated: true, activeRuleEvent: null, activeChoiceEvent: null }
+    }
+    return { playerHp }
+  }),
 
-  showChoice: (event) => set({ activeChoiceEvent: event }),
+  showChoice: (event) => set((s) => s.eliminated ? {} : { activeChoiceEvent: event }),
   dismissChoice: () => set({ activeChoiceEvent: null }),
-  showRule: (event) => set({ activeRuleEvent: event }),
+  showRule: (event) => set((s) => s.eliminated ? {} : { activeRuleEvent: event }),
   dismissRule: () => set({ activeRuleEvent: null }),
+
+  setGeometryObjects: (objects) => set({ geometryObjects: objects }),
+
+  setActiveWalkable: (area) => set({ activeWalkable: area }),
+
+  applyGeometryUpdates: (updates) =>
+    set((s) => {
+      const geometryVisibility = { ...s.geometryVisibility }
+      for (const { id, visible } of updates) geometryVisibility[id] = visible
+      return { geometryVisibility }
+    }),
+
+  initButtons: (buttons) =>
+    set(() => {
+      const buttonSpecs: Record<string, ButtonSpec> = {}
+      const buttonStates: Record<string, { state: ButtonState; occupancy: number }> = {}
+      for (const b of buttons) {
+        const { state, occupancy, ...spec } = b
+        buttonSpecs[b.id] = spec
+        buttonStates[b.id] = { state, occupancy }
+      }
+      return { buttonSpecs, buttonStates }
+    }),
+
+  applyButtonStateUpdate: (id, state, occupancy) =>
+    set((s) => ({ buttonStates: { ...s.buttonStates, [id]: { state, occupancy } } })),
+
+  applyButtonConfigUpdate: (id, changes) =>
+    set((s) => {
+      const existing = s.buttonSpecs[id]
+      if (!existing) return {}
+      return { buttonSpecs: { ...s.buttonSpecs, [id]: { ...existing, ...changes } } }
+    }),
+
+  setLocalButtonPressing: (id, pressing) =>
+    set((s) => ({ localButtonPressing: { ...s.localButtonPressing, [id]: pressing } })),
 }))

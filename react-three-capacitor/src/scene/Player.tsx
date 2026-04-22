@@ -8,7 +8,7 @@ import { CapsuleFallback } from './animation/CapsuleFallback'
 import { useWsSend } from '../network/useWebSocket'
 import { consumeMoveAck } from '../network/positionBuffer'
 import { localPlayerPos } from '../game/localPlayerPos'
-import { DEFAULT_WALKABLE, getDefaultRoomAtPosition } from '../game/DefaultWorld'
+import { CURRENT_MAP } from '../../../content/client/maps'
 import { hudRegistry } from './hudRegistry'
 import { VIEWPORT_W } from '../game/constants'
 
@@ -32,8 +32,10 @@ export function Player() {
   const seqRef = useRef(0)
   const inputHistory = useRef<InputRecord[]>([])
   const animStateRef = useRef<AnimationState>('IDLE')
+  const appliedWalkableRef = useRef<import('../game/WorldSpec').WalkableArea | null>(null)
 
   const localColor = useGameStore((s) => s.localColor)
+  const activeWalkable = useGameStore((s) => s.activeWalkable)
   const { sendMove } = useWsSend()
   const [animState, setAnimState] = useState<AnimationState>('IDLE')
 
@@ -43,15 +45,24 @@ export function Player() {
     if (!playerId || !groupRef.current) return
 
     if (initializedForRef.current !== playerId) {
-      const w = new World(DEFAULT_WALKABLE, ['touched'])
+      const w = new World(CURRENT_MAP.walkable, ['touched'])
       w.addPlayer(playerId, store.initialPosition.x, store.initialPosition.z)
       worldRef.current = w
       initializedForRef.current = playerId
       seqRef.current = 0
       inputHistory.current = []
       animStateRef.current = 'IDLE'
+      appliedWalkableRef.current = null  // force re-apply after init
     }
     const world = worldRef.current!
+
+    // ── Sync walkable area when it changes ───────────────────────────────────
+    const currentWalkable = store.activeWalkable ?? CURRENT_MAP.walkable
+    if (currentWalkable !== appliedWalkableRef.current) {
+      world.setWalkable(currentWalkable)
+      world.snapPlayer(playerId)
+      appliedWalkableRef.current = currentWalkable
+    }
 
     // ── 1. Apply server correction ───────────────────────────────────────────
     const ack = consumeMoveAck()
@@ -127,7 +138,7 @@ export function Player() {
       }
     }
 
-    const newRoomId = getDefaultRoomAtPosition(player.x, player.z)
+    const newRoomId = CURRENT_MAP.getRoomAtPosition(player.x, player.z)
     if (newRoomId !== localPlayerPos.roomId) {
       localPlayerPos.roomId = newRoomId
       store.setCurrentRoomId(newRoomId)

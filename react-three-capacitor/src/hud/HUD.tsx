@@ -4,7 +4,7 @@ import { Notifications } from './Notifications'
 import { EliminationOverlay } from './EliminationOverlay'
 import { ChoicePopup } from './ChoicePopup'
 import { RulePopup } from './RulePopup'
-import { DEFAULT_WORLD } from '../game/DefaultWorld'
+import { CURRENT_MAP } from '../../../content/client/maps'
 
 export function HUD() {
   const { connected, currentRoomId } = useGameStore((s) => ({
@@ -12,7 +12,7 @@ export function HUD() {
     currentRoomId: s.currentRoomId,
   }))
 
-  const roomName = DEFAULT_WORLD.rooms.find(r => r.id === currentRoomId)?.name ?? currentRoomId
+  const roomName = CURRENT_MAP.worldSpec.rooms.find(r => r.id === currentRoomId)?.name ?? currentRoomId
 
   return (
     <div

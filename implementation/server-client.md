@@ -7,7 +7,7 @@ src/game/
   World.ts               — Shared physics (identical to server copy; touched disabled on client)
 src/network/
   positionBuffer.ts      — Server time tracking, position snapshots, event queues, move_ack slot
-  useWebSocket.ts        — WebSocket message routing to store and positionBuffer
+  useWebSocket.ts        — WebSocket message routing to store and positionBuffer; derives WS URL from page path
   types.ts               — ClientMessage / ServerMessage types (mirrors server/src/types.ts)
 src/scene/
   Player.tsx             — Local player: prediction, correction, input history, move dispatch
@@ -17,7 +17,8 @@ src/store/
 server/src/
   World.ts               — Shared physics (identical to client copy; all events enabled)
   Room.ts                — Move processing, sequence validation, player management, NPC event merge, game script hooks
-  GameServer.ts          — WebSocket server, room routing
+  GameServer.ts          — WebSocket server; parses scenario id from URL path; uses ScenarioRegistry
+  ScenarioRegistry.ts    — Maintains open room instances per scenario; creates rooms on demand
   types.ts               — ServerMessage / ClientMessage types (mirrors src/network/types.ts)
 ```
 
@@ -25,7 +26,11 @@ server/src/
 
 The same source lives at `src/game/World.ts` and `server/src/World.ts` and must stay byte-for-byte identical. `World` stores players in a `Map<string, WorldPlayerState>`. `processMove()` mutates the player in-place and returns `WorldEvent[]`. The constructor accepts a string array of event types to disable; `'touched'` is disabled on all client instances.
 
-## Server (`Room.ts`, `GameServer.ts`)
+## Server (`Room.ts`, `GameServer.ts`, `ScenarioRegistry.ts`)
+
+`ScenarioRegistry` owns a map from scenario id to `{ map: MapSpec; scenario: ScenarioSpec }` and a separate `openRooms` map from scenario id to open `Room`. `getOrCreateRoom(id)` returns the existing open room or creates a new one (passing an `onCloseScenario` callback that deletes the entry from `openRooms`). `prewarm(id)` pre-creates the room at startup. When `ctx.closeScenario()` is called inside a game script, the callback fires and the room is removed from `openRooms`; the room itself continues running for existing players.
+
+`GameServer` parses the first URL path segment from the WebSocket upgrade request as the scenario id (empty or `/` defaults to `demo`). It calls `ScenarioRegistry.getOrCreateRoom` and rejects the connection with close code 4004 if the result is null. `GameServer` stores a `playerRoom` map (player id → Room) to keep room instances alive as long as any player is connected; entries are removed on disconnect.
 
 `Room` owns a `World` instance (all events enabled), a player map (id → WebSocket + colour), and an expected-sequence map. `processMove` validates seq, advances it, captures timestamps around `world.processMove`, appends NPC events, sends `move_ack` to the sender and `player_update` to all others via `broadcastExcept`, then calls `GameScriptManager.onPlayerMoved` if a game script is active. There is no `setInterval` broadcast loop.
 

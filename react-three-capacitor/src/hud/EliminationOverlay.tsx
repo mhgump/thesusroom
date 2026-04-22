@@ -13,7 +13,7 @@ export function EliminationOverlay() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 100,
+      zIndex: 1000,
       pointerEvents: 'none',
     }}>
       <span style={{

@@ -10,13 +10,18 @@ import {
   estimatedServerTime,
 } from './positionBuffer'
 import type { ServerMessage } from './types'
+import { CURRENT_MAP } from '../../../content/client/maps'
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'
+function getWsUrl(): string {
+  const scenarioPath = window.location.pathname.replace(/^\/+/, '') || 'demo'
+  const base = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'
+  return `${base}/${scenarioPath}`
+}
 
 let singleton: WebSocketClient | null = null
 
 function getClient(): WebSocketClient {
-  if (!singleton) singleton = new WebSocketClient(WS_URL)
+  if (!singleton) singleton = new WebSocketClient(getWsUrl())
   return singleton
 }
 
@@ -75,8 +80,40 @@ export function useWebSocket(): void {
           store.showRule({
             type: 'show_rule',
             eventId: `instruction-${Date.now()}`,
-            rules: [{ label: 'COMMAND', text: msg.text }],
+            rules: [{ label: msg.label, text: msg.text }],
           })
+          break
+
+        case 'map_init':
+          store.setGeometryObjects(msg.geometry)
+          break
+
+        case 'geometry_state':
+          store.applyGeometryUpdates(msg.updates)
+          if (CURRENT_MAP.walkableVariants?.length) {
+            const vis = useGameStore.getState().geometryVisibility
+            let matched: import('../game/WorldSpec').WalkableArea | null = null
+            for (const v of CURRENT_MAP.walkableVariants) {
+              if (v.triggerIds.every(id => vis[id] === true)) { matched = v.walkable; break }
+            }
+            store.setActiveWalkable(matched)
+          }
+          break
+
+        case 'button_init':
+          store.initButtons(msg.buttons)
+          break
+
+        case 'button_state':
+          store.applyButtonStateUpdate(msg.id, msg.state, msg.occupancy)
+          break
+
+        case 'button_config':
+          store.applyButtonConfigUpdate(msg.id, msg.changes)
+          break
+
+        case 'notification':
+          store.addNotification(msg.text)
           break
       }
     })

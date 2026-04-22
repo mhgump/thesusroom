@@ -12,13 +12,14 @@ server/src/
     NpcManager.ts    — Lifecycle: spawn, tick scheduling, event collection
     entities/
       StillDamager.ts — NPC that stands still and damages players on contact
-  WorldManager.ts       — Creates worlds at startup; routes connecting clients
-  DefaultServerWorld.ts — Default world spec with NPC declarations
+  ScenarioRegistry.ts   — Creates room instances on demand; MapSpec contains NPC declarations
+  content/
+    maps/demo.ts     — Demo map spec: NPC specs (with side-effect import registering StillDamager)
 ```
 
 ## World Architecture
 
-`WorldManager` creates all worlds at server startup, each backed by one `Room` instance and one WebSocket room. Worlds are defined by `ServerWorldSpec` (worldId, walkable area, npc specs). Routing logic lives entirely in `WorldManager.assignPlayer`; the current policy sends all clients to the first world.
+`ScenarioRegistry` creates room instances on demand (or at pre-warm time). Each room is backed by one `Room` instance and one WebSocket room. Map definitions (walkable area, NPC specs) live in `content/maps/` files; `MapSpec` carries the `npcs` array passed to `Room` at construction time.
 
 ## NPC Lifecycle
 
@@ -30,7 +31,7 @@ server/src/
 
 ## Type Registry
 
-`NpcEntity.ts` maintains a module-level `Map<string, NpcFactory>`. `registerNpcType(name, factory)` adds to it at module load time. To register a new type, import its file as a side-effect import in `DefaultServerWorld.ts`.
+`NpcEntity.ts` maintains a module-level `Map<string, NpcFactory>`. `registerNpcType(name, factory)` adds to it at module load time. To register a new type, add a side-effect import in the relevant `content/maps/*.ts` file.
 
 ## NpcContext Construction
 

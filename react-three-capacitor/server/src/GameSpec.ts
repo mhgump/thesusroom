@@ -1,7 +1,33 @@
 // Mirror of src/game/GameSpec.ts — must stay in sync.
+export type RuleLabel = 'RULE' | 'COMMAND' | 'FACT'
+
+export type ButtonState = 'idle' | 'pressed' | 'cooldown' | 'disabled'
+
+export interface ButtonConfig {
+  requiredPlayers: number
+  holdAfterRelease: boolean
+  cooldownMs: number
+  enableClientPress: boolean
+}
+
+export interface ButtonSpec extends ButtonConfig {
+  id: string
+  x: number
+  z: number
+  triggerRadius: number
+  ringOuterRadius: number
+  ringInnerRadius: number
+  platformRadius: number
+  raisedHeight: number
+  color: string
+  ringColor: string
+  initialState?: ButtonState
+}
+
 export interface InstructionEventSpec {
   id: string
   text: string
+  label: RuleLabel
 }
 
 export interface VoteRegionSpec {
@@ -13,9 +39,23 @@ export interface VoteRegionSpec {
   radius: number
 }
 
+export interface FloorGeometrySpec {
+  id: string
+  x: number
+  z: number
+  width: number
+  depth: number
+  color: string
+  height?: number
+}
+
 export interface GameSpec {
   instructionSpecs: InstructionEventSpec[]
   voteRegions: VoteRegionSpec[]
+  geometry: FloorGeometrySpec[]
+  buttons: ButtonSpec[]
+  // Initial visibility per element id (vote regions and geometry). Geometry defaults to true; vote regions to false.
+  initialVisibility: Record<string, boolean>
 }
 
 interface RoomBounds { x: number; z: number; width: number; depth: number }

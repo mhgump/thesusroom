@@ -1,15 +1,17 @@
 import { useRef, useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
 
-const OUTER = 120;
-const KNOB = 50;
-const MAX_DIST = (OUTER - KNOB) / 2;
+// CSS clamp keeps 120px on phones; scales up proportionally on tablets/desktop
+const OUTER_CSS = 'clamp(120px, 20vw, 220px)';
+const KNOB_CSS = 'clamp(50px, 8.35vw, 92px)'; // ~41.7% of outer
+const KNOB_FRACTION = 50 / 120;
 
 export function Joystick() {
   const outerRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const activeTouchId = useRef<number | null>(null);
   const baseCenter = useRef({ x: 0, y: 0 });
+  const maxDistRef = useRef<number>(35);
   const setJoystick = useGameStore((s) => s.setJoystickInput);
 
   useEffect(() => {
@@ -19,13 +21,14 @@ export function Joystick() {
     const updateCenter = () => {
       const r = el.getBoundingClientRect();
       baseCenter.current = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      maxDistRef.current = r.width * (1 - KNOB_FRACTION) / 2;
     };
 
     const moveKnob = (cx: number, cy: number) => {
       const dx = cx - baseCenter.current.x;
       const dy = cy - baseCenter.current.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const clamped = Math.min(dist, MAX_DIST);
+      const clamped = Math.min(dist, maxDistRef.current);
       const angle = Math.atan2(dy, dx);
       const kx = Math.cos(angle) * clamped;
       const ky = Math.sin(angle) * clamped;
@@ -36,7 +39,7 @@ export function Joystick() {
 
       const nx = dist > 0 ? dx / dist : 0;
       const ny = dist > 0 ? dy / dist : 0;
-      const mag = Math.min(1, dist / MAX_DIST);
+      const mag = Math.min(1, dist / maxDistRef.current);
       setJoystick({ x: nx * mag, y: ny * mag });
     };
 
@@ -115,8 +118,8 @@ export function Joystick() {
     <div
       ref={outerRef}
       style={{
-        width: OUTER,
-        height: OUTER,
+        width: OUTER_CSS,
+        height: OUTER_CSS,
         borderRadius: '50%',
         background: 'rgba(255,255,255,0.12)',
         border: '2px solid rgba(255,255,255,0.25)',
@@ -133,8 +136,8 @@ export function Joystick() {
           left: '50%',
           top: '50%',
           transform: 'translate(-50%, -50%)',
-          width: KNOB,
-          height: KNOB,
+          width: KNOB_CSS,
+          height: KNOB_CSS,
           borderRadius: '50%',
           background: 'rgba(255,255,255,0.35)',
           border: '2px solid rgba(255,255,255,0.55)',

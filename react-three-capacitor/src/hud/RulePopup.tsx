@@ -20,6 +20,7 @@ export function RulePopup() {
         .rule-close-btn:hover { opacity: 1 !important; }
       `}</style>
       <div
+        onClick={dismissRule}
         style={{
           position: 'fixed',
           inset: 0,
@@ -31,6 +32,7 @@ export function RulePopup() {
           justifyContent: 'center',
           padding: '20px',
           fontFamily: 'system-ui, monospace',
+          cursor: 'pointer',
         }}
       >
         <button
@@ -43,22 +45,24 @@ export function RulePopup() {
             background: 'none',
             border: 'none',
             color: '#fff',
-            fontSize: '1.75rem',
+            fontSize: 'clamp(1.75rem, 4vw, 3rem)',
             cursor: 'pointer',
             lineHeight: 1,
             opacity: 0.7,
-            padding: '4px 8px',
+            padding: 'clamp(4px, 0.6vw, 10px) clamp(8px, 1.2vw, 20px)',
           }}
         >
           ×
         </button>
 
         <div
+          onClick={(e) => e.stopPropagation()}
           style={{
             display: 'flex',
             flexDirection: 'column',
             gap: '10px',
             width: 'min(640px, 90vw)',
+            cursor: 'default',
           }}
         >
           {event.rules.map((rule, i) => (
@@ -67,31 +71,38 @@ export function RulePopup() {
               style={{
                 background: RULE_COLORS[i % RULE_COLORS.length],
                 borderRadius: '6px',
-                padding: '14px 32px 18px',
+                padding: '14px 18px 16px 20px',
                 color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
               }}
             >
               <div
                 style={{
-                  fontSize: '0.65rem',
-                  fontWeight: 700,
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                  opacity: 0.7,
-                  textAlign: 'center',
-                  marginBottom: '8px',
-                }}
-              >
-                {rule.label}
-              </div>
-              <div
-                style={{
+                  flex: 1,
                   fontSize: '1rem',
                   lineHeight: 1.4,
-                  textAlign: 'center',
+                  textAlign: 'left',
                 }}
               >
                 {rule.text}
+              </div>
+              <div
+                style={{
+                  flexShrink: 0,
+                  fontSize: '0.6rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  padding: '3px 7px',
+                  border: '1px solid rgba(255,255,255,0.4)',
+                  borderRadius: '3px',
+                  opacity: 0.8,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {rule.label}
               </div>
             </div>
           ))}

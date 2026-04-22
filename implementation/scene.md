@@ -7,10 +7,10 @@ src/scene/
   GameScene.tsx      — Root scene component; room rendering, camera, lighting
   Player.tsx         — Local player: world simulation, move dispatch, room tracking
   localPlayerPos.ts  — Mutable shared object { x, z, roomId } written each frame
-  VoteRegions.tsx    — Renders vote region discs, border rings, and text labels from DEFAULT_GAME_SPEC
+  VoteRegions.tsx    — Renders vote region discs, border rings, and text labels from DEMO_GAME_SPEC
+src/content/
+  maps/demo.ts       — Demo map spec: DEMO_WORLD_SPEC, DEMO_WALKABLE, DEMO_CAMERA_SHAPES, DEMO_GAME_SPEC
 src/game/
-  DefaultWorld.ts    — Client-side world spec, WalkableArea, and CameraConstraintShapes
-  DefaultGame.ts     — DEFAULT_GAME_SPEC: vote region definitions using DEFAULT_ROOM_POSITIONS
   WorldSpec.ts       — Room position BFS, walkable area computation, world types
   RoomSpec.ts        — RoomSpec and RoomConnection type definitions
   CameraConstraint.ts — buildCameraConstraintShapes, clampToShapes
@@ -31,7 +31,7 @@ src/scene/
 - One rect per room floor.
 - One thin corridor rect per connection at the shared floor edge: half-width = `doorWidth/2 − r`, half-depth = `r`.
 
-`World.processMove` runs a three-pass collision check (full move → X-only → Z-only) against `inWalkable`, enabling wall-sliding. The client computes `WalkableArea` in `DefaultWorld.ts`; the server in `server/src/WorldLayout.ts`. The two must use identical constants.
+`World.processMove` runs a three-pass collision check (full move → X-only → Z-only) against `inWalkable`, enabling wall-sliding. The client computes `WalkableArea` in `src/content/maps/demo.ts` via `computeWalkableArea`; the server inlines it in `server/src/content/maps/demo.ts`. The two must use identical constants.
 
 ## Room Rendering
 
@@ -45,7 +45,7 @@ src/scene/
 - **Rects**: each room's `cameraRect` (room-local `{ xMin, xMax, zMin, zMax }`) is offset by the room's world-space centre to produce a world-space `CameraRect`. Rooms without an authored `cameraRect` default to a point at the room centre.
 - **Zones**: each connection's `cameraTransition.corners` (in room-A-local coordinates) are offset by room A's world position to produce world-space `CameraZone` polygons.
 
-`DEFAULT_CAMERA_SHAPES` is computed once at module load in `DefaultWorld.ts` and reused every frame.
+`DEMO_CAMERA_SHAPES` is computed once at module load in `src/content/maps/demo.ts` and reused every frame.
 
 `clampToShapes(shapes, x, z)` projects the player position to the nearest point in the union of all rects and zones each frame:
 1. **Inside test**: check all rects with an axis-aligned test; check all zones with ray casting (ray from point in +X direction; odd crossing count = inside). Polygon winding order does not matter.
@@ -72,7 +72,7 @@ The smoothed target is initialised to the first-frame clamped position to preven
 
 ## Vote Regions
 
-`VoteRegions.tsx` reads `DEFAULT_GAME_SPEC.voteRegions` and renders each as a `<group>` at its world-space `(x, 0, z)` position. Each group contains three meshes flat on the XZ plane (all rotated `[-π/2, 0, 0]`):
+`VoteRegions.tsx` reads `DEMO_GAME_SPEC.voteRegions` from `src/content/maps/demo.ts` and renders each as a `<group>` at its world-space `(x, 0, z)` position. Each group contains three meshes flat on the XZ plane (all rotated `[-π/2, 0, 0]`):
 
 1. **Fill disc** (`CircleGeometry`, 64 segments) at Y = 0.002; `meshBasicMaterial` with the region colour, `transparent`, `opacity: 0.35`.
 2. **Border ring** (`RingGeometry`, inner radius = `r − 0.12`, outer = `r`, 64 segments) at Y = 0.003; opaque region colour.

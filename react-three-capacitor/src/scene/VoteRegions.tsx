@@ -1,10 +1,10 @@
 import { Text } from '@react-three/drei'
-import { DEFAULT_GAME_SPEC } from '../game/DefaultGame'
+import { CURRENT_MAP } from '../../../content/client/maps'
 
 export function VoteRegions() {
   return (
     <>
-      {DEFAULT_GAME_SPEC.voteRegions.map(region => (
+      {CURRENT_MAP.gameSpec.voteRegions.map(region => (
         <group key={region.id} position={[region.x, 0, region.z]}>
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}>
             <circleGeometry args={[region.radius, 64]} />

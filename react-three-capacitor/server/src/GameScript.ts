@@ -1,3 +1,5 @@
+import type { ButtonConfig, ButtonState } from './GameSpec.js'
+
 export interface ToggleVoteRegionOnEvent {
   type: 'toggle_vote_region_on'
   regionId: string
@@ -35,6 +37,26 @@ export interface GameScriptContext {
   getPlayerPosition(playerId: string): { x: number; z: number } | null
   // Remove a player from the game immediately (equivalent to elimination).
   eliminatePlayer(playerId: string): void
+  // Remove this scenario from the open registry so no new players can join.
+  // Connected players continue until they all disconnect, then the room is destroyed.
+  closeScenario(): void
+  // Show or hide geometry objects for the specified players (all players if playerIds is omitted).
+  setGeometryVisible(geometryIds: string[], visible: boolean, playerIds?: string[]): void
+  // Returns the current player → vote-region-id mapping for all tracked players.
+  getVoteAssignments(): Map<string, string | null>
+  // Register a callback that fires when a button transitions to pressed.
+  // Returns a cancel function to deregister the listener.
+  onButtonPress(buttonId: string, callback: (occupants: string[]) => void): () => void
+  // Register a callback that fires when a pressed button is released (occupants drop below threshold).
+  // Returns a cancel function to deregister the listener.
+  onButtonRelease(buttonId: string, callback: () => void): () => void
+  // Patch mutable button config at runtime (e.g. change requiredPlayers, cooldownMs).
+  // Broadcasts a button_config message to all clients and re-evaluates press criteria immediately.
+  modifyButton(buttonId: string, changes: Partial<ButtonConfig>): void
+  // Directly set a button's state. Broadcasts to clients but does not re-evaluate press criteria.
+  setButtonState(buttonId: string, state: ButtonState): void
+  // Send a transient notification toast to the specified players (all players if omitted).
+  sendNotification(text: string, playerIds?: string[]): void
 }
 
 // Interface that a game script must implement.

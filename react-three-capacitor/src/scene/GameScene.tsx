@@ -8,7 +8,9 @@ import { Player } from './Player';
 import { RemotePlayers } from './RemotePlayers';
 import { PlayerHudUpdater } from './PlayerHudUpdater';
 import { VoteRegions } from './VoteRegions';
-import { DEFAULT_WORLD, DEFAULT_ROOM_POSITIONS, DEFAULT_CAMERA_SHAPES } from '../game/DefaultWorld';
+import { GeometryLayer } from './GeometryLayer';
+import { ButtonLayer } from './ButtonLayer';
+import { CURRENT_MAP } from '../../../content/client/maps';
 import { getRoomWallOpenings } from '../game/WorldSpec';
 import { localPlayerPos } from '../game/localPlayerPos';
 import { useGameStore } from '../store/gameStore';
@@ -53,7 +55,7 @@ export function GameScene() {
     const cam = state.camera;
     if (!(cam instanceof THREE.OrthographicCamera)) return;
 
-    const { x: tx, z: tz } = clampToShapes(DEFAULT_CAMERA_SHAPES, localPlayerPos.x, localPlayerPos.z);
+    const { x: tx, z: tz } = clampToShapes(CURRENT_MAP.cameraShapes, localPlayerPos.x, localPlayerPos.z);
 
     // Initialise target on first frame to avoid a visible jump from origin.
     if (!camTargetRef.current) {
@@ -73,8 +75,8 @@ export function GameScene() {
     );
   }, -2);
 
-  const visibleIds = new Set([currentRoomId, ...(DEFAULT_WORLD.visibility[currentRoomId] ?? [])]);
-  const roomsToRender = DEFAULT_WORLD.rooms.filter(r => visibleIds.has(r.id));
+  const visibleIds = new Set([currentRoomId, ...(CURRENT_MAP.worldSpec.visibility[currentRoomId] ?? [])]);
+  const roomsToRender = CURRENT_MAP.worldSpec.rooms.filter(r => visibleIds.has(r.id));
 
   return (
     <>
@@ -82,8 +84,8 @@ export function GameScene() {
       <directionalLight position={[6, 12, 8]} intensity={0.75} castShadow />
       <BgPlane />
       {roomsToRender.map(room => {
-        const pos = DEFAULT_ROOM_POSITIONS.get(room.id)!;
-        const openings = getRoomWallOpenings(DEFAULT_WORLD, room.id);
+        const pos = CURRENT_MAP.roomPositions.get(room.id)!;
+        const openings = getRoomWallOpenings(CURRENT_MAP.worldSpec, room.id);
         return (
           <group key={room.id} position={[pos.x, 0, pos.z]}>
             <Ground room={room} />
@@ -92,6 +94,8 @@ export function GameScene() {
           </group>
         );
       })}
+      <GeometryLayer />
+      <ButtonLayer />
       <VoteRegions />
       <Player />
       <RemotePlayers />

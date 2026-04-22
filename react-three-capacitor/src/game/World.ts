@@ -40,11 +40,26 @@ export class World {
   readonly players: Map<string, WorldPlayerState> = new Map()
   private readonly disabledEvents: Set<WorldEventType>
   private readonly touchingPairs: Set<string> = new Set()
-  private readonly walkable: WalkableArea
+  private walkable: WalkableArea
 
   constructor(walkable: WalkableArea, disabledEvents: WorldEventType[] = []) {
     this.walkable = walkable
     this.disabledEvents = new Set(disabledEvents)
+  }
+
+  setWalkable(area: WalkableArea): void { this.walkable = area }
+
+  snapPlayer(id: string): void {
+    const p = this.players.get(id)
+    if (!p || this.inWalkable(p.x, p.z)) return
+    let bestX = p.x, bestZ = p.z, bestDist = Infinity
+    for (const r of this.walkable.rects) {
+      const cx = Math.max(r.cx - r.hw, Math.min(r.cx + r.hw, p.x))
+      const cz = Math.max(r.cz - r.hd, Math.min(r.cz + r.hd, p.z))
+      const dist = Math.hypot(p.x - cx, p.z - cz)
+      if (dist < bestDist) { bestDist = dist; bestX = cx; bestZ = cz }
+    }
+    p.x = bestX; p.z = bestZ
   }
 
   addPlayer(id: string, x = 0, z = 0): void {

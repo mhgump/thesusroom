@@ -16,6 +16,11 @@
 - Each delivered event carries how much of its server-time window remained at delivery (`remainingMs`).
 - The 250 ms delay applies to both the position and event streams, keeping them temporally aligned.
 - `touched` events in a move acknowledgement are processed immediately with no delay; `touched` events in a remote position broadcast are subject to the 250 ms buffer.
+- The server maintains a registry mapping scenario names to open room instances; a room instance is open when it accepts new connections.
+- The demo scenario room is pre-warmed at server startup and is always open for new connections.
+- A player connecting to `/{scenario_name}` is routed to the open instance for that scenario; if no open instance exists, a new one is created. If the scenario name is unknown, the connection is rejected.
+- Connecting to `/` or any unrecognised path defaults to the `demo` scenario.
+- When the game script calls `closeScenario`, the room is removed from the open registry; new players are routed to a fresh instance or rejected. The closed room continues running for its current players and is destroyed when the last player disconnects.
 - On connection the server sends: (1) `welcome` with the player's assigned id, colour, spawn position, and initial HP; (2) `player_actions` with the player's initial set of available actions; (3) `player_joined` for each already-connected player with their current position, animation state, and HP.
 - When a player's available action set changes, the server sends a `player_actions` message to that client containing the complete updated action list.
 - On connection the server sends `player_joined` to every already-connected player describing the new player. `player_joined` carries no server timestamps.
