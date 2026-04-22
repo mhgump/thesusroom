@@ -23,6 +23,14 @@ const DOOR_HW = R2W / 2 - R   // half door width inset
 const EDGE1 = -(R1H / 2)       // shared edge: Room 1 north / Room 2 south
 const EDGE2 = R2Z - R2H / 2    // shared edge: Room 2 north / Room 3 south
 
+// Room centre world-space coordinates — used by NPC spawn positions.
+export const ROOM1_CENTER_X = 0
+export const ROOM1_CENTER_Z = 0
+export const ROOM2_CENTER_X = 0
+export const ROOM2_CENTER_Z = R2Z
+export const ROOM3_CENTER_X = 0
+export const ROOM3_CENTER_Z = R3Z
+
 export const DEFAULT_WALKABLE: WalkableArea = {
   rects: [
     { cx: 0, cz: 0,   hw: R1W / 2 - R, hd: R1H / 2 - R },

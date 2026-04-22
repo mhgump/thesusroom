@@ -2,6 +2,8 @@ import { useGameStore } from '../store/gameStore'
 import { Joystick } from './Joystick'
 import { Notifications } from './Notifications'
 import { EliminationOverlay } from './EliminationOverlay'
+import { ChoicePopup } from './ChoicePopup'
+import { RulePopup } from './RulePopup'
 import { DEFAULT_WORLD } from '../game/DefaultWorld'
 
 export function HUD() {
@@ -48,6 +50,8 @@ export function HUD() {
 
       <Notifications />
       <EliminationOverlay />
+      <ChoicePopup />
+      <RulePopup />
 
       {/* Joystick — bottom-left */}
       <div

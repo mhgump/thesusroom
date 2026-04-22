@@ -42,9 +42,11 @@ export function PlayerHudOverlay() {
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
       <LocalPlayerHeart />
-      {Object.keys(remotePlayers).map((id) => (
-        <RemotePlayerHeart key={id} id={id} />
-      ))}
+      {Object.values(remotePlayers)
+        .filter((p) => p.hasHealth)
+        .map((p) => (
+          <RemotePlayerHeart key={p.id} id={p.id} />
+        ))}
     </div>
   )
 }

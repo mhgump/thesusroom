@@ -41,6 +41,8 @@ export function GameScene() {
     camera.updateProjectionMatrix();
   }, [camera, size]);
 
+  // priority -2: runs before PlayerHudUpdater (-1) and Player (0) so both can call
+  // camera.updateMatrixWorld() against the freshly-positioned camera this frame.
   useFrame((state) => {
     const cam = state.camera;
     if (!(cam instanceof THREE.OrthographicCamera)) return;
@@ -60,7 +62,7 @@ export function GameScene() {
 
     const { x: tx, z: tz } = clampToPoly(polyCache.current!.poly, localPlayerPos.x, localPlayerPos.z);
     cam.position.set(tx, CAMERA_DIST * Math.cos(CAMERA_ANGLE), tz + CAMERA_DIST * Math.sin(CAMERA_ANGLE));
-  });
+  }, -2);
 
   const visibleIds = new Set([currentRoomId, ...(DEFAULT_WORLD.visibility[currentRoomId] ?? [])]);
   const roomsToRender = DEFAULT_WORLD.rooms.filter(r => visibleIds.has(r.id));

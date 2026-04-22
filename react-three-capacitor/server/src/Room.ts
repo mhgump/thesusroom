@@ -1,13 +1,17 @@
 import WebSocket from 'ws'
 import type { ServerMessage } from './types.js'
 import { World } from './World.js'
-import { DEFAULT_WALKABLE } from './WorldLayout.js'
+import type { WalkableArea } from './World.js'
+import { NpcManager } from './npc/NpcManager.js'
+import type { NpcSpec } from './npc/NpcSpec.js'
 
 const COLOR_PALETTE = [
   '#e74c3c', '#2ecc71', '#3498db', '#f1c40f',
   '#9b59b6', '#e67e22', '#1abc9c', '#e91e63',
   '#00bcd4', '#8bc34a', '#ff5722', '#795548',
 ]
+
+const NPC_COLOR = '#888888'
 
 function hexToHue(hex: string): number {
   const r = parseInt(hex.slice(1, 3), 16) / 255
@@ -32,12 +36,18 @@ interface PlayerState { id: string; ws: WebSocket; color: string }
 export class Room {
   protected readonly roomId: string
   protected players: Map<string, PlayerState> = new Map()
-  protected world: World = new World(DEFAULT_WALKABLE)
+  protected world: World
 
   private expectedSeq: Map<string, number> = new Map()
+  private npcManager: NpcManager
 
-  constructor(roomId: string) {
+  constructor(roomId: string, walkable: WalkableArea, npcs: NpcSpec[] = []) {
     this.roomId = roomId
+    this.world = new World(walkable)
+    this.npcManager = new NpcManager(this.world, (npcId, x, z, events, time) => {
+      this.broadcast({ type: 'player_update', playerId: npcId, x, z, events, startTime: time, endTime: time })
+    })
+    this.npcManager.spawnAll(npcs)
   }
 
   processMove(playerId: string, seq: number, jx: number, jz: number, dt: number): void {
@@ -51,12 +61,14 @@ export class Room {
     this.expectedSeq.set(playerId, expected + 1)
 
     const startTime = Date.now()
-    const events = this.world.processMove(playerId, jx, jz, dt)
+    const moveEvents = this.world.processMove(playerId, jx, jz, dt)
+    const npcEvents = this.npcManager.onActionCompleted(moveEvents)
     const endTime = Date.now()
 
+    const allEvents = npcEvents.length > 0 ? [...moveEvents, ...npcEvents] : moveEvents
     const wp = this.world.getPlayer(playerId)!
-    this.sendToPlayer(playerId, { type: 'move_ack', seq, x: wp.x, z: wp.z, events, startTime, endTime })
-    this.broadcastExcept(playerId, { type: 'player_update', playerId, x: wp.x, z: wp.z, events, startTime, endTime })
+    this.sendToPlayer(playerId, { type: 'move_ack', seq, x: wp.x, z: wp.z, events: allEvents, startTime, endTime })
+    this.broadcastExcept(playerId, { type: 'player_update', playerId, x: wp.x, z: wp.z, events: allEvents, startTime, endTime })
   }
 
   addPlayer(playerId: string, ws: WebSocket): void {
@@ -68,11 +80,28 @@ export class Room {
     const wp = this.world.getPlayer(playerId)!
     this.sendToPlayer(playerId, { type: 'welcome', playerId, color, x: wp.x, z: wp.z, hp: wp.hp })
 
+    // Inform new player of existing human players, and vice-versa.
     for (const [id, p] of this.players) {
       if (id === playerId) continue
       const ep = this.world.getPlayer(id)!
       this.sendToPlayer(playerId, { type: 'player_joined', playerId: id, color: p.color, x: ep.x, z: ep.z, animState: ep.animState, hp: ep.hp })
       this.sendToPlayer(id, { type: 'player_joined', playerId, color, x: wp.x, z: wp.z, animState: wp.animState, hp: wp.hp })
+    }
+
+    // Inform new player of all NPC entities in the world.
+    for (const { id, spec } of this.npcManager.getNpcEntries()) {
+      const np = this.world.getPlayer(id)!
+      this.sendToPlayer(playerId, {
+        type: 'player_joined',
+        playerId: id,
+        color: NPC_COLOR,
+        x: np.x,
+        z: np.z,
+        animState: np.animState,
+        hp: np.hp,
+        isNpc: true,
+        hasHealth: spec.ux.has_health,
+      })
     }
 
     console.log(`[Room:${this.roomId}] +player ${playerId} color:${color} (total:${this.players.size})`)

@@ -121,6 +121,16 @@ export class World {
     return events
   }
 
+  applyDamage(targetId: string, amount: number): DamageEvent | null {
+    const p = this.players.get(targetId)
+    if (!p) return null
+    const raw = p.hp - amount
+    const newHp = (raw <= 0 ? 0 : raw >= 2 ? 2 : raw) as 0 | 1 | 2
+    if (newHp === p.hp) return null
+    p.hp = newHp
+    return { type: 'damage', targetId, newHp }
+  }
+
   private inWalkable(x: number, z: number): boolean {
     for (const r of this.walkable.rects) {
       if (Math.abs(x - r.cx) <= r.hw && Math.abs(z - r.cz) <= r.hd) return true

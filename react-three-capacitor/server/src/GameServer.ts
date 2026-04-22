@@ -1,22 +1,25 @@
 import { WebSocketServer, type WebSocket } from 'ws'
-import type { Room } from './Room.js'
-import { DemoRoom } from './DemoRoom.js'
+import { WorldManager } from './WorldManager.js'
+import { DEFAULT_SERVER_WORLD } from './DefaultServerWorld.js'
 import type { ClientMessage } from './types.js'
 
 export class GameServer {
   private readonly wss: WebSocketServer
-  private readonly rooms: Map<string, Room> = new Map()
+  private readonly worldManager: WorldManager
+  private readonly playerWorld: Map<string, string> = new Map()
 
   constructor(port: number) {
     this.wss = new WebSocketServer({ port })
-    this.rooms.set('demo', new DemoRoom('demo'))
+    this.worldManager = new WorldManager([DEFAULT_SERVER_WORLD])
     this.wss.on('connection', this.handleConnection.bind(this))
     console.log(`[GameServer] ws://localhost:${port}`)
   }
 
   private handleConnection(ws: WebSocket): void {
     const playerId = crypto.randomUUID()
-    const room = this.rooms.get('demo')!
+    const worldId = this.worldManager.assignPlayer(playerId)
+    const room = this.worldManager.getRoom(worldId)!
+    this.playerWorld.set(playerId, worldId)
 
     room.addPlayer(playerId, ws)
 
@@ -31,6 +34,9 @@ export class GameServer {
       }
     })
 
-    ws.on('close', () => room.removePlayer(playerId))
+    ws.on('close', () => {
+      room.removePlayer(playerId)
+      this.playerWorld.delete(playerId)
+    })
   }
 }

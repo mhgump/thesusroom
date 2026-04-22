@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AnimationState } from '../game/World'
+import type { ShowChoiceEvent, ShowRuleEvent } from '../network/types'
 
 interface JoystickInput { x: number; y: number }
 
@@ -7,6 +8,8 @@ export interface RemotePlayerInfo {
   id: string
   color: string
   initialAnimState: AnimationState
+  isNpc: boolean
+  hasHealth: boolean
 }
 
 export interface Notification {
@@ -25,6 +28,8 @@ interface GameState {
   remotePlayers: Record<string, RemotePlayerInfo>
   notifications: Notification[]
   playerHp: Record<string, 0 | 1 | 2>
+  activeChoiceEvent: ShowChoiceEvent | null
+  activeRuleEvent: ShowRuleEvent | null
 
   setConnected: (v: boolean) => void
   setPlayerId: (id: string) => void
@@ -32,11 +37,15 @@ interface GameState {
   setInitialPosition: (x: number, z: number) => void
   setCurrentRoomId: (roomId: string) => void
   setJoystickInput: (input: JoystickInput) => void
-  addRemotePlayer: (id: string, color: string, animState: AnimationState) => void
+  addRemotePlayer: (id: string, color: string, animState: AnimationState, isNpc?: boolean, hasHealth?: boolean) => void
   removeRemotePlayer: (id: string) => void
   addNotification: (message: string) => void
   setPlayerHp: (id: string, hp: 0 | 1 | 2) => void
   applyDamage: (targetId: string, newHp: 0 | 1 | 2) => void
+  showChoice: (event: ShowChoiceEvent) => void
+  dismissChoice: () => void
+  showRule: (event: ShowRuleEvent) => void
+  dismissRule: () => void
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -49,6 +58,8 @@ export const useGameStore = create<GameState>((set) => ({
   remotePlayers: {},
   notifications: [],
   playerHp: {},
+  activeChoiceEvent: null,
+  activeRuleEvent: null,
 
   setConnected: (v) => set({ connected: v }),
   setPlayerId: (id) => set({ playerId: id }),
@@ -57,8 +68,8 @@ export const useGameStore = create<GameState>((set) => ({
   setCurrentRoomId: (roomId) => set({ currentRoomId: roomId }),
   setJoystickInput: (input) => set({ joystickInput: input }),
 
-  addRemotePlayer: (id, color, animState) =>
-    set((s) => ({ remotePlayers: { ...s.remotePlayers, [id]: { id, color, initialAnimState: animState } } })),
+  addRemotePlayer: (id, color, animState, isNpc = false, hasHealth = true) =>
+    set((s) => ({ remotePlayers: { ...s.remotePlayers, [id]: { id, color, initialAnimState: animState, isNpc, hasHealth } } })),
 
   removeRemotePlayer: (id) =>
     set((s) => {
@@ -81,4 +92,9 @@ export const useGameStore = create<GameState>((set) => ({
   setPlayerHp: (id, hp) => set((s) => ({ playerHp: { ...s.playerHp, [id]: hp } })),
 
   applyDamage: (targetId, newHp) => set((s) => ({ playerHp: { ...s.playerHp, [targetId]: newHp } })),
+
+  showChoice: (event) => set({ activeChoiceEvent: event }),
+  dismissChoice: () => set({ activeChoiceEvent: null }),
+  showRule: (event) => set({ activeRuleEvent: event }),
+  dismissRule: () => set({ activeRuleEvent: null }),
 }))

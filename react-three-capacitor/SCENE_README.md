@@ -84,9 +84,13 @@ Mutable object `{ x, z, roomId }` written by `Player.tsx` every frame. `GameScen
 
 ## HP indicator rendering
 
-Heart groups live at scene root (not inside the capsule group). Each player's `useFrame` sets the heart group's position directly after setting the capsule position. This keeps both in the same frame callback, so drei's `Html` reads the freshly-set position rather than relying on a separate useFrame to propagate the matrix. Hearts start hidden (`display: none` on the wrapper div) and are revealed on the first frame that a valid position is known.
+Heart overlays are HTML `<div>`s rendered outside the Canvas by `PlayerHudOverlay`. Each div is registered in `hudRegistry`, a `Map<playerId, HTMLDivElement>` that connects the DOM tree to the render loop.
 
-For remote players, drei's `Html` respects the position of its parent group but does not check Three.js `visible`. Visibility is controlled by setting `display` on the wrapper div directly.
+Each frame, `Player.tsx` (local player) and `PlayerHudUpdater.tsx` (remote players) project the player's world position through the orthographic camera into screen-space pixel coordinates and write the result as a CSS `transform` on the registered div. `camera.updateMatrixWorld()` must be called before projecting, since Three.js only syncs `matrixWorldInverse` during `gl.render()`.
+
+For the projection to use the current frame's camera matrix, the camera must be moved before any heart is projected. `GameScene.useFrame` runs at priority `−2`, `PlayerHudUpdater` at priority `−1`, and `Player.useFrame` at priority `0`. Within the same priority, R3F executes subscribers in insertion order; React registers child effects before parent effects, so within priority `0` Player runs before GameScene. The explicit priority `−2` on GameScene guarantees it runs before both.
+
+Divs start with `display: none` and are revealed on the first frame a valid position is known. Remote player hearts are conditionally mounted based on the `hasHealth` flag.
 
 ## Ground texture (`Ground.tsx`)
 

@@ -38,7 +38,7 @@ export function useWebSocket(): void {
           break
 
         case 'player_joined':
-          store.addRemotePlayer(msg.playerId, msg.color, msg.animState)
+          store.addRemotePlayer(msg.playerId, msg.color, msg.animState, msg.isNpc, msg.hasHealth ?? true)
           store.setPlayerHp(msg.playerId, msg.hp)
           pushRemotePosition(msg.playerId, msg.x, msg.z, estimatedServerTime())
           break
@@ -57,6 +57,15 @@ export function useWebSocket(): void {
           pushRemotePosition(msg.playerId, msg.x, msg.z, msg.endTime)
           pushRemoteEvents(msg.playerId, msg.events, msg.startTime, msg.endTime)
           break
+
+        case 'game_event': {
+          const delayMs = Math.max(0, msg.serverTime - estimatedServerTime())
+          setTimeout(() => {
+            if (msg.event.type === 'show_choice') store.showChoice(msg.event)
+            else if (msg.event.type === 'show_rule') store.showRule(msg.event)
+          }, delayMs)
+          break
+        }
       }
     })
 
@@ -70,5 +79,7 @@ export function useWsSend() {
   return {
     sendMove: (seq: number, jx: number, jz: number, dt: number) =>
       client.send({ type: 'move', seq, jx, jz, dt }),
+    sendChoiceAction: (eventId: string, optionId: string) =>
+      client.send({ type: 'choice_action', eventId, optionId }),
   }
 }

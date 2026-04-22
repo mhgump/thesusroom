@@ -103,10 +103,9 @@ export function Player() {
     localPlayerPos.x = player.x
     localPlayerPos.z = player.z
 
-    // Heart overlay: project this frame's position through this frame's camera.
-    // camera.updateMatrixWorld() syncs matrixWorldInverse with the camera.position
-    // that GameScene.useFrame just set — Three.js only does this during gl.render(),
-    // so without it the projection would use last frame's matrix.
+    // Heart overlay: project this frame's position through the camera GameScene just moved.
+    // camera.updateMatrixWorld() is needed because Three.js only syncs matrixWorldInverse
+    // during gl.render(); without it the projection uses last frame's matrix.
     const heartDiv = hudRegistry.get('__local__')
     if (heartDiv) {
       const { camera, size } = state
