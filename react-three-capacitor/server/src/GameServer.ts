@@ -1,4 +1,5 @@
 import { WebSocketServer, type WebSocket } from 'ws'
+import type http from 'http'
 import type { IncomingMessage } from 'http'
 import { ScenarioRegistry } from './ScenarioRegistry.js'
 import { DEMO_MAP } from '../../../content/server/maps/demo.js'
@@ -24,8 +25,14 @@ export class GameServer {
   private readonly registry: ScenarioRegistry
   private readonly playerRoom: Map<string, Room> = new Map()
 
-  constructor(port: number) {
-    this.wss = new WebSocketServer({ port })
+  constructor(portOrServer: number | http.Server) {
+    if (typeof portOrServer === 'number') {
+      this.wss = new WebSocketServer({ port: portOrServer })
+      console.log(`[GameServer] ws://localhost:${portOrServer}`)
+    } else {
+      this.wss = new WebSocketServer({ server: portOrServer })
+      console.log('[GameServer] attached to HTTP server')
+    }
     this.registry = new ScenarioRegistry([
       { map: DEMO_MAP, scenario: DEMO_SCENARIO },
       { map: SCENARIO1_MAP, scenario: SCENARIO1_SCENARIO },
@@ -34,7 +41,6 @@ export class GameServer {
     ])
     this.registry.prewarm('demo')
     this.wss.on('connection', this.handleConnection.bind(this))
-    console.log(`[GameServer] ws://localhost:${port}`)
   }
 
   private handleConnection(ws: WebSocket, request: IncomingMessage): void {

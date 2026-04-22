@@ -14,8 +14,10 @@ import { CURRENT_MAP } from '../../../content/client/maps'
 
 function getWsUrl(): string {
   const scenarioPath = window.location.pathname.replace(/^\/+/, '') || 'demo'
-  const base = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080'
-  return `${base}/${scenarioPath}`
+  const envUrl = import.meta.env.VITE_WS_URL
+  if (envUrl) return `${envUrl}/${scenarioPath}`
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${proto}://${window.location.host}/${scenarioPath}`
 }
 
 let singleton: WebSocketClient | null = null
