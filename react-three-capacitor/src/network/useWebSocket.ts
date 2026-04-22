@@ -44,8 +44,12 @@ export function useWebSocket(): void {
           break
 
         case 'player_left':
-          store.removeRemotePlayer(msg.playerId)
-          clearRemotePlayer(msg.playerId)
+          if (msg.playerId === useGameStore.getState().playerId) {
+            store.applyDamage(msg.playerId, 0)
+          } else {
+            store.removeRemotePlayer(msg.playerId)
+            clearRemotePlayer(msg.playerId)
+          }
           break
 
         case 'move_ack':

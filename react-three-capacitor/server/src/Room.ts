@@ -134,6 +134,7 @@ export class Room {
 
   removePlayer(playerId: string): void {
     this.gameScriptManager?.onPlayerDisconnect(playerId)
+    this.sendToPlayer(playerId, { type: 'player_left', playerId })
     this.players.delete(playerId)
     this.world.removePlayer(playerId)
     this.expectedSeq.delete(playerId)
