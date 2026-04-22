@@ -1,0 +1,22 @@
+# Server–Client Protocol — Spec
+
+- The client and server run the exact same world simulation code; physics constants and event logic are shared.
+- Every client move is sent with a monotonically increasing sequence number, joystick direction, and frame delta time.
+- The server refuses moves whose sequence number is not exactly the next expected value; out-of-order moves receive an error and are dropped without advancing the expected sequence.
+- For each accepted move the server sends the originator a move acknowledgement: echoed sequence number, authoritative position, triggered events, and server timestamps bracketing the move.
+- The server forwards the same result to every other connected client as a position broadcast: moving player id, authoritative position, events, and the same timestamps.
+- There is no periodic broadcast loop; all position and event updates are sent strictly in response to client moves.
+- World instances can disable individual event types; disabled types are still simulated but not included in the returned event list. Client world instances disable the `touched` event type.
+- The client applies every move through its own local world instance immediately (client-side prediction); the local player's visual position follows this predicted state each frame.
+- The client maintains an input history of up to 180 frames (≈3 s at 60 fps).
+- On move acknowledgement: the client teleports the local world to the authoritative position, replays all inputs after the acknowledged sequence, and snaps the visual position if the corrected position differs by more than 2 cm. Events in the acknowledgement are processed immediately.
+- The client maintains a running estimate of current server time, anchored to the `endTime` of the most recently received update event and advanced by the local wall clock.
+- Remote player positions are stored as snapshots keyed by server timestamp and rendered at estimated server time minus 250 ms via linear interpolation between the two bracketing snapshots.
+- Remote events are held in a per-player queue and delivered exactly once when `max(receiptTime, serverStartTime + 250 ms)` has elapsed; late-arriving events are delivered immediately.
+- Each delivered event carries how much of its server-time window remained at delivery (`remainingMs`).
+- The 250 ms delay applies to both the position and event streams, keeping them temporally aligned.
+- `touched` events in a move acknowledgement are processed immediately with no delay; `touched` events in a remote position broadcast are subject to the 250 ms buffer.
+- On connection the server sends: (1) `welcome` with the player's assigned id, colour, spawn position, and initial HP; (2) `round_config` with the current round id and available actions; (3) `player_joined` for each already-connected player with their current position, animation state, and HP.
+- On connection the server sends `player_joined` to every already-connected player describing the new player. `player_joined` carries no server timestamps.
+- On disconnection the server removes the player from the world and broadcasts `player_left` to all remaining players.
+- All messages are JSON-encoded WebSocket frames.
