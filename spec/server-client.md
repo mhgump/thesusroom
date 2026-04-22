@@ -16,7 +16,9 @@
 - Each delivered event carries how much of its server-time window remained at delivery (`remainingMs`).
 - The 250 ms delay applies to both the position and event streams, keeping them temporally aligned.
 - `touched` events in a move acknowledgement are processed immediately with no delay; `touched` events in a remote position broadcast are subject to the 250 ms buffer.
-- On connection the server sends: (1) `welcome` with the player's assigned id, colour, spawn position, and initial HP; (2) `round_config` with the current round id and available actions; (3) `player_joined` for each already-connected player with their current position, animation state, and HP.
+- On connection the server sends: (1) `welcome` with the player's assigned id, colour, spawn position, and initial HP; (2) `player_actions` with the player's initial set of available actions; (3) `player_joined` for each already-connected player with their current position, animation state, and HP.
+- When a player's available action set changes, the server sends a `player_actions` message to that client containing the complete updated action list.
 - On connection the server sends `player_joined` to every already-connected player describing the new player. `player_joined` carries no server timestamps.
 - On disconnection the server removes the player from the world and broadcasts `player_left` to all remaining players.
+- On elimination (HP reaches zero) the server removes the player from the world and broadcasts `player_left` to all remaining players.
 - All messages are JSON-encoded WebSocket frames.

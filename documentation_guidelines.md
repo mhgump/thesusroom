@@ -60,8 +60,8 @@ Catalog of HUD elements: what can appear on the overlay, their layout, and their
 - Does not cover: what triggers an element to appear (→ `ux` or `game`), how world-space positions project to screen (→ `graphics`).
 
 ### `game`
-Game mechanics: move physics, world events, HP/damage, rounds, actions.
-- Covers: touched event rules, HP system, elimination, round structure, action semantics.
+Game mechanics: move physics, world events, HP/damage, per-player actions.
+- Covers: touched event rules, HP system, elimination, per-player action management.
 - Does not cover: how events travel over the network (→ `server-client`), entity visuals (→ `graphics`).
 
 ### `graphics`

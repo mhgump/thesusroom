@@ -69,6 +69,12 @@ export class Room {
     const wp = this.world.getPlayer(playerId)!
     this.sendToPlayer(playerId, { type: 'move_ack', seq, x: wp.x, z: wp.z, events: allEvents, startTime, endTime })
     this.broadcastExcept(playerId, { type: 'player_update', playerId, x: wp.x, z: wp.z, events: allEvents, startTime, endTime })
+
+    for (const event of allEvents) {
+      if (event.type === 'damage' && event.newHp === 0 && this.players.has(event.targetId)) {
+        this.removePlayer(event.targetId)
+      }
+    }
   }
 
   addPlayer(playerId: string, ws: WebSocket): void {

@@ -21,6 +21,7 @@ class StillDamagerEntity implements NpcEntity {
     // Damage on first touch contact
     for (const evt of ctx.triggerEvents) {
       if (evt.type !== 'touched') continue
+      if (evt.playerIdA !== this.id && evt.playerIdB !== this.id) continue
       const targetId = evt.playerIdA === this.id ? evt.playerIdB : evt.playerIdA
       if (!targetId || targetId === this.id) continue
       if (this.hitThisContact.has(targetId)) continue

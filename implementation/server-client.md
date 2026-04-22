@@ -29,7 +29,7 @@ The same source lives at `src/game/World.ts` and `server/src/World.ts` and must 
 
 `Room` owns a `World` instance (all events enabled), a player map (id → WebSocket + colour), and an expected-sequence map. `processMove` validates seq, advances it, captures timestamps around `world.processMove`, appends NPC events, sends `move_ack` to the sender and `player_update` to all others via `broadcastExcept`. There is no `setInterval` broadcast loop.
 
-`addPlayer` inserts the player at (0, 0), sends `welcome` + `round_config`, then exchanges `player_joined` messages between the new player and each existing player (human and NPC). `removePlayer` deletes from both maps and broadcasts `player_left`.
+`addPlayer` inserts the player at (0, 0), sends `welcome` + `player_actions`, then exchanges `player_joined` messages between the new player and each existing player (human and NPC). `removePlayer` deletes from both maps and broadcasts `player_left`; it is called on both disconnection and elimination.
 
 ## Client Network Layer (`positionBuffer.ts`, `useWebSocket.ts`)
 

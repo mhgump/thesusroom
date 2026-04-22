@@ -48,8 +48,14 @@ export function Joystick() {
       setJoystick({ x: 0, y: 0 });
     };
 
+    const isEliminated = () => {
+      const { playerId, playerHp } = useGameStore.getState();
+      return playerId !== null && (playerHp[playerId] ?? 2) === 0;
+    };
+
     const onTouchStart = (e: TouchEvent) => {
       e.preventDefault();
+      if (isEliminated()) return;
       if (activeTouchId.current !== null) return;
       const t = e.changedTouches[0];
       activeTouchId.current = t.identifier;
@@ -59,6 +65,7 @@ export function Joystick() {
 
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
+      if (isEliminated()) return;
       const t = Array.from(e.changedTouches).find(
         (x) => x.identifier === activeTouchId.current,
       );
@@ -75,12 +82,13 @@ export function Joystick() {
     // Mouse fallback for desktop testing
     let mouseDown = false;
     const onMouseDown = (e: MouseEvent) => {
+      if (isEliminated()) return;
       mouseDown = true;
       updateCenter();
       moveKnob(e.clientX, e.clientY);
     };
     const onMouseMove = (e: MouseEvent) => {
-      if (mouseDown) moveKnob(e.clientX, e.clientY);
+      if (mouseDown && !isEliminated()) moveKnob(e.clientX, e.clientY);
     };
     const onMouseUp = () => {
       if (mouseDown) { mouseDown = false; reset(); }

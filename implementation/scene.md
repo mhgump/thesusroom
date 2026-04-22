@@ -8,9 +8,10 @@ src/scene/
   Player.tsx         — Local player: world simulation, move dispatch, room tracking
   localPlayerPos.ts  — Mutable shared object { x, z, roomId } written each frame
 src/game/
-  DefaultWorld.ts    — Client-side world spec and WalkableArea computation
+  DefaultWorld.ts    — Client-side world spec, WalkableArea, and CameraConstraintShapes
   WorldSpec.ts       — Room position BFS, walkable area computation, world types
-  CameraConstraint.ts — buildCameraConstraintPoly, clampToPoly
+  RoomSpec.ts        — RoomSpec and RoomConnection type definitions
+  CameraConstraint.ts — buildCameraConstraintShapes, clampToShapes
   World.ts           — Shared physics simulation (identical to server copy)
 src/scene/
   Ground.tsx         — Floor mesh with texture tiling
@@ -34,17 +35,30 @@ src/scene/
 
 `GameScene.tsx` reads `currentRoomId` from the Zustand store to determine which rooms to render: the active room plus its `visibility` list. Each room renders in a `<group>` at its world-space centre so `Ground`, `Barrier`, and `RoomOutsideTextures` use room-local coordinates.
 
-## Camera Constraint Polygon
+## Camera Constraint Shapes
 
-`CameraConstraint.ts` exports `buildCameraConstraintPoly` and `clampToPoly`.
+`CameraConstraint.ts` exports `buildCameraConstraintShapes` and `clampToShapes`.
 
-Each room contributes a *camera rect*:
-- **Default**: `txBound = max(0, floorWidth/2 − halfViewW)` — viewport stays inside room; degenerates to a point for rooms narrower than the viewport.
-- **`cameraRect: 'full'`**: `txBound = floorWidth/2` — camera tracks the full room floor; used for narrow corridors.
+`buildCameraConstraintShapes(world, roomPositions)` converts authored specs to world-space shapes:
+- **Rects**: each room's `cameraRect` (room-local `{ xMin, xMax, zMin, zMax }`) is offset by the room's world-space centre to produce a world-space `CameraRect`. Rooms without an authored `cameraRect` default to a point at the room centre.
+- **Zones**: each connection's `cameraTransition.corners` (in room-A-local coordinates) are offset by room A's world position to produce world-space `CameraZone` polygons.
 
-Adjacent rects are bridged by trapezoids (south edge = north edge of southern rect, north edge = south edge of northern rect). The polygon walks east side south-to-north, then west side north-to-south. Consecutive duplicate vertices from degenerate shapes are removed.
+`DEFAULT_CAMERA_SHAPES` is computed once at module load in `DefaultWorld.ts` and reused every frame.
 
-`clampToPoly` projects the player position to the nearest point in the polygon each frame. The polygon is cached in a `useRef` in `GameScene.tsx` and rebuilt only on viewport resize.
+`clampToShapes(shapes, x, z)` projects the player position to the nearest point in the union of all rects and zones each frame:
+1. **Inside test**: check all rects with an axis-aligned test; check all zones with ray casting (ray from point in +X direction; odd crossing count = inside). Polygon winding order does not matter.
+2. **If inside any shape**: return the point unchanged.
+3. **If outside all shapes**: find the nearest boundary point across all rects (`clamp(x, xMin, xMax)`) and zones (nearest on each edge via `nearestOnSeg`), return the globally closest.
+
+## Camera Damping
+
+`GameScene.tsx` maintains a `camTargetRef` (the smoothed camera ground-plane position). Each frame in the `useFrame` callback (priority −2):
+
+1. Compute the constrained target via `clampToShapes`.
+2. Apply independent exponential smoothing per axis: `alpha = 1 − exp(−delta / T)` where `T` is `DAMPING_X` or `DAMPING_Z` (both 0.1 s).
+3. Set the camera's world position from the smoothed target: `(cx, CAMERA_DIST·cos θ, cz + CAMERA_DIST·sin θ)`.
+
+The smoothed target is initialised to the first-frame clamped position to prevent a jump from the origin.
 
 ## Barrier Wall Segmentation
 

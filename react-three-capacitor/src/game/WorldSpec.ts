@@ -7,6 +7,9 @@ export interface WalkableArea { rects: WalkableRect[] }
 // A doorway between two rooms.
 // positionA/B: 0..1 along the wall (N/S = fraction of floorWidth; E/W = fraction of floorDepth)
 // width: opening width in world units
+// cameraTransition: designer-specified convex polygon (3–4 corners) bridging the two rooms'
+//   camera rects. Corners are in room A's local coordinate frame (add room A's world position
+//   to convert to world space). Omit only when the two camera rects share a boundary with no gap.
 export interface RoomConnection {
   roomIdA: string
   wallA: Wall
@@ -15,6 +18,9 @@ export interface RoomConnection {
   wallB: Wall
   positionB: number
   width: number
+  cameraTransition?: {
+    corners: ReadonlyArray<{ readonly x: number; readonly z: number }>
+  }
 }
 
 // visibility: roomId → adjacent room IDs rendered when player is in that room

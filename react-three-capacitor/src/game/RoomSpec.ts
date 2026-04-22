@@ -39,9 +39,10 @@ export interface RoomSpec {
   floorDepth: number        // inner floor Z extent (world units)
   barrierHeight: number     // barrier Y extent
   barrierThickness: number  // barrier XZ thickness
-  // 'full' = camera rect is the full room floor (use for narrow corridors where viewport-clamped formula degenerates to a point but per-axis tracking is still desired).
-  // Omit  = viewport-constrained rect: max(0, dim/2 - halfViewDim) per axis.
-  cameraRect?: 'full'
+  // Designer-specified camera rect in room-local coordinates (origin at room centre).
+  // The camera is constrained to this rect while the player is in this room.
+  // If absent, defaults to a point at the room centre (camera stays fixed).
+  cameraRect?: { xMin: number; xMax: number; zMin: number; zMax: number }
   floorTextures?: FloorTextureSpec[]
   outsideTextures?: OutsideTextureSpec[]
   geometry?: unknown[]      // future in-room objects

@@ -1,94 +1,50 @@
 import type { WorldSpec, RoomWorldPos } from './WorldSpec'
-import type { RoomSpec } from './RoomSpec'
 
 export interface Vec2 { x: number; z: number }
 
-function cameraRectForRoom(
-  room: RoomSpec,
-  pos: RoomWorldPos,
-  halfViewW: number,
-  halfViewGroundZ: number,
-): { xMin: number; xMax: number; zMin: number; zMax: number } {
-  const txBound = room.cameraRect === 'full'
-    ? room.floorWidth / 2
-    : Math.max(0, room.floorWidth / 2 - halfViewW)
-  const tzBound = room.cameraRect === 'full'
-    ? room.floorDepth / 2
-    : Math.max(0, room.floorDepth / 2 - halfViewGroundZ)
-  return {
-    xMin: pos.x - txBound, xMax: pos.x + txBound,
-    zMin: pos.z - tzBound, zMax: pos.z + tzBound,
-  }
-}
+// World-space axis-aligned camera rect for one room.
+export interface CameraRect { xMin: number; xMax: number; zMin: number; zMax: number }
 
-// Walk north-south connections to produce room ids south-to-north.
-function chainSouthToNorth(world: WorldSpec): string[] {
-  const hasSouthConn = new Set<string>()
-  for (const conn of world.connections) {
-    if (conn.wallA === 'south') hasSouthConn.add(conn.roomIdA)
-    if (conn.wallB === 'south') hasSouthConn.add(conn.roomIdB)
-  }
-  let cur: string | undefined =
-    world.rooms.find(r => !hasSouthConn.has(r.id))?.id ?? world.rooms[0].id
-  const result: string[] = []
-  const visited = new Set<string>()
-  while (cur && !visited.has(cur)) {
-    result.push(cur)
-    visited.add(cur)
-    const conn = world.connections.find(
-      c => (c.roomIdA === cur && c.wallA === 'north') ||
-           (c.roomIdB === cur && c.wallB === 'north'),
-    )
-    if (!conn) break
-    cur = conn.roomIdA === cur ? conn.roomIdB : conn.roomIdA
-  }
-  return result
-}
+// World-space camera transition zone for one connection (convex polygon, 3–4 corners).
+export interface CameraZone { corners: ReadonlyArray<Vec2> }
+
+// All constraint shapes in world space; built once at startup from the authored world spec.
+export interface CameraConstraintShapes { rects: CameraRect[]; zones: CameraZone[] }
 
 /**
- * Build a convex polygon representing all allowed camera positions across the
- * entire world. Each room contributes a camera rect; adjacent rooms are bridged
- * by a trapezoid (or triangle when one face is a point). The polygon is walked
- * along the east side south→north and the west side north→south.
+ * Convert per-room camera rects (room-local) and per-connection transition zones
+ * (room-A-local) to world-space shapes. Works for any rectangular grid graph of
+ * room connections — no north-south chain assumption.
+ *
+ * Rooms with no authored cameraRect default to a point at the room centre.
  */
-export function buildCameraConstraintPoly(
+export function buildCameraConstraintShapes(
   world: WorldSpec,
   roomPositions: Map<string, RoomWorldPos>,
-  halfViewW: number,
-  halfViewGroundZ: number,
-): Vec2[] {
-  const ids = chainSouthToNorth(world)
-  const byId = new Map(world.rooms.map(r => [r.id, r]))
-  const rects = ids.map(id =>
-    cameraRectForRoom(byId.get(id)!, roomPositions.get(id)!, halfViewW, halfViewGroundZ),
-  )
-
-  const east: Vec2[] = []
-  const west: Vec2[] = []
-
-  for (let i = 0; i < rects.length; i++) {
-    const r = rects[i]
-    if (i === 0) {
-      east.push({ x: r.xMax, z: r.zMax })  // south-east of first room
-      west.push({ x: r.xMin, z: r.zMax })  // south-west of first room
-    }
-    east.push({ x: r.xMax, z: r.zMin })    // north-east of this room
-    west.push({ x: r.xMin, z: r.zMin })    // north-west of this room
-    if (i + 1 < rects.length) {
-      const next = rects[i + 1]
-      east.push({ x: next.xMax, z: next.zMax })  // south-east of next room (trapezoid)
-      west.push({ x: next.xMin, z: next.zMax })  // south-west of next room (trapezoid)
-    }
+): CameraConstraintShapes {
+  const rects: CameraRect[] = []
+  for (const room of world.rooms) {
+    const pos = roomPositions.get(room.id)!
+    const r = room.cameraRect ?? { xMin: 0, xMax: 0, zMin: 0, zMax: 0 }
+    rects.push({
+      xMin: pos.x + r.xMin, xMax: pos.x + r.xMax,
+      zMin: pos.z + r.zMin, zMax: pos.z + r.zMax,
+    })
   }
 
-  // East side south→north + west side north→south forms the closed polygon.
-  const poly = [...east, ...west.reverse()]
+  const zones: CameraZone[] = []
+  for (const conn of world.connections) {
+    if (!conn.cameraTransition) continue
+    const posA = roomPositions.get(conn.roomIdA)!
+    zones.push({
+      corners: conn.cameraTransition.corners.map(c => ({
+        x: posA.x + c.x,
+        z: posA.z + c.z,
+      })),
+    })
+  }
 
-  // Remove consecutive duplicates (degenerate point/line rooms produce them).
-  return poly.filter((v, i, arr) => {
-    const next = arr[(i + 1) % arr.length]
-    return v.x !== next.x || v.z !== next.z
-  })
+  return { rects, zones }
 }
 
 function nearestOnSeg(ax: number, az: number, bx: number, bz: number, px: number, pz: number): Vec2 {
@@ -99,35 +55,71 @@ function nearestOnSeg(ax: number, az: number, bx: number, bz: number, px: number
   return { x: ax + t * dx, z: az + t * dz }
 }
 
-/**
- * Project (x, z) onto the nearest point inside the polygon.
- * If already inside, returns the point unchanged (no snapping).
- * Uses ray casting for the inside test so it works for any simple polygon,
- * including concave shapes produced by room chains with varying widths.
- */
-export function clampToPoly(poly: Vec2[], x: number, z: number): Vec2 {
-  const n = poly.length
-  if (n === 0) return { x, z }
-  if (n === 1) return poly[0]
+function insideRect(r: CameraRect, x: number, z: number): boolean {
+  return x >= r.xMin && x <= r.xMax && z >= r.zMin && z <= r.zMax
+}
 
-  // Ray casting: ray from (x,z) in +X direction; odd crossing count = inside.
+function nearestOnRect(r: CameraRect, x: number, z: number): Vec2 {
+  return {
+    x: Math.max(r.xMin, Math.min(r.xMax, x)),
+    z: Math.max(r.zMin, Math.min(r.zMax, z)),
+  }
+}
+
+// Ray casting: ray from (x,z) in +X direction; odd crossing count = inside.
+function insidePoly(corners: ReadonlyArray<Vec2>, x: number, z: number): boolean {
+  const n = corners.length
   let crossings = 0
   for (let i = 0; i < n; i++) {
-    const a = poly[i], b = poly[(i + 1) % n]
+    const a = corners[i], b = corners[(i + 1) % n]
     if ((a.z <= z && b.z > z) || (b.z <= z && a.z > z)) {
       const t = (z - a.z) / (b.z - a.z)
       if (x < a.x + t * (b.x - a.x)) crossings++
     }
   }
-  if (crossings % 2 === 1) return { x, z }
+  return crossings % 2 === 1
+}
 
-  let best: Vec2 = poly[0]
+function nearestOnPoly(corners: ReadonlyArray<Vec2>, x: number, z: number): Vec2 {
+  let best: Vec2 = corners[0]
   let bestDist = Infinity
+  const n = corners.length
   for (let i = 0; i < n; i++) {
-    const a = poly[i], b = poly[(i + 1) % n]
+    const a = corners[i], b = corners[(i + 1) % n]
     const p = nearestOnSeg(a.x, a.z, b.x, b.z, x, z)
     const d = (p.x - x) ** 2 + (p.z - z) ** 2
     if (d < bestDist) { bestDist = d; best = p }
   }
+  return best
+}
+
+/**
+ * Project (x, z) to the nearest point inside the union of all constraint shapes.
+ * Returns the point unchanged if already inside any rect or zone.
+ * Uses ray casting for the inside test; works for concave zones.
+ */
+export function clampToShapes(shapes: CameraConstraintShapes, x: number, z: number): Vec2 {
+  for (const r of shapes.rects) {
+    if (insideRect(r, x, z)) return { x, z }
+  }
+  for (const zone of shapes.zones) {
+    if (zone.corners.length >= 3 && insidePoly(zone.corners, x, z)) return { x, z }
+  }
+
+  let best: Vec2 = { x, z }
+  let bestDist = Infinity
+
+  for (const r of shapes.rects) {
+    const p = nearestOnRect(r, x, z)
+    const d = (p.x - x) ** 2 + (p.z - z) ** 2
+    if (d < bestDist) { bestDist = d; best = p }
+  }
+  for (const zone of shapes.zones) {
+    if (zone.corners.length < 2) continue
+    const p = nearestOnPoly(zone.corners, x, z)
+    const d = (p.x - x) ** 2 + (p.z - z) ** 2
+    if (d < bestDist) { bestDist = d; best = p }
+  }
+
   return best
 }

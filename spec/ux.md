@@ -8,6 +8,5 @@
 - The game is not interactive while the scene is initialising; a loading indicator is shown.
 - The game becomes interactive once the scene has rendered its first frame.
 - The player can always see their current connection status.
-- The player can always see the current round number.
-- At zero health, the local player sees an elimination overlay.
+- At zero health, the local player sees an elimination overlay; movement input is disabled and the joystick no longer responds to touch or mouse events.
 - The joystick accepts touch input on mobile and mouse input on desktop.

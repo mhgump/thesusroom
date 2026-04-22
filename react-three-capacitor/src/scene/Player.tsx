@@ -81,6 +81,13 @@ export function Player() {
     }
 
     // ── 2. Predict this frame ────────────────────────────────────────────────
+    if ((store.playerHp[playerId] ?? 2) === 0) {
+      const player = world.getPlayer(playerId)!
+      groupRef.current.position.x = player.x
+      groupRef.current.position.z = player.z
+      return
+    }
+
     const { x: jx, y: jz } = store.joystickInput
     const events = world.processMove(playerId, jx, jz, delta)
     for (const event of events) {

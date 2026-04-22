@@ -9,7 +9,7 @@ src/hud/
   ChoicePopup.tsx      — Choice UI popup
   RulePopup.tsx        — Rule display popup
 src/store/
-  gameStore.ts         — notifications, round, connection state; addNotification action
+  gameStore.ts         — notifications, availableActions, connection state; addNotification action
 ```
 
 ## HUD Container
@@ -22,11 +22,11 @@ A black overlay at `z-index: 100` contains a 40 px ring animated with a `@keyfra
 
 ## Joystick
 
-The pad is 120 px across with a 50 px knob. On every pointer/touch move, the knob's CSS `transform: translate(...)` is updated via direct DOM mutation (bypassing React state) so the visual is synchronous at 60 Hz. The normalised direction and magnitude are written to the Zustand store on each move event. On release, the knob returns to centre via a 50 ms CSS ease-out transition and the store values are zeroed. Only one touch identifier is tracked simultaneously; a second simultaneous touch is ignored.
+The pad is 120 px across with a 50 px knob. On every pointer/touch move, the knob's CSS `transform: translate(...)` is updated via direct DOM mutation (bypassing React state) so the visual is synchronous at 60 Hz. The normalised direction and magnitude are written to the Zustand store on each move event. On release, the knob returns to centre via a 50 ms CSS ease-out transition and the store values are zeroed. Only one touch identifier is tracked simultaneously; a second simultaneous touch is ignored. When the local player is eliminated (`localPlayerHp === 0`), all pointer and touch event handlers on the joystick are suppressed — no position updates or store writes occur.
 
 ## Action Buttons
 
-`ActionButtons` renders the first three entries of `availableActions` from the store. Each button is 76 × 76 px with `border-radius: 14`, `backdrop-filter: blur(4px)`, and a semi-transparent border. A static `ACTION_PALETTE` record maps action names to background colours. The action is dispatched on `pointerdown`; `preventDefault()` suppresses duplicate click events on touch devices.
+`ActionButtons` renders the `availableActions` array from the store. Each button is 76 × 76 px with `border-radius: 14`, `backdrop-filter: blur(4px)`, and a semi-transparent border. A static `ACTION_PALETTE` record maps action names to background colours; unlisted names fall back to a neutral tint. The action is dispatched on `pointerdown`; `preventDefault()` suppresses duplicate click events on touch devices.
 
 ## Notifications
 
@@ -34,4 +34,4 @@ The pad is 120 px across with a 50 px knob. On every pointer/touch move, the kno
 
 ## Status Bar
 
-A `div` fixed to the top-right reads `connected` and `currentRound` from the store. The dot is an 8 px circle: `#22ee88` when connected, `#ee4444` otherwise. The round label is `R{currentRound}` at 12 px muted white.
+A `div` fixed to the top-right reads `connected` from the store. The dot is an 8 px circle: `#22ee88` when connected, `#ee4444` otherwise.

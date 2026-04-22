@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Ground } from './Ground';
@@ -7,11 +7,11 @@ import { BgPlane, RoomOutsideTextures } from './Boundary';
 import { Player } from './Player';
 import { RemotePlayers } from './RemotePlayers';
 import { PlayerHudUpdater } from './PlayerHudUpdater';
-import { DEFAULT_WORLD, DEFAULT_ROOM_POSITIONS } from '../game/DefaultWorld';
+import { DEFAULT_WORLD, DEFAULT_ROOM_POSITIONS, DEFAULT_CAMERA_SHAPES } from '../game/DefaultWorld';
 import { getRoomWallOpenings } from '../game/WorldSpec';
 import { localPlayerPos } from '../game/localPlayerPos';
 import { useGameStore } from '../store/gameStore';
-import { buildCameraConstraintPoly, clampToPoly } from '../game/CameraConstraint';
+import { clampToShapes } from '../game/CameraConstraint';
 import type { Vec2 } from '../game/CameraConstraint';
 import {
   CAMERA_ANGLE,
@@ -19,10 +19,15 @@ import {
   VIEWPORT_W,
 } from '../game/constants';
 
+// Exponential smoothing time constants (seconds) for camera follow per axis.
+// A lower value tracks faster; at 60 fps, 0.1 s ≈ 15 % movement per frame.
+const DAMPING_X = 0.1
+const DAMPING_Z = 0.1
+
 export function GameScene() {
   const { camera, size, set } = useThree();
   const currentRoomId = useGameStore((s) => s.currentRoomId);
-  const polyCache = useRef<{ poly: Vec2[]; halfW: number; halfGroundZ: number } | null>(null);
+  const camTargetRef = useRef<Vec2 | null>(null);
 
   useEffect(() => {
     const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 300);
@@ -43,25 +48,28 @@ export function GameScene() {
 
   // priority -2: runs before PlayerHudUpdater (-1) and Player (0) so both can call
   // camera.updateMatrixWorld() against the freshly-positioned camera this frame.
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const cam = state.camera;
     if (!(cam instanceof THREE.OrthographicCamera)) return;
 
-    const halfW = cam.right;
-    const halfH = cam.top;
-    const halfGroundZ = halfH / Math.cos(CAMERA_ANGLE);
+    const { x: tx, z: tz } = clampToShapes(DEFAULT_CAMERA_SHAPES, localPlayerPos.x, localPlayerPos.z);
 
-    const cache = polyCache.current;
-    if (!cache || cache.halfW !== halfW || cache.halfGroundZ !== halfGroundZ) {
-      polyCache.current = {
-        poly: buildCameraConstraintPoly(DEFAULT_WORLD, DEFAULT_ROOM_POSITIONS, halfW, halfGroundZ),
-        halfW,
-        halfGroundZ,
-      };
+    // Initialise target on first frame to avoid a visible jump from origin.
+    if (!camTargetRef.current) {
+      camTargetRef.current = { x: tx, z: tz };
     }
 
-    const { x: tx, z: tz } = clampToPoly(polyCache.current!.poly, localPlayerPos.x, localPlayerPos.z);
-    cam.position.set(tx, CAMERA_DIST * Math.cos(CAMERA_ANGLE), tz + CAMERA_DIST * Math.sin(CAMERA_ANGLE));
+    // Exponential approach: alpha approaches 1 as delta grows relative to the time constant.
+    const ax = 1 - Math.exp(-delta / DAMPING_X);
+    const az = 1 - Math.exp(-delta / DAMPING_Z);
+    camTargetRef.current.x += (tx - camTargetRef.current.x) * ax;
+    camTargetRef.current.z += (tz - camTargetRef.current.z) * az;
+
+    cam.position.set(
+      camTargetRef.current.x,
+      CAMERA_DIST * Math.cos(CAMERA_ANGLE),
+      camTargetRef.current.z + CAMERA_DIST * Math.sin(CAMERA_ANGLE),
+    );
   }, -2);
 
   const visibleIds = new Set([currentRoomId, ...(DEFAULT_WORLD.visibility[currentRoomId] ?? [])]);
