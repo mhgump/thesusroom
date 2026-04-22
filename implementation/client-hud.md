@@ -38,7 +38,7 @@ The pad is 120 px across with a 50 px knob. On every pointer/touch move, the kno
 - A small header: `0.65 rem`, bold, `letter-spacing: 0.12em`, uppercase, `opacity: 0.7` — the `label` field (`RULE`, `COMMAND`, or `FACT`).
 - The rule text: `1 rem`, `line-height: 1.4`.
 
-Cards cycle through five dark background colours. A close button (`×`) in the top-right corner calls `dismissRule`.
+Cards cycle through five dark background colours. A close button (`×`) in the top-right corner calls `dismissRule`. The full-screen backdrop itself also calls `dismissRule` on click or tap (any position). A `useEffect` attaches a `keydown` listener on `window` for the duration the popup is visible; any key press calls `dismissRule` and the listener is removed on cleanup.
 
 `useWebSocket.ts` converts incoming `instruction` server messages into `showRule` calls with a single `COMMAND`-labelled card instead of routing them to `addNotification`.
 

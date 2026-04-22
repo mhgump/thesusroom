@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useGameStore } from '../store/gameStore'
 
 const RULE_COLORS = [
@@ -11,6 +12,13 @@ const RULE_COLORS = [
 export function RulePopup() {
   const event = useGameStore((s) => s.activeRuleEvent)
   const dismissRule = useGameStore((s) => s.dismissRule)
+
+  useEffect(() => {
+    if (!event) return
+    const handler = () => dismissRule()
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [event, dismissRule])
 
   if (!event) return null
 
@@ -56,7 +64,6 @@ export function RulePopup() {
         </button>
 
         <div
-          onClick={(e) => e.stopPropagation()}
           style={{
             display: 'flex',
             flexDirection: 'column',

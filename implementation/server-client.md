@@ -56,10 +56,11 @@ The `instruction` message is sent directly to a single player by `Room.sendToPla
 
 `Player.tsx` creates its `World` lazily on the first `useFrame` after `playerId` is set. Each frame:
 
-1. **Correction**: consume `pendingMoveAck`; teleport world to ack position; replay inputs with `seq > ack.seq`; snap visual if correction > 2 cm; process events immediately.
-2. **Prediction**: `world.processMove(playerId, jx, jz, delta)`.
-3. **Send**: stamp seq, push to input history (capped at 180), call `sendMove`.
-4. **Render**: write world position to the Three.js group.
+1. **Walkable sync**: if `store.activeWalkable` changed, call `world.setWalkable` then `world.snapPlayer(playerId)` to immediately place the player at the nearest valid position before the next prediction step.
+2. **Correction**: consume `pendingMoveAck`; teleport world to ack position; replay inputs with `seq > ack.seq`; snap visual if correction > 2 cm; process events immediately.
+3. **Prediction**: `world.processMove(playerId, jx, jz, delta)`.
+4. **Send**: stamp seq, push to input history (capped at 180), call `sendMove`.
+5. **Render**: write world position to the Three.js group.
 
 ## Client Remote Players (`RemotePlayers.tsx`)
 

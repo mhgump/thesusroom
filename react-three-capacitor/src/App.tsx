@@ -36,31 +36,37 @@ export default function App() {
       {sceneReady && <HUD />}
       <PlayerHudOverlay />
 
-      {!sceneReady && (
-        <div
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: '#000',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          opacity: sceneReady ? 0 : 1,
+          pointerEvents: sceneReady ? 'none' : 'all',
+          transition: 'opacity 0.5s ease',
+        }}
+      >
+        <img
+          src="/backroomslogo.png"
+          alt="The Sus Rooms"
           style={{
-            position: 'absolute',
-            inset: 0,
-            background: '#000',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
+            width: '35vh',
+            height: '35vh',
+            borderRadius: '50%',
+            animation: 'pulse 2s ease-in-out infinite',
           }}
-        >
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              border: '3px solid rgba(255,255,255,0.15)',
-              borderTopColor: 'rgba(255,255,255,0.7)',
-              borderRadius: '50%',
-              animation: 'spin 0.8s linear infinite',
-            }}
-          />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      )}
+        />
+        <style>{`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.75; transform: scale(0.96); }
+          }
+        `}</style>
+      </div>
     </div>
   );
 }
