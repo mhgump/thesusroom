@@ -27,10 +27,14 @@ WORKDIR /app
 
 # Install server dependencies (includes tsx for TS runtime, express for static serving)
 COPY react-three-capacitor/server/package-lock.json react-three-capacitor/server/package.json ./react-three-capacitor/server/
-RUN cd react-three-capacitor/server && npm ci --silent
+RUN cd react-three-capacitor/server && npm ci --silent \
+ && ln -s /app/react-three-capacitor/server/node_modules /app/react-three-capacitor/node_modules
 
 # Server TypeScript source
 COPY react-three-capacitor/server/src/ ./react-three-capacitor/server/src/
+
+# Shared game source (server/src/World.ts re-exports from ../../src/game/World.js)
+COPY react-three-capacitor/src/ ./react-three-capacitor/src/
 
 # Shared content (server maps & scenarios — imported at runtime via relative TS paths)
 COPY content/ ./content/
