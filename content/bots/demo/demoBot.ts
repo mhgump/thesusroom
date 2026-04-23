@@ -1,7 +1,7 @@
 import { MovementIntent, moveToward } from '../../../react-three-capacitor/server/src/bot/BotTypes.js'
 import type { BotSpec } from '../../../react-three-capacitor/server/src/bot/BotTypes.js'
 
-const R2_TARGET = { type: 'circle' as const, x: 0, z: -12.5, radius: 2 }
+const R2_TARGET = { type: 'circle' as const, x: 0, z: -0.75, radius: 0.1 }
 
 export const DEMO_BOT: BotSpec = {
   phases: ['walk'],

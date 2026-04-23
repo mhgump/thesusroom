@@ -19,8 +19,14 @@ const VOTE_X = [-0.9063, -0.3021, 0.3021, 0.9063]
 const VOTE_Z = -0.1736
 const VOTE_R = 0.1450
 
-const bt = 0.0242
-const bh = 0.0242
+const bt = 0.025
+const bh = 0.025
+
+const HW        = ROOM_W / 2      // 1.2084
+const HD        = ROOM_D / 2      // 0.375
+const WALL_CZ   = HD - bt / 2     // 0.3625
+const WALL_CX   = HW - bt / 2     // 1.1959
+const EW_DEPTH  = 2 * (HD - bt)   // 0.700
 
 const SIDE_X = 0.1571
 const SIDE_Z = -0.1897
@@ -34,8 +40,14 @@ const WORLD_SPEC: WorldSpec = {
       id: 'main', name: 'Scenario 1',
       floorWidth: ROOM_W,
       floorDepth: ROOM_D,
-      barrierHeight: 0.0242, barrierThickness: 0.0242,
+      barrierHeight: bt, barrierThickness: bt,
       cameraRect: { xMin: -0.4028, xMax: 0.4028, zMin: 0, zMax: 0 },
+      barrierSegments: [
+        { cx:  0,       cz: -WALL_CZ, width: ROOM_W, depth: bt       }, // north
+        { cx:  0,       cz:  WALL_CZ, width: ROOM_W, depth: bt       }, // south
+        { cx:  WALL_CX, cz:  0,       width: bt,      depth: EW_DEPTH }, // east
+        { cx: -WALL_CX, cz:  0,       width: bt,      depth: EW_DEPTH }, // west
+      ],
     },
   ],
   connections: [],

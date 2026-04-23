@@ -1,6 +1,14 @@
 // North = -Z, South = +Z, East = +X, West = -X (Three.js floor-plane convention).
 export type Wall = 'north' | 'south' | 'east' | 'west'
 
+// A single barrier wall segment in room-local coordinates (origin at room centre).
+export interface BarrierSegment {
+  cx: number    // centre X
+  cz: number    // centre Z
+  width: number // X extent
+  depth: number // Z extent
+}
+
 // Grid-aligned floor texture.
 // Repeat counts derived at render time:
 //   x: fill_x ? floorWidth / tile_width : tile_x_count
@@ -43,8 +51,8 @@ export interface RoomSpec {
   // The camera is constrained to this rect while the player is in this room.
   // If absent, defaults to a point at the room centre (camera stays fixed).
   cameraRect?: { xMin: number; xMax: number; zMin: number; zMax: number }
-  // Walls to suppress from rendering (e.g. shared walls with an adjacent room to avoid double thickness).
-  disabledWalls?: Wall[]
+  // Explicit barrier wall segments in room-local coordinates.
+  barrierSegments?: BarrierSegment[]
   floorTextures?: FloorTextureSpec[]
   outsideTextures?: OutsideTextureSpec[]
   geometry?: unknown[]      // future in-room objects

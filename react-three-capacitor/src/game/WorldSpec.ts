@@ -165,35 +165,6 @@ export function getRoomAtPosition(
   return null
 }
 
-// Per-wall door openings for a room, in room-local coordinates.
-// center: offset from room center along the wall axis
-// null: reserved for walls with no connections (always solid).
-export type WallOpening = { center: number; width: number }
-export type WallOpenings = Record<Wall, WallOpening[]>
-
-// Every room renders its own walls with its own openings. Both sides of a connection
-// independently carve out the doorway. Adjacent rooms' walls sit on opposite sides of
-// the shared floor edge (Room A's inner face / Room B's outer face) so they never
-// coplanar-overlap regardless of which room is A or B.
-export function getRoomWallOpenings(spec: WorldSpec, roomId: string): WallOpenings {
-  const room = spec.rooms.find(r => r.id === roomId)!
-  const result: WallOpenings = { north: [], south: [], east: [], west: [] }
-
-  for (const conn of spec.connections) {
-    let wall: Wall, frac: number
-    if (conn.roomIdA === roomId) {
-      wall = conn.wallA; frac = conn.positionA
-    } else if (conn.roomIdB === roomId) {
-      wall = conn.wallB; frac = conn.positionB
-    } else continue
-
-    const wallLen = (wall === 'north' || wall === 'south') ? room.floorWidth : room.floorDepth
-    result[wall].push({ center: (frac - 0.5) * wallLen, width: conn.width })
-  }
-
-  return result
-}
-
 // Validates a WorldSpec after positions are computed. Throws on any violation.
 export function validateWorldSpec(spec: WorldSpec, positions: Map<string, RoomWorldPos>): void {
   const byId = new Map(spec.rooms.map(r => [r.id, r]))

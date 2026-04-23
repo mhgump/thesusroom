@@ -11,7 +11,6 @@ import { VoteRegions } from './VoteRegions';
 import { GeometryLayer } from './GeometryLayer';
 import { ButtonLayer } from './ButtonLayer';
 import { CURRENT_MAP } from '../../../content/maps';
-import { getRoomWallOpenings } from '../game/WorldSpec';
 import { localPlayerPos } from '../game/localPlayerPos';
 import { useGameStore } from '../store/gameStore';
 import { clampToShapes } from '../game/CameraConstraint';
@@ -43,10 +42,13 @@ export function GameScene() {
 
   useEffect(() => {
     if (!(camera instanceof THREE.OrthographicCamera)) return;
-    // halfH is fixed so that screen height = 1 world unit of ground-plane distance.
-    // Ground depth = 2*halfH/cos(θ) = 1  =>  halfH = cos(θ)/2
-    const halfH = Math.cos(CAMERA_ANGLE) / 2;
-    const halfW = halfH * (size.width / size.height);
+    // halfH gives 1 world unit of ground-plane distance on screen height: halfH = cos(θ)/2.
+    // On portrait phones the natural halfW = halfH * aspect becomes too narrow, causing the
+    // room to extend off-screen. We require at least 1 ground-plane unit in both axes, so
+    // halfH = max(cos(θ)/2, 1/(2*aspect)) — the portrait branch zooms out to fit horizontally.
+    const aspect = size.width / size.height;
+    const halfH = Math.max(Math.cos(CAMERA_ANGLE) / 2, 1 / (2 * aspect));
+    const halfW = halfH * aspect;
     camera.left = -halfW; camera.right = halfW;
     camera.top = halfH;   camera.bottom = -halfH;
     camera.updateProjectionMatrix();
@@ -57,7 +59,6 @@ export function GameScene() {
   useFrame((state, delta) => {
     const cam = state.camera;
     if (!(cam instanceof THREE.OrthographicCamera)) return;
-
     const { x: tx, z: tz } = clampToShapes(CURRENT_MAP.cameraShapes, localPlayerPos.x, localPlayerPos.z);
 
     // Initialise target on first frame to avoid a visible jump from origin.
@@ -95,11 +96,10 @@ export function GameScene() {
       <BgPlane />
       {roomsToRender.map(room => {
         const pos = CURRENT_MAP.roomPositions.get(room.id)!;
-        const openings = getRoomWallOpenings(CURRENT_MAP.worldSpec, room.id);
         return (
           <group key={room.id} position={[pos.x, 0, pos.z]}>
             <Ground room={room} />
-            <Barrier room={room} openings={openings} />
+            <Barrier room={room} />
             <RoomOutsideTextures room={room} />
           </group>
         );

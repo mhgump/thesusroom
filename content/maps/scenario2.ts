@@ -10,10 +10,17 @@ import {
 import { buildCameraConstraintShapes } from '../../react-three-capacitor/src/game/CameraConstraint.js'
 
 const CAPSULE_RADIUS = 0.0282
+const bt = 0.025
 
 const GRID_X = 0.4028
 const GRID_Z = 0.25
 const VOTE_R = 0.1450
+
+const HW        = 1.6112 / 2      // 0.8056
+const HD        = 1.0 / 2         // 0.5
+const WALL_CZ   = HD - bt / 2     // 0.4875
+const WALL_CX   = HW - bt / 2     // 0.7931
+const EW_DEPTH  = 2 * (HD - bt)   // 0.950
 
 const WORLD_SPEC: WorldSpec = {
   rooms: [
@@ -21,8 +28,14 @@ const WORLD_SPEC: WorldSpec = {
       id: 'main', name: 'Scenario 2',
       floorWidth: 1.6112,
       floorDepth: 1.0,
-      barrierHeight: 0.0242, barrierThickness: 0.0242,
+      barrierHeight: bt, barrierThickness: bt,
       cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+      barrierSegments: [
+        { cx:  0,       cz: -WALL_CZ, width: 1.6112, depth: bt       }, // north
+        { cx:  0,       cz:  WALL_CZ, width: 1.6112, depth: bt       }, // south
+        { cx:  WALL_CX, cz:  0,       width: bt,      depth: EW_DEPTH }, // east
+        { cx: -WALL_CX, cz:  0,       width: bt,      depth: EW_DEPTH }, // west
+      ],
     },
   ],
   connections: [],

@@ -11,6 +11,11 @@ import { buildCameraConstraintShapes } from '../../react-three-capacitor/src/gam
 
 const CAPSULE_RADIUS = 0.0282
 const ROOM_SIZE = 0.9672
+const bt = 0.025
+
+const HD        = ROOM_SIZE / 2   // 0.4836
+const WALL_C    = HD - bt / 2     // 0.4711
+const EW_DEPTH  = 2 * (HD - bt)   // 0.9172
 
 const BTN_Z = 0
 const BTN_LEFT_X = -0.2014
@@ -23,8 +28,14 @@ const WORLD_SPEC: WorldSpec = {
       id: 'main', name: 'Scenario 3',
       floorWidth: ROOM_SIZE,
       floorDepth: ROOM_SIZE,
-      barrierHeight: 0.0242, barrierThickness: 0.0242,
+      barrierHeight: bt, barrierThickness: bt,
       cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+      barrierSegments: [
+        { cx:  0,      cz: -WALL_C, width: ROOM_SIZE, depth: bt       }, // north
+        { cx:  0,      cz:  WALL_C, width: ROOM_SIZE, depth: bt       }, // south
+        { cx:  WALL_C, cz:  0,      width: bt,         depth: EW_DEPTH }, // east
+        { cx: -WALL_C, cz:  0,      width: bt,         depth: EW_DEPTH }, // west
+      ],
     },
   ],
   connections: [],

@@ -10,7 +10,7 @@ import {
 import { buildCameraConstraintShapes } from '../../react-three-capacitor/src/game/CameraConstraint.js'
 
 const R           = 0.0282  // CAPSULE_RADIUS
-const BT          = 0.0242  // barrierThickness
+const BT          = 0.025   // barrierThickness
 const DOOR_WIDTH  = 0.25
 
 const R1W = 0.75, R1D = 0.75
@@ -21,6 +21,17 @@ const R1Z =  0
 const R2Z = -0.75
 const R3Z = -1.5
 
+// ── Barrier segment constants ──────────────────────────────────────────────────
+const HW        = R1W / 2                      // 0.375  half floor width (same for all rooms)
+const HD        = R1D / 2                      // 0.375  half floor depth
+const WALL_C    = HD - BT / 2                 // 0.3625 N/S wall centre z; also E/W wall centre x
+const EW_FULL   = 2 * (HD - BT)              // 0.700  E/W depth when both N/S walls present
+const EW_EXT    = HD + (HD - BT)             // 0.725  E/W depth when one N/S wall is absent
+const EW_CZ     = BT / 2                     // 0.0125 E/W centre z offset when one N/S wall absent
+const D_HALF    = (DOOR_WIDTH - 2 * BT) / 2  // 0.100  half the inset door gap
+const D_SEG_CX  = (HW + D_HALF) / 2          // 0.2375 door-flanking segment centre x
+const D_SEG_W   = HW - D_HALF                // 0.275  door-flanking segment width
+
 // ── WorldSpec ─────────────────────────────────────────────────────────────────
 
 export const DEMO_WORLD_SPEC: WorldSpec = {
@@ -30,20 +41,37 @@ export const DEMO_WORLD_SPEC: WorldSpec = {
       floorWidth: R1W, floorDepth: R1D,
       barrierHeight: BT, barrierThickness: BT,
       cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
-      disabledWalls: ['north' as const],
+      // south + east/west (north boundary owned by room2's south wall)
+      barrierSegments: [
+        { cx:  0,        cz:  WALL_C,  width: R1W,     depth: BT     },  // south
+        { cx:  WALL_C,   cz: -EW_CZ,  width: BT,      depth: EW_EXT },  // east (extends to north edge)
+        { cx: -WALL_C,   cz: -EW_CZ,  width: BT,      depth: EW_EXT },  // west
+      ],
     },
     {
       id: 'room2', name: 'Room 2',
       floorWidth: R2W, floorDepth: R2D,
       barrierHeight: BT, barrierThickness: BT,
       cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
+      // south (with door gap) + east/west (north boundary owned by room2_north_wall geometry)
+      barrierSegments: [
+        { cx: -D_SEG_CX, cz:  WALL_C,  width: D_SEG_W, depth: BT     },  // south-left of door gap
+        { cx:  D_SEG_CX, cz:  WALL_C,  width: D_SEG_W, depth: BT     },  // south-right of door gap
+        { cx:  WALL_C,   cz: -EW_CZ,  width: BT,      depth: EW_EXT },  // east (extends to north edge)
+        { cx: -WALL_C,   cz: -EW_CZ,  width: BT,      depth: EW_EXT },  // west
+      ],
     },
     {
       id: 'room3', name: 'Room 3',
       floorWidth: R3W, floorDepth: R3D,
       barrierHeight: BT, barrierThickness: BT,
-      cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
-      disabledWalls: ['south' as const],
+      cameraRect: { xMin: -0.375, xMax: 0.375, zMin: 0.125, zMax: 0.375 },
+      // north + east/west (south boundary owned by room2_north_wall geometry)
+      barrierSegments: [
+        { cx:  0,        cz: -WALL_C,  width: R3W,     depth: BT     },  // north
+        { cx:  WALL_C,   cz:  EW_CZ,  width: BT,      depth: EW_EXT },  // east (extends to south edge)
+        { cx: -WALL_C,   cz:  EW_CZ,  width: BT,      depth: EW_EXT },  // west
+      ],
     },
   ],
   connections: [
@@ -75,7 +103,7 @@ export const DEMO_WORLD_SPEC: WorldSpec = {
   visibility: {
     room1: ['room2'],
     room2: ['room3'],
-    room3: [],
+    room3: ['room2'],
   },
 }
 
@@ -88,7 +116,7 @@ export const DEMO_CAMERA_SHAPES = buildCameraConstraintShapes(DEMO_WORLD_SPEC, D
 const R1_RECT    = { cx: 0, cz: R1Z, hw: R1W / 2 - R, hd: R1D / 2 - R }  // { cx:0, cz:0,    hw:0.3468, hd:0.3468 }
 const CONN_12    = { cx: 0, cz: R1Z - R1D / 2, hw: DOOR_WIDTH / 2 - R, hd: R }  // corridor room1→room2
 const R2_RECT    = { cx: 0, cz: R2Z, hw: R2W / 2 - R, hd: R2D / 2 - R }  // { cx:0, cz:-0.75, hw:0.3468, hd:0.3468 }
-const CONN_23    = { cx: 0, cz: R2Z - R2D / 2, hw: DOOR_WIDTH / 2 - R, hd: R }  // corridor room2→room3
+const CONN_23    = { cx: 0, cz: R2Z - R2D / 2, hw: R2W / 2 - R, hd: R }          // corridor room2→room3 (full width)
 const R3_RECT    = { cx: 0, cz: R3Z, hw: R3W / 2 - R, hd: R3D / 2 - R }  // { cx:0, cz:-1.5,  hw:0.3468, hd:0.3468 }
 
 const ROOM1_ONLY:    WalkableArea = { rects: [R1_RECT] }
@@ -131,17 +159,14 @@ export const DEMO_PHYSICS: PhysicsSpec = {
     // Room1→Room2 door wall segments
     { cx: -DW_CX, cz: DOOR12_CZ, hw: DW_HW, hd: WT },
     { cx:  DW_CX, cz: DOOR12_CZ, hw: DW_HW, hd: WT },
-    // Room2→Room3 door wall segments
-    { cx: -DW_CX, cz: DOOR23_CZ, hw: DW_HW, hd: WT },
-    { cx:  DW_CX, cz: DOOR23_CZ, hw: DW_HW, hd: WT },
     // Room 3 north
     { cx: 0, cz: NORTH_WALL_R3_CZ, hw: ROOM_HW + WT, hd: WT },
   ],
   geometry: [
     // Toggleable door between room1 and room2
     { id: 'north_door',       cx: 0, cz: DOOR12_CZ, hw: DOOR_HW, hd: WT },
-    // Toggleable wall between room2 and room3
-    { id: 'room2_north_wall', cx: 0, cz: DOOR23_CZ, hw: DOOR_HW, hd: WT },
+    // Toggleable wall between room2 and room3 (full width)
+    { id: 'room2_north_wall', cx: 0, cz: DOOR23_CZ, hw: ROOM_HW + WT, hd: WT },
   ],
 }
 
@@ -165,7 +190,7 @@ export const DEMO_GAME_SPEC: GameSpec = {
     { id: 'north_door',       x: 0, z: NORTH_DOOR_VISUAL_Z,       width: DOOR_WIDTH, depth: BT, height: BT, color: '#555555' },
     { id: 'door_open',        x: 0, z: -(R1D / 2),                width: 0.001,      depth: 0.001, height: 0.001, color: '#111111' },
     // Room2→Room3 wall
-    { id: 'room2_north_wall', x: 0, z: ROOM2_NORTH_WALL_VISUAL_Z, width: DOOR_WIDTH, depth: BT, height: BT, color: '#555555' },
+    { id: 'room2_north_wall', x: 0, z: ROOM2_NORTH_WALL_VISUAL_Z, width: R2W, depth: BT, height: BT, color: '#555555' },
     // Invisible marker that activates the room3 walkable variant when shown
     { id: 'room3_accessible', x: 0, z: R3Z,                       width: 0.001,      depth: 0.001, height: 0.001, color: '#111111' },
   ],
