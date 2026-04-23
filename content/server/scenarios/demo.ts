@@ -32,7 +32,6 @@ class DemoScript implements GameScript {
       ctx.onPlayerEnterRoom((pid, roomId) => {
         if (roomId !== 'room2') return
         this.inRoom2.add(pid)
-        ctx.closeDoorForPlayer(pid, 'north_door')
         ctx.setGeometryVisible(['north_door'], true, [pid])
         this.checkAllInRoom2(ctx)
       })

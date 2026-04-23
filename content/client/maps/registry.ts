@@ -12,8 +12,6 @@ export interface ClientMap {
   gameSpec: GameSpec
   getRoomAtPosition: (x: number, z: number) => string
   walkableVariants?: Array<{ triggerIds: string[]; walkable: WalkableArea }>
-  doorVariants?: Array<{ triggerIds: string[]; doorIds: string[] }>
-  roomEntryDoorClose?: Array<{ roomId: string; doorIds: string[] }>
 }
 
 // Computed once at module load from the page URL — stable for the session.

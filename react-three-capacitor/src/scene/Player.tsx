@@ -33,7 +33,7 @@ export function Player() {
   const inputHistory = useRef<InputRecord[]>([])
   const animStateRef = useRef<AnimationState>('IDLE')
   const appliedWalkableRef = useRef<import('../game/WorldSpec').WalkableArea | null>(null)
-  const appliedDoorsRef = useRef<Set<string>>(new Set())
+  const prevDoorVisRef = useRef<Record<string, boolean>>({})
 
   const localColor = useGameStore((s) => s.localColor)
   const activeWalkable = useGameStore((s) => s.activeWalkable)
@@ -56,7 +56,7 @@ export function Player() {
       inputHistory.current = []
       animStateRef.current = 'IDLE'
       appliedWalkableRef.current = null
-      appliedDoorsRef.current = new Set()
+      prevDoorVisRef.current = {}
     }
     const world = worldRef.current!
 
@@ -68,17 +68,15 @@ export function Player() {
       appliedWalkableRef.current = currentWalkable
     }
 
-    // ── Sync door state when geometry visibility changes (Rapier mode) ───────
-    if (CURRENT_MAP.doorVariants?.length) {
+    // ── Sync toggle physics directly from geometry visibility (Rapier mode) ──
+    if (CURRENT_MAP.physics?.toggles.length) {
       const vis = store.geometryVisibility
-      for (const v of CURRENT_MAP.doorVariants) {
-        if (v.triggerIds.every(id => vis[id] === true)) {
-          for (const doorId of v.doorIds) {
-            if (!appliedDoorsRef.current.has(doorId)) {
-              appliedDoorsRef.current.add(doorId)
-              world.openDoor(doorId)
-            }
-          }
+      const prev = prevDoorVisRef.current
+      for (const toggle of CURRENT_MAP.physics.toggles) {
+        const visible = vis[toggle.id] !== false
+        if (prev[toggle.id] !== visible) {
+          prev[toggle.id] = visible
+          world.setGeometryVisible(toggle.id, visible)
         }
       }
     }
@@ -156,13 +154,6 @@ export function Player() {
 
     const newRoomId = CURRENT_MAP.getRoomAtPosition(player.x, player.z)
     if (newRoomId !== localPlayerPos.roomId) {
-      if (CURRENT_MAP.roomEntryDoorClose && newRoomId) {
-        for (const entry of CURRENT_MAP.roomEntryDoorClose) {
-          if (entry.roomId === newRoomId) {
-            for (const doorId of entry.doorIds) world.closeDoorForPlayer(playerId, doorId)
-          }
-        }
-      }
       localPlayerPos.roomId = newRoomId
       store.setCurrentRoomId(newRoomId)
     }

@@ -1,6 +1,6 @@
 require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
 
-platform :ios, '13.0'
+platform :ios, '15.0'
 use_frameworks!
 
 # workaround to avoid Xcode caching of Pods that requires
@@ -26,14 +26,12 @@ post_install do |installer|
     target.build_configurations.each do |config|
       # Auto-select archs (removes ARCHS override, lets Xcode decide)
       config.build_settings.delete('ARCHS')
+      # Suppress Capacitor header include-style warnings
+      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
       # Disable code signing for Pods targets
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
       config.build_settings['CODE_SIGN_IDENTITY'] = ''
-      # Enable module verifier
-      config.build_settings['ENABLE_MODULE_VERIFIER'] = 'YES'
-      # Suppress Capacitor header include-style warnings
-      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
     end
   end
 

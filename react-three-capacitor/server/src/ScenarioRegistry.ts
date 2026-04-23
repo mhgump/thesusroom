@@ -14,7 +14,7 @@ export interface MapSpec {
   geometry?: FloorGeometrySpec[]
   buttons?: ButtonSpec[]
   walkableVariants?: Array<{ triggerIds: string[]; walkable: WalkableArea }>
-  doorVariants?: Array<{ triggerIds: string[]; doorIds: string[] }>
+  toggleVariants?: Array<{ triggerIds: string[]; toggleIds: string[] }>
   getRoomAtPosition?: (x: number, z: number) => string | null
 }
 
@@ -70,7 +70,7 @@ export class ScenarioRegistry {
       map.getRoomAtPosition,
       this.spawnBotFn ? (spec: BotSpec) => this.spawnBotFn!(scenarioId, spec) : undefined,
       map.physics,
-      map.doorVariants ?? [],
+      map.toggleVariants ?? [],
     )
     this.openRooms.set(scenarioId, room)
     return room

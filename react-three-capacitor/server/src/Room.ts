@@ -51,7 +51,7 @@ export class Room {
   private readonly geometrySpecs: FloorGeometrySpec[]
   private readonly voteRegionChangeCallbacks: Array<(event: ActiveVoteRegionChangeEvent) => void> = []
 
-  constructor(roomId: string, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, gameScript?: GameScript, onCloseScenario?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [], getRoomAtPosition?: (x: number, z: number) => string | null, spawnBotFn?: (spec: BotSpec) => void, physics?: PhysicsSpec, doorVariants: Array<{ triggerIds: string[]; doorIds: string[] }> = []) {
+  constructor(roomId: string, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, gameScript?: GameScript, onCloseScenario?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [], getRoomAtPosition?: (x: number, z: number) => string | null, spawnBotFn?: (spec: BotSpec) => void, physics?: PhysicsSpec, toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = []) {
     this.roomId = roomId
     this.world = physics ? World.withPhysics(walkable, physics) : new World(walkable)
     this.geometrySpecs = gameSpec?.geometry ?? []
@@ -73,8 +73,8 @@ export class Room {
         (playerId, updates) => this.sendToPlayer(playerId, { type: 'geometry_state', updates }),
         walkableVariants,
         (area) => { this.world.setWalkable(area); this.world.snapAllPlayers() },
-        doorVariants,
-        (doorIds) => { for (const id of doorIds) this.world.openDoor(id) },
+        toggleVariants,
+        (toggleIds) => { for (const id of toggleIds) this.world.setGeometryVisible(id, false) },
         gameSpec.buttons,
         (id, state, occupancy) => this.broadcast({ type: 'button_state', id, state, occupancy }),
         (id, changes) => this.broadcast({ type: 'button_config', id, changes }),

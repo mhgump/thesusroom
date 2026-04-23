@@ -7,10 +7,8 @@ import { RulePopup } from './RulePopup'
 import { CURRENT_MAP } from '../../../content/client/maps'
 
 export function HUD() {
-  const { connected, currentRoomId } = useGameStore((s) => ({
-    connected: s.connected,
-    currentRoomId: s.currentRoomId,
-  }))
+  const connected = useGameStore((s) => s.connected)
+  const currentRoomId = useGameStore((s) => s.currentRoomId)
 
   const roomName = CURRENT_MAP.worldSpec.rooms.find(r => r.id === currentRoomId)?.name ?? currentRoomId
 

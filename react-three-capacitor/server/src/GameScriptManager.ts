@@ -27,8 +27,8 @@ export class GameScriptManager {
   private readonly sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>) => void
   private readonly walkableVariants: Array<{ triggerIds: Set<string>; walkable: WalkableArea }>
   private readonly onWalkableUpdate: (area: WalkableArea) => void
-  private readonly doorVariants: Array<{ triggerIds: Set<string>; doorIds: string[] }>
-  private readonly onDoorUpdate: (doorIds: string[]) => void
+  private readonly toggleVariants: Array<{ triggerIds: Set<string>; toggleIds: string[] }>
+  private readonly onToggleUpdate: (toggleIds: string[]) => void
   private readonly globalGeomVisible: Map<string, boolean>
   private readonly getRoomAtPosition: ((x: number, z: number) => string | null) | undefined
 
@@ -57,8 +57,8 @@ export class GameScriptManager {
     sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>) => void,
     walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [],
     onWalkableUpdate: (area: WalkableArea) => void = () => {},
-    doorVariants: Array<{ triggerIds: string[]; doorIds: string[] }> = [],
-    onDoorUpdate: (doorIds: string[]) => void = () => {},
+    toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = [],
+    onToggleUpdate: (toggleIds: string[]) => void = () => {},
     buttons: ButtonSpec[] = [],
     broadcastButtonState: (id: string, state: ButtonState, occupancy: number) => void = () => {},
     broadcastButtonConfig: (id: string, changes: Partial<ButtonConfig>) => void = () => {},
@@ -82,8 +82,8 @@ export class GameScriptManager {
     this.sendGeometryState = sendGeometryState
     this.onWalkableUpdate = onWalkableUpdate
     this.walkableVariants = walkableVariants.map(v => ({ triggerIds: new Set(v.triggerIds), walkable: v.walkable }))
-    this.doorVariants = doorVariants.map(v => ({ triggerIds: new Set(v.triggerIds), doorIds: v.doorIds }))
-    this.onDoorUpdate = onDoorUpdate
+    this.toggleVariants = toggleVariants.map(v => ({ triggerIds: new Set(v.triggerIds), toggleIds: v.toggleIds }))
+    this.onToggleUpdate = onToggleUpdate
     this.globalGeomVisible = new Map(geometry.map(g => [g.id, initialVisibility[g.id] ?? true]))
     this.activeRegions = new Set()
     this.buttonManager = buttons.length > 0 ? new ButtonManager(buttons) : null
@@ -116,10 +116,10 @@ export class GameScriptManager {
     }
   }
 
-  private checkDoorVariants(): void {
-    for (const v of this.doorVariants) {
+  private checkToggleVariants(): void {
+    for (const v of this.toggleVariants) {
       if ([...v.triggerIds].every(id => this.globalGeomVisible.get(id) === true)) {
-        this.onDoorUpdate(v.doorIds)
+        this.onToggleUpdate(v.toggleIds)
       }
     }
   }
@@ -291,9 +291,18 @@ export class GameScriptManager {
           self.sendGeometryState(pid, updates)
         }
         if (!playerIds || playerIds.length === 0) {
-          for (const id of geometryIds) self.globalGeomVisible.set(id, visible)
+          for (const id of geometryIds) {
+            self.globalGeomVisible.set(id, visible)
+            self.world.setGeometryVisible(id, visible)
+          }
           self.checkWalkableVariants()
-          self.checkDoorVariants()
+          self.checkToggleVariants()
+        } else {
+          for (const pid of targets) {
+            for (const id of geometryIds) {
+              self.world.setGeometryVisibleForPlayer(pid, id, visible)
+            }
+          }
         }
       },
       getVoteAssignments() {
@@ -346,9 +355,6 @@ export class GameScriptManager {
           }
         }
         self.spawnBotFn(spec)
-      },
-      closeDoorForPlayer(playerId, doorId) {
-        self.world.closeDoorForPlayer(playerId, doorId)
       },
     }
   }

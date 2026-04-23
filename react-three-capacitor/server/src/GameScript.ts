@@ -58,8 +58,6 @@ export interface GameScriptContext {
   onPlayerEnterRoom(callback: (playerId: string, roomId: string) => void): void
   // Spawn a bot that connects to this scenario as a player, driven by the given spec.
   spawnBot(spec: BotSpec): void
-  // Make a specific door collider solid again for one player (others unaffected).
-  closeDoorForPlayer(playerId: string, doorId: string): void
 }
 
 // Interface that a game script must implement.

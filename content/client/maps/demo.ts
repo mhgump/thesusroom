@@ -93,7 +93,7 @@ export const DEMO_PHYSICS: PhysicsSpec = {
     { cx:  DW_CX,       cz: DOOR_WALL_CZ, hw: DW_HW,       hd: WT      },
     { cx: 0,           cz: NORTH_WALL_CZ, hw: ROOM_HW + WT, hd: WT     },
   ],
-  doors: [
+  toggles: [
     { id: 'north_door', cx: 0, cz: DOOR_WALL_CZ, hw: DOOR_HW_HALF, hd: WT },
   ],
 }
@@ -124,11 +124,5 @@ export const DEMO_CLIENT_MAP: ClientMap = {
   getRoomAtPosition: getDemoRoomAtPosition,
   walkableVariants: [
     { triggerIds: ['door_open'], walkable: BOTH_ROOMS },
-  ],
-  doorVariants: [
-    { triggerIds: ['door_open'], doorIds: ['north_door'] },
-  ],
-  roomEntryDoorClose: [
-    { roomId: 'room2', doorIds: ['north_door'] },
   ],
 }

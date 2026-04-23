@@ -48,8 +48,7 @@ export const DEMO_PHYSICS: PhysicsSpec = {
     { cx:  DW_CX,       cz: DOOR_WALL_CZ, hw: DW_HW,       hd: WT      }, // door wall — right
     { cx: 0,           cz: NORTH_WALL_CZ, hw: ROOM_HW + WT, hd: WT     }, // north
   ],
-  doors: [
-    // Fills the gap in the door wall. Added to disabledDoors when opened.
+  toggles: [
     { id: 'north_door', cx: 0, cz: DOOR_WALL_CZ, hw: DOOR_HW, hd: WT },
   ],
 }
@@ -72,9 +71,6 @@ export const DEMO_MAP: MapSpec = {
   physics: DEMO_PHYSICS,
   walkableVariants: [
     { triggerIds: ['door_open'], walkable: BOTH_ROOMS },
-  ],
-  doorVariants: [
-    { triggerIds: ['door_open'], doorIds: ['north_door'] },
   ],
   npcs: [],
   voteRegions: [],

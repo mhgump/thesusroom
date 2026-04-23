@@ -37,8 +37,8 @@ export interface WalkableArea { rects: WalkableRect[] }
 
 // Rapier physics geometry — when provided, replaces AABB collision.
 export interface PhysicsWall { cx: number; cz: number; hw: number; hd: number }
-export interface PhysicsDoor { id: string; cx: number; cz: number; hw: number; hd: number }
-export interface PhysicsSpec { walls: PhysicsWall[]; doors: PhysicsDoor[] }
+export interface PhysicsToggle { id: string; cx: number; cz: number; hw: number; hd: number }
+export interface PhysicsSpec { walls: PhysicsWall[]; toggles: PhysicsToggle[] }
 
 const MOVE_SPEED = 0.645    // must match src/game/World.ts
 const CAPSULE_RADIUS = 0.0282 // must match src/game/World.ts
@@ -75,9 +75,9 @@ export class World {
   private rapierWorld: RAPIER_TYPE.World | null = null
   private controller: RAPIER_TYPE.KinematicCharacterController | null = null
   private charBodies: Map<string, CharBody> = new Map()
-  private doorColliders: Map<string, RAPIER_TYPE.Collider> = new Map()
-  private globalOpenDoors: Set<string> = new Set()
-  private playerBlockedDoors: Map<string, Set<string>> = new Map()
+  private toggleColliders: Map<string, RAPIER_TYPE.Collider> = new Map()
+  private globalHidden: Set<string> = new Set()
+  private playerSolid: Map<string, Set<string>> = new Map()
 
   constructor(walkable: WalkableArea, disabledEvents: WorldEventType[] = []) {
     this.walkable = walkable
@@ -104,22 +104,25 @@ export class World {
       this.rapierWorld.createCollider(desc, body)
     }
 
-    for (const door of physics.doors) {
+    for (const toggle of physics.toggles) {
       const body = this.rapierWorld.createRigidBody(R.RigidBodyDesc.fixed())
-      const desc = R.ColliderDesc.cuboid(door.hw, door.hd).setTranslation(door.cx, door.cz)
+      const desc = R.ColliderDesc.cuboid(toggle.hw, toggle.hd).setTranslation(toggle.cx, toggle.cz)
       const collider = this.rapierWorld.createCollider(desc, body)
-      this.doorColliders.set(door.id, collider)
+      this.toggleColliders.set(toggle.id, collider)
     }
 
     this.controller = this.rapierWorld.createCharacterController(0.0)
     this.rapierWorld.step()
   }
 
-  openDoor(doorId: string): void { this.globalOpenDoors.add(doorId) }
-  closeDoor(doorId: string): void { this.globalOpenDoors.delete(doorId) }
-  closeDoorForPlayer(playerId: string, doorId: string): void {
-    if (!this.playerBlockedDoors.has(playerId)) this.playerBlockedDoors.set(playerId, new Set())
-    this.playerBlockedDoors.get(playerId)!.add(doorId)
+  setGeometryVisible(id: string, visible: boolean): void {
+    if (visible) this.globalHidden.delete(id)
+    else this.globalHidden.add(id)
+  }
+  setGeometryVisibleForPlayer(playerId: string, id: string, visible: boolean): void {
+    if (!this.playerSolid.has(playerId)) this.playerSolid.set(playerId, new Set())
+    if (visible) this.playerSolid.get(playerId)!.add(id)
+    else this.playerSolid.get(playerId)!.delete(id)
   }
 
   setWalkable(area: WalkableArea): void {
@@ -144,7 +147,7 @@ export class World {
 
   addPlayer(id: string, x = 0, z = 0): void {
     this.players.set(id, { id, x, z, animState: 'IDLE', hp: 2 })
-    this.playerBlockedDoors.set(id, new Set())
+    this.playerSolid.set(id, new Set())
     if (this.rapierWorld && this.rapier) {
       const R = this.rapier
       const body = this.rapierWorld.createRigidBody(
@@ -158,7 +161,7 @@ export class World {
 
   removePlayer(id: string): void {
     this.players.delete(id)
-    this.playerBlockedDoors.delete(id)
+    this.playerSolid.delete(id)
     for (const key of [...this.touchingPairs]) {
       const [a, b] = key.split(':')
       if (a === id || b === id) this.touchingPairs.delete(key)
@@ -202,11 +205,11 @@ export class World {
       const charData = this.charBodies.get(playerId)!
       const desired = { x: jx * MOVE_SPEED * safeDt, y: jz * MOVE_SPEED * safeDt }
 
-      const playerBlocked = this.playerBlockedDoors.get(playerId) ?? new Set<string>()
-      const disabledHandles = new Set(
-        [...this.globalOpenDoors]
-          .filter(id => !playerBlocked.has(id))
-          .map(id => this.doorColliders.get(id))
+      const forcedSolid = this.playerSolid.get(playerId) ?? new Set<string>()
+      const passableHandles = new Set(
+        [...this.globalHidden]
+          .filter(id => !forcedSolid.has(id))
+          .map(id => this.toggleColliders.get(id))
           .filter((c): c is RAPIER_TYPE.Collider => c !== undefined)
           .map(c => c.handle)
       )
@@ -220,7 +223,7 @@ export class World {
           if (collider.handle === charData.collider.handle) return false
           const parent = collider.parent()
           if (parent && parent.isKinematic()) return false
-          if (disabledHandles.has(collider.handle)) return false
+          if (passableHandles.has(collider.handle)) return false
           return true
         },
       )
