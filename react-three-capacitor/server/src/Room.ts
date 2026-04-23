@@ -38,20 +38,24 @@ function rgbDist(a: [number, number, number], b: [number, number, number]): numb
   return Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db)
 }
 
-interface PlayerState { id: string; ws: WebSocket; color: string }
+interface PlayerState { id: string; ws: WebSocket; color: string; index: number }
 
 export class Room {
   protected readonly roomId: string
+  readonly instanceIndex: number
   protected players: Map<string, PlayerState> = new Map()
   protected world: World
 
+  private nextPlayerIndex = 0
+  private readonly observers: Map<string, Set<WebSocket>> = new Map()
   private expectedSeq: Map<string, number> = new Map()
   private npcManager: NpcManager
   private gameScriptManager: GameScriptManager | null = null
   private readonly geometrySpecs: FloorGeometrySpec[]
   private readonly voteRegionChangeCallbacks: Array<(event: ActiveVoteRegionChangeEvent) => void> = []
 
-  constructor(roomId: string, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, gameScript?: GameScript, onCloseScenario?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [], getRoomAtPosition?: (x: number, z: number) => string | null, spawnBotFn?: (spec: BotSpec) => void, physics?: PhysicsSpec, toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = []) {
+  constructor(roomId: string, instanceIndex: number, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, gameScript?: GameScript, onCloseScenario?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [], getRoomAtPosition?: (x: number, z: number) => string | null, spawnBotFn?: (spec: BotSpec) => void, physics?: PhysicsSpec, toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = []) {
+    this.instanceIndex = instanceIndex
     this.roomId = roomId
     this.world = physics ? World.withPhysics(walkable, physics) : new World(walkable)
     this.geometrySpecs = gameSpec?.geometry ?? []
@@ -68,7 +72,7 @@ export class Room {
         gameSpec.geometry,
         gameSpec.initialVisibility,
         (playerId, lines) => this.sendToPlayer(playerId, { type: 'instruction', lines }),
-        (playerId) => this.removePlayer(playerId),
+        (playerId, eliminated) => this.removePlayer(playerId, eliminated),
         onCloseScenario ?? (() => {}),
         (playerId, updates, perPlayer) => this.sendToPlayer(playerId, { type: 'geometry_state', updates, perPlayer }),
         walkableVariants,
@@ -129,7 +133,7 @@ export class Room {
 
     for (const event of allEvents) {
       if (event.type === 'damage' && event.newHp === 0 && this.players.has(event.targetId)) {
-        this.removePlayer(event.targetId)
+        this.removePlayer(event.targetId, true)
       }
     }
 
@@ -140,7 +144,8 @@ export class Room {
 
   addPlayer(playerId: string, ws: WebSocket): void {
     const color = this.pickColor()
-    this.players.set(playerId, { id: playerId, ws, color })
+    const index = this.nextPlayerIndex++
+    this.players.set(playerId, { id: playerId, ws, color, index })
     this.world.addPlayer(playerId)
     this.expectedSeq.set(playerId, 0)
 
@@ -181,7 +186,18 @@ export class Room {
     console.log(`[Room:${this.roomId}] +player ${playerId} color:${color} (total:${this.players.size})`)
   }
 
-  removePlayer(playerId: string): void {
+  removePlayer(playerId: string, eliminated = false): void {
+    const obs = this.observers.get(playerId)
+    if (obs?.size) {
+      const notice = JSON.stringify({ type: 'observer_player_left', eliminated })
+      for (const ws of obs) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(notice)
+          ws.close(4010, 'Observed player left')
+        }
+      }
+      this.observers.delete(playerId)
+    }
     this.gameScriptManager?.onPlayerDisconnect(playerId)
     this.sendToPlayer(playerId, { type: 'player_left', playerId })
     this.players.delete(playerId)
@@ -225,7 +241,68 @@ export class Room {
 
   protected sendToPlayer(playerId: string, msg: ServerMessage): void {
     const p = this.players.get(playerId)
-    if (p?.ws.readyState === WebSocket.OPEN) p.ws.send(JSON.stringify(msg))
+    const obs = this.observers.get(playerId)
+    if (!p && !obs?.size) return
+    const data = JSON.stringify(msg)
+    if (p?.ws.readyState === WebSocket.OPEN) p.ws.send(data)
+    if (obs?.size) {
+      for (const ws of obs) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(data)
+      }
+    }
+  }
+
+  getPlayerIdByIndex(j: number): string | null {
+    for (const [id, state] of this.players) {
+      if (state.index === j) return id
+    }
+    return null
+  }
+
+  // Generates the ordered sequence of messages an observer needs to reconstruct
+  // the current game state from player `playerId`'s perspective.
+  getObserverSnapshot(playerId: string): ServerMessage[] {
+    const msgs: ServerMessage[] = []
+    const p = this.players.get(playerId)
+    const wp = this.world.getPlayer(playerId)
+    if (!p || !wp) return msgs
+
+    msgs.push({ type: 'welcome', playerId: p.id, color: p.color, x: wp.x, z: wp.z, hp: wp.hp })
+
+    if (this.geometrySpecs.length > 0) {
+      msgs.push({ type: 'map_init', geometry: this.geometrySpecs })
+    }
+
+    for (const [id, other] of this.players) {
+      if (id === playerId) continue
+      const ep = this.world.getPlayer(id)
+      if (!ep) continue
+      msgs.push({ type: 'player_joined', playerId: id, color: other.color, x: ep.x, z: ep.z, animState: ep.animState, hp: ep.hp })
+    }
+
+    for (const { id, spec } of this.npcManager.getNpcEntries()) {
+      const np = this.world.getPlayer(id)
+      if (!np) continue
+      msgs.push({ type: 'player_joined', playerId: id, color: NPC_COLOR, x: np.x, z: np.z, animState: np.animState, hp: np.hp, isNpc: true, hasHealth: spec.ux.has_health })
+    }
+
+    if (this.gameScriptManager) {
+      const { geometryUpdates, buttonData, voteAssignments } = this.gameScriptManager.getPlayerSnapshotData(playerId)
+      if (geometryUpdates) msgs.push({ type: 'geometry_state', updates: geometryUpdates })
+      if (buttonData.length > 0) msgs.push({ type: 'button_init', buttons: buttonData })
+      if (voteAssignments) msgs.push({ type: 'vote_assignment_change', assignments: voteAssignments })
+    }
+
+    return msgs
+  }
+
+  registerObserver(playerId: string, ws: WebSocket): void {
+    if (!this.observers.has(playerId)) this.observers.set(playerId, new Set())
+    this.observers.get(playerId)!.add(ws)
+  }
+
+  unregisterObserver(playerId: string, ws: WebSocket): void {
+    this.observers.get(playerId)?.delete(ws)
   }
 }
 

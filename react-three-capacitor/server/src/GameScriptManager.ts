@@ -21,7 +21,7 @@ export class GameScriptManager {
 
   private readonly world: World
   private readonly sendInstruction: (playerId: string, lines: Array<{ text: string; label: RuleLabel; specId: string }>) => void
-  private readonly removePlayer: (playerId: string) => void
+  private readonly removePlayer: (playerId: string, eliminated?: boolean) => void
   private readonly onCloseScenario: () => void
   private readonly sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>, perPlayer?: boolean) => void
   private readonly walkableVariants: Array<{ triggerIds: Set<string>; walkable: WalkableArea }>
@@ -51,7 +51,7 @@ export class GameScriptManager {
     geometry: FloorGeometrySpec[],
     initialVisibility: Record<string, boolean>,
     sendInstruction: (playerId: string, lines: Array<{ text: string; label: RuleLabel; specId: string }>) => void,
-    removePlayer: (playerId: string) => void,
+    removePlayer: (playerId: string, eliminated?: boolean) => void,
     onCloseScenario: () => void,
     sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>, perPlayer?: boolean) => void,
     walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [],
@@ -275,7 +275,7 @@ export class GameScriptManager {
         return p ? { x: p.x, z: p.z } : null
       },
       eliminatePlayer(playerId) {
-        self.removePlayer(playerId)
+        self.removePlayer(playerId, true)
       },
       closeScenario() {
         self.onCloseScenario()
@@ -347,7 +347,7 @@ export class GameScriptManager {
         if (!event) return
         const p = self.world.getPlayer(playerId)
         if (p) self.broadcastDamageEvent(playerId, p.x, p.z, event, Date.now())
-        if (event.newHp === 0) self.removePlayer(playerId)
+        if (event.newHp === 0) self.removePlayer(playerId, true)
       },
       onPlayerEnterRoom(callback) {
         self.roomEnterListeners.push(callback)
@@ -360,6 +360,43 @@ export class GameScriptManager {
         }
         self.spawnBotFn(spec)
       },
+      lockPlayerToRoom(playerId) {
+        self.world.lockCurrentRoom(playerId)
+      },
+      unlockPlayerFromRoom(playerId) {
+        self.world.unlockPlayerFromRoom(playerId)
+      },
     }
+  }
+
+  // Returns the current game state for the given observed player without modifying any state.
+  // Used to send a snapshot to an observer joining mid-game.
+  getPlayerSnapshotData(observedPlayerId: string): {
+    geometryUpdates: Array<{ id: string; visible: boolean }> | null
+    buttonData: Array<ButtonSpec & { state: ButtonState; occupancy: number }>
+    voteAssignments: Record<string, string[]> | null
+  } {
+    let geometryUpdates: Array<{ id: string; visible: boolean }> | null = null
+    if (this.geometrySpecs.length > 0) {
+      const geomState = this.playerGeometry.get(observedPlayerId)
+      geometryUpdates = this.geometrySpecs.map(g => ({
+        id: g.id,
+        visible: geomState ? (geomState[g.id] ?? true) : (this.globalGeomVisible.get(g.id) ?? true),
+      }))
+    }
+
+    const buttonData = this.buttonManager?.getInitData() ?? []
+
+    let voteAssignments: Record<string, string[]> | null = null
+    if (this.activeRegions.size > 0) {
+      const assignments: Record<string, string[]> = {}
+      for (const regionId of this.activeRegions) assignments[regionId] = []
+      for (const [pid, rid] of this.playerRegions) {
+        if (rid && rid in assignments) assignments[rid].push(pid)
+      }
+      voteAssignments = assignments
+    }
+
+    return { geometryUpdates, buttonData, voteAssignments }
   }
 }

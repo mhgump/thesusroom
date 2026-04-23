@@ -2,9 +2,9 @@ import type { ScenarioSpec } from '../../../react-three-capacitor/server/src/Sce
 import type { GameScript, GameScriptContext } from '../../../react-three-capacitor/server/src/GameScript.js'
 import { DEMO_BOT } from '../bots/demo/demoBot.js'
 
-const BOT_FILL_DELAY_MS  = 10_000
-const MOVE_WARN_DELAY_MS = 10_000
-const ELIM_DELAY_MS      = 10_000
+const BOT_FILL_DELAY_MS  = 2_000
+const MOVE_WARN_DELAY_MS = 2_000
+const ELIM_DELAY_MS      = 6_000
 const FACT_DELAY_MS      = 1_000
 
 class DemoScript implements GameScript {
@@ -32,7 +32,13 @@ class DemoScript implements GameScript {
       ctx.onPlayerEnterRoom((pid, roomId) => {
         if (roomId !== 'room2') return
         this.inRoom2.add(pid)
-        ctx.setGeometryVisible(['north_door'], true, [pid])
+        // Lock the player to room2 now, then wait before closing the door so they
+        // have time to clear the doorway — avoiding any jarring push on door close.
+        ctx.lockPlayerToRoom(pid)
+        ctx.after(250, () => {
+          ctx.setGeometryVisible(['north_door'], true, [pid])
+          ctx.unlockPlayerFromRoom(pid)
+        })
         this.checkAllInRoom2(ctx)
       })
 

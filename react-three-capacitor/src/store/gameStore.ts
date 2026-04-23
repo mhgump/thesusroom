@@ -22,6 +22,8 @@ export interface Notification {
 
 interface GameState {
   connected: boolean
+  observerMode: boolean
+  observerEndReason: 'none' | 'eliminated' | 'disconnected'
   playerId: string | null
   localColor: string
   initialPosition: { x: number; z: number }
@@ -42,6 +44,8 @@ interface GameState {
   localButtonPressing: Record<string, boolean>
 
   setConnected: (v: boolean) => void
+  setObserverMode: (v: boolean) => void
+  setObserverEndReason: (r: 'none' | 'eliminated' | 'disconnected') => void
   setPlayerId: (id: string) => void
   setLocalColor: (color: string) => void
   setInitialPosition: (x: number, z: number) => void
@@ -68,6 +72,8 @@ interface GameState {
 
 export const useGameStore = create<GameState>((set) => ({
   connected: false,
+  observerMode: false,
+  observerEndReason: 'none',
   playerId: null,
   localColor: '#cccccc',
   initialPosition: { x: 0, z: 0 },
@@ -88,6 +94,8 @@ export const useGameStore = create<GameState>((set) => ({
   localButtonPressing: {},
 
   setConnected: (v) => set({ connected: v }),
+  setObserverMode: (v) => set({ observerMode: v }),
+  setObserverEndReason: (r) => set({ observerEndReason: r }),
   setPlayerId: (id) => set({ playerId: id }),
   setLocalColor: (color) => set({ localColor: color }),
   setInitialPosition: (x, z) => set({ initialPosition: { x, z } }),

@@ -46,6 +46,44 @@ export function Player() {
     const playerId = store.playerId
     if (!playerId || !groupRef.current) return
 
+    // ── Observer mode: no World, no prediction, no sends ────────────────────
+    if (store.observerMode) {
+      const ack = consumeMoveAck()
+      if (ack) {
+        groupRef.current.position.x = ack.x
+        groupRef.current.position.z = ack.z
+        localPlayerPos.x = ack.x
+        localPlayerPos.z = ack.z
+        const newRoomId = CURRENT_MAP.getRoomAtPosition(ack.x, ack.z)
+        if (newRoomId !== localPlayerPos.roomId) {
+          localPlayerPos.roomId = newRoomId
+          store.setCurrentRoomId(newRoomId)
+        }
+        for (const event of ack.events) {
+          if (event.type === 'update_animation_state' && event.animState !== animStateRef.current) {
+            animStateRef.current = event.animState
+            setAnimState(event.animState)
+          } else if (event.type === 'damage') {
+            store.applyDamage(event.targetId, event.newHp)
+          }
+        }
+      }
+      const heartDiv = hudRegistry.get('__local__')
+      if (heartDiv) {
+        const { camera, size } = state
+        if (camera instanceof THREE.OrthographicCamera) {
+          camera.updateMatrixWorld()
+          _hv.set(groupRef.current.position.x, 0, groupRef.current.position.z).project(camera)
+          const sx = (_hv.x * 0.5 + 0.5) * size.width
+          const sy = (-_hv.y * 0.5 + 0.5) * size.height
+          const scale = (HEART_WORLD_SIZE * size.height / Math.cos(CAMERA_ANGLE)) / BASE_HEART_PX
+          heartDiv.style.transform = `translate(${sx}px,${sy}px) translate(-50%,-50%) scale(${scale})`
+          if (heartDiv.style.display === 'none') heartDiv.style.display = ''
+        }
+      }
+      return
+    }
+
     if (initializedForRef.current !== playerId) {
       const w = CURRENT_MAP.physics
         ? World.withPhysics(CURRENT_MAP.walkable, CURRENT_MAP.physics, ['touched'])

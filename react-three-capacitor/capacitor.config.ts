@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.supercell.susrooms',
+  appId: 'site.aviadtest.susrooms',
   appName: 'Sus Rooms',
   webDir: 'dist',
   server: {

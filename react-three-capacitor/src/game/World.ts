@@ -1,5 +1,5 @@
 import type RAPIER_TYPE from '@dimforge/rapier2d-compat'
-import type { WalkableArea } from './WorldSpec.js'
+import type { WalkableArea, WalkableRect } from './WorldSpec.js'
 
 export type { WalkableArea, WalkableRect } from './WorldSpec.js'
 
@@ -80,6 +80,7 @@ export class World {
   private physicsGeomSpecs: Map<string, PhysicsGeometry> = new Map()
   private geometryState: Map<string, boolean> = new Map() // true=on/solid (default), false=off/passable
   private playerGeomOverride: Map<string, Map<string, boolean>> = new Map()
+  private playerRoomLock: Map<string, WalkableRect[]> = new Map()
 
   constructor(walkable: WalkableArea, disabledEvents: WorldEventType[] = []) {
     this.walkable = walkable
@@ -139,8 +140,9 @@ export class World {
   }
 
   // When geometry turns solid, eject any player overlapping it.
-  // Push direction: velocity-based (direction player was moving), then reverse, then toward home rect
-  // center. Validity: pushed position must be in the walkable area and outside the collider.
+  // Direction: velocity-based on the minimum-penetration axis (reverse as fallback).
+  // If the player has a room lock (set via lockCurrentRoom before the toggle), the pushed
+  // position must be within the locked rect — this prevents ejection into the wrong room.
   private resolveOverlap(playerId: string, geomId: string): void {
     const player = this.players.get(playerId)
     const spec = this.physicsGeomSpecs.get(geomId)
@@ -150,15 +152,12 @@ export class World {
     const oz = (spec.hd + CAPSULE_RADIUS) - Math.abs(player.z - spec.cz)
     if (ox <= 0 || oz <= 0) return  // no overlap
 
-    // Clear positions on each face (player center just outside the collider + capsule radius).
+    // Clear positions: player center just outside each face of the collider.
     const clearNegX = spec.cx - spec.hw - CAPSULE_RADIUS
     const clearPosX = spec.cx + spec.hw + CAPSULE_RADIUS
     const clearNegZ = spec.cz - spec.hd - CAPSULE_RADIUS
     const clearPosZ = spec.cz + spec.hd + CAPSULE_RADIUS
 
-    // Pick minimum-penetration axis; use velocity to select primary/reverse targets on that axis.
-    // Using the face-clear positions (not just oz/ox) ensures the push is always large enough
-    // to exit the geometry regardless of which face we're heading toward.
     let primaryX = 0, primaryZ = 0, reverseX = 0, reverseZ = 0
     if (ox <= oz) {
       const goNeg = player.vx < 0 || (player.vx === 0 && player.x <= spec.cx)
@@ -170,28 +169,18 @@ export class World {
       reverseZ = (goNeg ? clearPosZ : clearNegZ) - player.z
     }
 
-    // Home rect: the walkable rect the player is deepest inside (prefers rooms over corridors).
-    let homeRect = this.walkable.rects[0] ?? null
-    let homeDepth = -Infinity
-    for (const r of this.walkable.rects) {
-      const dx = r.hw - Math.abs(player.x - r.cx)
-      const dz = r.hd - Math.abs(player.z - r.cz)
-      if (dx < 0 || dz < 0) continue
-      const depth = Math.min(dx, dz)
-      if (depth > homeDepth) { homeDepth = depth; homeRect = r }
-    }
-
+    const lock = this.playerRoomLock.get(playerId)
     const isValid = (nx: number, nz: number): boolean => {
       const remOx = (spec.hw + CAPSULE_RADIUS) - Math.abs(nx - spec.cx)
       const remOz = (spec.hd + CAPSULE_RADIUS) - Math.abs(nz - spec.cz)
       if (remOx > 0 && remOz > 0) return false  // still inside geometry
-      return this.inWalkable(nx, nz)
+      if (lock) return lock.some(r => Math.abs(nx - r.cx) <= r.hw && Math.abs(nz - r.cz) <= r.hd)
+      return true  // no lock: any position outside geometry is fine; Rapier enforces walls
     }
 
     const candidates: Array<[number, number]> = [
       [player.x + primaryX, player.z + primaryZ],
       [player.x + reverseX, player.z + reverseZ],
-      ...(homeRect ? [[homeRect.cx, homeRect.cz] as [number, number]] : []),
     ]
 
     for (const [nx, nz] of candidates) {
@@ -204,6 +193,28 @@ export class World {
   }
 
   setWalkable(area: WalkableArea): void { this.walkable = area }
+
+  // Lock a player to whichever walkable rect they're currently deepest inside.
+  // resolveOverlap will only accept push targets within that rect, preventing
+  // a closing geometry from ejecting the player into the wrong room.
+  lockCurrentRoom(playerId: string): void {
+    const p = this.players.get(playerId)
+    if (!p) return
+    let homeRect: WalkableRect | null = null
+    let homeDepth = -Infinity
+    for (const r of this.walkable.rects) {
+      const dx = r.hw - Math.abs(p.x - r.cx)
+      const dz = r.hd - Math.abs(p.z - r.cz)
+      if (dx < 0 || dz < 0) continue
+      const depth = Math.min(dx, dz)
+      if (depth > homeDepth) { homeDepth = depth; homeRect = r }
+    }
+    if (homeRect) this.playerRoomLock.set(playerId, [homeRect])
+  }
+
+  unlockPlayerFromRoom(playerId: string): void {
+    this.playerRoomLock.delete(playerId)
+  }
 
   snapAllPlayers(): void {
     if (this.rapierWorld) return // Rapier enforces bounds continuously.

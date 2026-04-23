@@ -32,6 +32,9 @@ export interface ScenarioSpec {
 export class ScenarioRegistry {
   private readonly entries: Map<string, { map: MapSpec; scenario: ScenarioSpec }>
   private readonly openRooms: Map<string, Room> = new Map()
+  // Stable per-scenario index → room mapping. Closed rooms become null; new rooms
+  // fill the lowest available null slot so indices remain consistent across rooms.
+  private readonly allRooms: Map<string, (Room | null)[]> = new Map()
   private readonly spawnBotFn: ((scenarioId: string, spec: BotSpec) => void) | undefined
 
   constructor(entries: { map: MapSpec; scenario: ScenarioSpec }[], spawnBotFn?: (scenarioId: string, spec: BotSpec) => void) {
@@ -44,7 +47,7 @@ export class ScenarioRegistry {
   }
 
   // Returns the open Room for this scenario, creating one if needed.
-  // Returns null if the scenario name is unknown or its room has been closed.
+  // Returns null if the scenario name is unknown.
   getOrCreateRoom(scenarioId: string): Room | null {
     const existing = this.openRooms.get(scenarioId)
     if (existing) return existing
@@ -52,9 +55,15 @@ export class ScenarioRegistry {
     const entry = this.entries.get(scenarioId)
     if (!entry) return null
 
+    const instances = this.allRooms.get(scenarioId) ?? []
+    if (!this.allRooms.has(scenarioId)) this.allRooms.set(scenarioId, instances)
+    const nullSlot = instances.findIndex(r => r === null)
+    const instanceIndex = nullSlot !== -1 ? nullSlot : instances.length
+
     const { map, scenario } = entry
     const room = new Room(
       scenario.id,
+      instanceIndex,
       map.walkable,
       map.npcs,
       {
@@ -65,14 +74,33 @@ export class ScenarioRegistry {
         initialVisibility: scenario.initialVisibility ?? {},
       },
       scenario.scriptFactory(),
-      () => { this.openRooms.delete(scenarioId) },
+      () => {
+        this.openRooms.delete(scenarioId)
+        const arr = this.allRooms.get(scenarioId)
+        if (arr) arr[instanceIndex] = null
+      },
       map.walkableVariants ?? [],
       map.getRoomAtPosition,
       this.spawnBotFn ? (spec: BotSpec) => this.spawnBotFn!(scenarioId, spec) : undefined,
       map.physics,
       map.toggleVariants ?? [],
     )
+
+    if (nullSlot !== -1) {
+      instances[nullSlot] = room
+    } else {
+      instances.push(room)
+    }
     this.openRooms.set(scenarioId, room)
     return room
+  }
+
+  getRoomByIndex(scenarioId: string, i: number): Room | null {
+    return this.allRooms.get(scenarioId)?.[i] ?? null
+  }
+
+  hasRoomAndPlayer(scenarioId: string, i: number, j: number): boolean {
+    const room = this.getRoomByIndex(scenarioId, i)
+    return room !== null && room.getPlayerIdByIndex(j) !== null
   }
 }

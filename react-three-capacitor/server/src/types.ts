@@ -18,6 +18,7 @@ export type ServerMessage =
   | { type: 'button_config'; id: string; changes: Partial<ButtonConfig> }
   | { type: 'notification'; text: string }
   | { type: 'error'; message: string }
+  | { type: 'observer_player_left'; eliminated: boolean }
 
 export type ClientMessage =
   | { type: 'move'; seq: number; jx: number; jz: number; dt: number }

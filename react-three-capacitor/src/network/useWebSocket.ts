@@ -35,7 +35,17 @@ export function useWebSocket(): void {
     const client = getClient()
     client.connect()
 
+    const removeClose = client.addCloseHandler(() => {
+      // Only set disconnected if the server didn't already send an explicit observer_player_left.
+      const s = useGameStore.getState()
+      if (s.observerMode && s.observerEndReason === 'none') {
+        s.setObserverEndReason('disconnected')
+      }
+    })
+
     const remove = client.addHandler((msg: ServerMessage) => {
+      const isObserver = useGameStore.getState().observerMode
+
       switch (msg.type) {
         case 'welcome':
           store.setPlayerId(msg.playerId)
@@ -54,7 +64,9 @@ export function useWebSocket(): void {
 
         case 'player_left':
           if (msg.playerId === useGameStore.getState().playerId) {
-            store.applyDamage(msg.playerId, 0)
+            // In observer mode observer_player_left carries the authoritative end reason.
+            // Outside observer mode this means the server removed the local player.
+            if (!isObserver) store.applyDamage(msg.playerId, 0)
           } else {
             store.removeRemotePlayer(msg.playerId)
             clearRemotePlayer(msg.playerId)
@@ -70,7 +82,8 @@ export function useWebSocket(): void {
           updateServerTime(msg.endTime)
           pushRemotePosition(msg.playerId, msg.x, msg.z, msg.endTime)
           pushRemoteEvents(msg.playerId, msg.events, msg.startTime, msg.endTime)
-          // Apply damage directly if the local player is the target (script-triggered damage arrives this way)
+          // Apply damage directly if the observed/local player is the target.
+          // This handles both script-triggered damage and hits from other players.
           {
             const localId = useGameStore.getState().playerId
             if (localId) {
@@ -83,21 +96,24 @@ export function useWebSocket(): void {
           }
           break
 
-        case 'game_event': {
-          const delayMs = Math.max(0, msg.serverTime - estimatedServerTime())
-          setTimeout(() => {
-            if (msg.event.type === 'show_choice') store.showChoice(msg.event)
-            else if (msg.event.type === 'show_rule') store.showRule(msg.event)
-          }, delayMs)
+        case 'game_event':
+          if (!isObserver) {
+            const delayMs = Math.max(0, msg.serverTime - estimatedServerTime())
+            setTimeout(() => {
+              if (msg.event.type === 'show_choice') store.showChoice(msg.event)
+              else if (msg.event.type === 'show_rule') store.showRule(msg.event)
+            }, delayMs)
+          }
           break
-        }
 
         case 'instruction':
-          store.showRule({
-            type: 'show_rule',
-            eventId: `instruction-${Date.now()}`,
-            rules: msg.lines,
-          })
+          if (!isObserver) {
+            store.showRule({
+              type: 'show_rule',
+              eventId: `instruction-${Date.now()}`,
+              rules: msg.lines,
+            })
+          }
           break
 
         case 'map_init':
@@ -108,6 +124,9 @@ export function useWebSocket(): void {
           const world = localWorld.current
           const localId = useGameStore.getState().playerId
           if (msg.perPlayer && localId) {
+            // Lock the local player to their current room before any turn-on toggle so
+            // resolveOverlap ejects them toward their room, not the wrong side of a wall.
+            if (world && msg.updates.some(u => u.visible)) world.lockCurrentRoom(localId)
             store.applyLocalGeometryOverride(msg.updates)
             if (world) {
               for (const { id, visible } of msg.updates) {
@@ -115,13 +134,21 @@ export function useWebSocket(): void {
                 else world.toggleGeometryOff(id, localId)
               }
             }
+            if (world) world.unlockPlayerFromRoom(localId)
           } else {
+            // For global toggles, lock every known player to their current room first.
+            if (world && msg.updates.some(u => u.visible)) {
+              for (const pid of world.players.keys()) world.lockCurrentRoom(pid)
+            }
             store.applyGeometryUpdates(msg.updates)
             if (world) {
               for (const { id, visible } of msg.updates) {
                 if (visible) world.toggleGeometryOn(id)
                 else world.toggleGeometryOff(id)
               }
+            }
+            if (world && msg.updates.some(u => u.visible)) {
+              for (const pid of world.players.keys()) world.unlockPlayerFromRoom(pid)
             }
             if (CURRENT_MAP.walkableVariants?.length) {
               const vis = useGameStore.getState().geometryVisibility
@@ -150,10 +177,14 @@ export function useWebSocket(): void {
         case 'notification':
           store.addNotification(msg.text)
           break
+
+        case 'observer_player_left':
+          store.setObserverEndReason(msg.eliminated ? 'eliminated' : 'disconnected')
+          break
       }
     })
 
-    return () => { remove() }
+    return () => { remove(); removeClose() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 }

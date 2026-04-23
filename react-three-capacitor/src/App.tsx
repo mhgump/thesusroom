@@ -1,12 +1,21 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { GameScene } from './scene/GameScene';
 import { HUD } from './hud/HUD';
 import { PlayerHudOverlay } from './hud/PlayerHudOverlay';
 import { useWebSocket } from './network/useWebSocket';
+import { useGameStore } from './store/gameStore';
 
 export default function App() {
   const [sceneReady, setSceneReady] = useState(false);
+  const setObserverMode = useGameStore((s) => s.setObserverMode);
+
+  useEffect(() => {
+    if (/^\/observe\/[^/]+\/\d+\/\d+$/.test(window.location.pathname)) {
+      setObserverMode(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useWebSocket();
 

@@ -9,6 +9,7 @@ import { CURRENT_MAP } from '../../../content/client/maps'
 export function HUD() {
   const connected = useGameStore((s) => s.connected)
   const currentRoomId = useGameStore((s) => s.currentRoomId)
+  const observerMode = useGameStore((s) => s.observerMode)
 
   const roomName = CURRENT_MAP.worldSpec.rooms.find(r => r.id === currentRoomId)?.name ?? currentRoomId
 
@@ -48,20 +49,22 @@ export function HUD() {
 
       <Notifications />
       <EliminationOverlay />
-      <ChoicePopup />
-      <RulePopup />
+      {!observerMode && <ChoicePopup />}
+      {!observerMode && <RulePopup />}
 
-      {/* Joystick — bottom-left */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 'calc(28px + env(safe-area-inset-bottom, 0px))',
-          left: 'calc(28px + env(safe-area-inset-left, 0px))',
-          pointerEvents: 'auto',
-        }}
-      >
-        <Joystick />
-      </div>
+      {/* Joystick — bottom-left, hidden in observer mode */}
+      {!observerMode && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 'calc(28px + env(safe-area-inset-bottom, 0px))',
+            left: 'calc(28px + env(safe-area-inset-left, 0px))',
+            pointerEvents: 'auto',
+          }}
+        >
+          <Joystick />
+        </div>
+      )}
     </div>
   )
 }

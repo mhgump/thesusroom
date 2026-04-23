@@ -1,10 +1,12 @@
 import type { ClientMessage, ServerMessage } from './types';
 
 type MessageHandler = (msg: ServerMessage) => void;
+type CloseHandler = (event: CloseEvent) => void;
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
   private handlers: Set<MessageHandler> = new Set();
+  private closeHandlers: Set<CloseHandler> = new Set();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly url: string;
 
@@ -42,7 +44,12 @@ export class WebSocketClient {
         }
       };
 
-      this.ws.onclose = () => this.scheduleReconnect();
+      this.ws.onclose = (event) => {
+        this.closeHandlers.forEach((h) => h(event));
+        // Don't reconnect when the server explicitly terminated with a known code.
+        if (event.code === 4004 || event.code === 4010) return;
+        this.scheduleReconnect();
+      };
       this.ws.onerror = () => this.scheduleReconnect();
     } catch {
       this.scheduleReconnect();
@@ -66,6 +73,11 @@ export class WebSocketClient {
   addHandler(handler: MessageHandler): () => void {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
+  }
+
+  addCloseHandler(handler: CloseHandler): () => void {
+    this.closeHandlers.add(handler);
+    return () => this.closeHandlers.delete(handler);
   }
 
   disconnect(): void {

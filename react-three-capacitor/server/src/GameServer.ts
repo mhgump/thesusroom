@@ -1,4 +1,4 @@
-import { WebSocketServer, type WebSocket } from 'ws'
+import { WebSocketServer, WebSocket } from 'ws'
 import type http from 'http'
 import type { IncomingMessage } from 'http'
 import { ScenarioRegistry } from './ScenarioRegistry.js'
@@ -21,6 +21,14 @@ function parseScenarioId(url: string | undefined): string {
   const path = url.split('?')[0]
   const name = path.replace(/^\/+/, '').split('/')[0]
   return name || 'demo'
+}
+
+function parseObserverParams(url: string | undefined): { scenarioId: string; i: number; j: number } | null {
+  if (!url) return null
+  const path = url.split('?')[0]
+  const match = path.match(/^\/observe\/([^/]+)\/(\d+)\/(\d+)$/)
+  if (!match) return null
+  return { scenarioId: match[1], i: parseInt(match[2], 10), j: parseInt(match[3], 10) }
 }
 
 export class GameServer {
@@ -52,7 +60,17 @@ export class GameServer {
     this.wss.on('connection', this.handleConnection.bind(this))
   }
 
+  getRegistry(): ScenarioRegistry {
+    return this.registry
+  }
+
   private handleConnection(ws: WebSocket, request: IncomingMessage): void {
+    const observerParams = parseObserverParams(request.url)
+    if (observerParams) {
+      this.handleObserverConnection(ws, observerParams)
+      return
+    }
+
     const scenarioId = parseScenarioId(request.url)
     const room = this.registry.getOrCreateRoom(scenarioId)
     if (!room) {
@@ -79,5 +97,27 @@ export class GameServer {
       room.removePlayer(playerId)
       this.playerRoom.delete(playerId)
     })
+  }
+
+  private handleObserverConnection(ws: WebSocket, { scenarioId, i, j }: { scenarioId: string; i: number; j: number }): void {
+    const room = this.registry.getRoomByIndex(scenarioId, i)
+    if (!room) {
+      ws.close(4004, 'Room not found')
+      return
+    }
+    const playerId = room.getPlayerIdByIndex(j)
+    if (!playerId) {
+      ws.close(4004, 'Player not found')
+      return
+    }
+
+    const snapshot = room.getObserverSnapshot(playerId)
+    for (const msg of snapshot) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg))
+    }
+
+    room.registerObserver(playerId, ws)
+    ws.on('close', () => room.unregisterObserver(playerId, ws))
+    // Inbound messages from observers are ignored
   }
 }

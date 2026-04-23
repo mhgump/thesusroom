@@ -58,6 +58,12 @@ export interface GameScriptContext {
   onPlayerEnterRoom(callback: (playerId: string, roomId: string) => void): void
   // Spawn a bot that connects to this scenario as a player, driven by the given spec.
   spawnBot(spec: BotSpec): void
+  // Lock a player to their current room so that a subsequent toggleGeometryOn ejects them
+  // toward that room rather than guessing from velocity.  Call before the toggle (with a
+  // delay between lock and toggle if you want the player to clear the doorway first), then
+  // call unlockPlayerFromRoom after the toggle completes.
+  lockPlayerToRoom(playerId: string): void
+  unlockPlayerFromRoom(playerId: string): void
 }
 
 // Interface that a game script must implement.

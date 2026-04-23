@@ -2,8 +2,11 @@ import { useGameStore } from '../store/gameStore'
 
 export function EliminationOverlay() {
   const hp = useGameStore((s) => s.playerId ? (s.playerHp[s.playerId] ?? 2) : 2)
+  const observerEndReason = useGameStore((s) => s.observerEndReason)
 
-  if (hp !== 0) return null
+  if (hp !== 0 && observerEndReason === 'none') return null
+
+  const text = (hp === 0 || observerEndReason === 'eliminated') ? 'ELIMINATED' : 'DISCONNECTED'
 
   return (
     <div style={{
@@ -23,7 +26,7 @@ export function EliminationOverlay() {
         letterSpacing: '0.05em',
         fontFamily: 'system-ui, monospace',
       }}>
-        ELIMINATED
+        {text}
       </span>
     </div>
   )
