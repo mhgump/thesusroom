@@ -67,6 +67,7 @@ interface CharBody {
 
 export class World {
   readonly players: Map<string, WorldPlayerState> = new Map()
+  private readonly playerRules: Map<string, string[]> = new Map()
   private readonly disabledEvents: Set<WorldEventType>
   private readonly touchingPairs: Set<string> = new Set()
   private walkable: WalkableArea
@@ -247,6 +248,7 @@ export class World {
 
   removePlayer(id: string): void {
     this.players.delete(id)
+    this.playerRules.delete(id)
     this.playerGeomOverride.delete(id)
     for (const key of [...this.touchingPairs]) {
       const [a, b] = key.split(':')
@@ -262,6 +264,14 @@ export class World {
   }
 
   getPlayer(id: string): WorldPlayerState | undefined { return this.players.get(id) }
+
+  addPlayerRule(id: string, text: string): void {
+    const rules = this.playerRules.get(id)
+    if (rules) rules.push(text)
+    else this.playerRules.set(id, [text])
+  }
+
+  getPlayerRules(id: string): string[] { return this.playerRules.get(id) ?? [] }
 
   setPlayerPosition(id: string, x: number, z: number): void {
     const p = this.players.get(id)

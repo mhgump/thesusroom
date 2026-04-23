@@ -2,6 +2,8 @@ import type { ScenarioSpec } from '../../react-three-capacitor/server/src/Scenar
 import type { GameScript, GameScriptContext } from '../../react-three-capacitor/server/src/GameScript.js'
 
 const ALL_REGIONS = ['s2_v1', 's2_v2', 's2_v3', 's2_v4']
+
+let _terminateCb: (() => void) | null = null
 const WARN_MS = 20_000
 const RESOLVE_MS = 10_000
 const MAX_PLAYERS = 8
@@ -42,10 +44,13 @@ class Scenario2Script implements GameScript {
         ctx.eliminatePlayer(b)
       }
     }
+    _terminateCb?.()
   }
 }
 
 export const SCENARIO2_SCENARIO: ScenarioSpec = {
   id: 'scenario2',
+  timeoutMs: 120_000,
+  onTerminate(cb) { _terminateCb = cb },
   scriptFactory: () => new Scenario2Script(),
 }

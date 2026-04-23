@@ -38,7 +38,7 @@ export function RulePopup() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '20px',
+          padding: 'clamp(12px, 3vw, 24px)',
           fontFamily: 'system-ui, monospace',
           cursor: 'pointer',
         }}
@@ -67,7 +67,7 @@ export function RulePopup() {
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px',
+            gap: 'clamp(7px, 1.5vw, 12px)',
             width: 'min(640px, 90vw)',
             cursor: 'default',
           }}
@@ -78,17 +78,17 @@ export function RulePopup() {
               style={{
                 background: RULE_COLORS[i % RULE_COLORS.length],
                 borderRadius: '6px',
-                padding: '14px 18px 16px 20px',
+                padding: 'clamp(10px, 1.5vw, 16px) clamp(12px, 2vw, 20px)',
                 color: '#fff',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '16px',
+                gap: 'clamp(10px, 2vw, 18px)',
               }}
             >
               <div
                 style={{
                   flex: 1,
-                  fontSize: '1rem',
+                  fontSize: 'clamp(0.85rem, 2.2vw, 1.05rem)',
                   lineHeight: 1.4,
                   textAlign: 'left',
                 }}
@@ -98,11 +98,11 @@ export function RulePopup() {
               <div
                 style={{
                   flexShrink: 0,
-                  fontSize: '0.6rem',
+                  fontSize: 'clamp(0.55rem, 1.2vw, 0.65rem)',
                   fontWeight: 700,
                   letterSpacing: '0.1em',
                   textTransform: 'uppercase',
-                  padding: '3px 7px',
+                  padding: 'clamp(2px, 0.4vw, 4px) clamp(5px, 1vw, 8px)',
                   border: '1px solid rgba(255,255,255,0.4)',
                   borderRadius: '3px',
                   opacity: 0.8,

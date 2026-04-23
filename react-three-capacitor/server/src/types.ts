@@ -17,6 +17,7 @@ export type ServerMessage =
   | { type: 'button_init'; buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }> }
   | { type: 'button_state'; id: string; state: ButtonState; occupancy: number }
   | { type: 'button_config'; id: string; changes: Partial<ButtonConfig> }
+  | { type: 'add_rule'; text: string }
   | { type: 'notification'; text: string }
   | { type: 'error'; message: string }
   | { type: 'observer_player_left'; eliminated: boolean }

@@ -167,7 +167,6 @@ export function Player() {
     }
 
     const { x: jx, y: jz } = store.joystickInput
-    console.log('[diag] jx', jx.toFixed(3), 'jz', jz.toFixed(3), 'delta', delta.toFixed(4));
     const events = world.processMove(playerId, jx, jz, delta)
     for (const event of events) {
       if (event.type === 'update_animation_state' && event.animState !== animStateRef.current) {
@@ -184,7 +183,6 @@ export function Player() {
 
     // ── 4. Update visuals + room tracking ───────────────────────────────────
     const player = world.getPlayer(playerId)!
-    console.log('[diag] pos', player.x.toFixed(4), player.z.toFixed(4));
     groupRef.current.position.x = player.x
     groupRef.current.position.z = player.z
     localPlayerPos.x = player.x

@@ -53,10 +53,14 @@ export class Room {
   private gameScriptManager: GameScriptManager | null = null
   private readonly geometrySpecs: FloorGeometrySpec[]
   private readonly voteRegionChangeCallbacks: Array<(event: ActiveVoteRegionChangeEvent) => void> = []
+  private closed = false
+  private roomDoneFired = false
+  private readonly onRoomDone?: () => void
 
-  constructor(roomId: string, instanceIndex: number, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, initialVisibility: Record<string, boolean> = {}, initialRoomVisibility: Record<string, boolean> = {}, gameScript?: GameScript, onCloseScenario?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [], getRoomAtPosition?: (x: number, z: number) => string | null, spawnBotFn?: (spec: BotSpec) => void, physics?: PhysicsSpec, toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = []) {
+  constructor(roomId: string, instanceIndex: number, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, initialVisibility: Record<string, boolean> = {}, initialRoomVisibility: Record<string, boolean> = {}, gameScript?: GameScript, onCloseScenario?: () => void, onRoomDone?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [], getRoomAtPosition?: (x: number, z: number) => string | null, spawnBotFn?: (spec: BotSpec) => void, physics?: PhysicsSpec, toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = []) {
     this.instanceIndex = instanceIndex
     this.roomId = roomId
+    this.onRoomDone = onRoomDone
     this.world = physics ? World.withPhysics(walkable, physics) : new World(walkable)
     this.geometrySpecs = gameSpec?.geometry ?? []
     this.npcManager = new NpcManager(this.world, (npcId, x, z, events, time) => {
@@ -64,6 +68,11 @@ export class Room {
     })
     this.npcManager.spawnAll(npcs)
     if (gameSpec) {
+      const wrappedOnClose = () => {
+        this.closed = true
+        onCloseScenario?.()
+        this.maybeTriggerRoomDone()
+      }
       this.gameScriptManager = new GameScriptManager(
         this.world,
         gameScript ?? null,
@@ -73,7 +82,7 @@ export class Room {
         initialVisibility,
         (playerId, lines) => this.sendToPlayer(playerId, { type: 'instruction', lines }),
         (playerId, eliminated) => this.removePlayer(playerId, eliminated),
-        onCloseScenario ?? (() => {}),
+        wrappedOnClose,
         (playerId, updates, perPlayer) => this.sendToPlayer(playerId, { type: 'geometry_state', updates, perPlayer }),
         initialRoomVisibility,
         (playerId, updates, perPlayer) => this.sendToPlayer(playerId, { type: 'room_visibility_state', updates, perPlayer }),
@@ -93,6 +102,7 @@ export class Room {
         spawnBotFn,
         (event) => { for (const cb of this.voteRegionChangeCallbacks) cb(event) },
         (assignments) => this.broadcast({ type: 'vote_assignment_change', assignments: Object.fromEntries(assignments) }),
+        (playerId, text) => this.sendToPlayer(playerId, { type: 'add_rule', text }),
       )
     }
   }
@@ -207,6 +217,13 @@ export class Room {
     this.expectedSeq.delete(playerId)
     this.broadcast({ type: 'player_left', playerId })
     console.log(`[Room:${this.roomId}] -player ${playerId} (total:${this.players.size})`)
+    this.maybeTriggerRoomDone()
+  }
+
+  private maybeTriggerRoomDone(): void {
+    if (!this.closed || this.players.size > 0 || this.roomDoneFired) return
+    this.roomDoneFired = true
+    this.onRoomDone?.()
   }
 
   private pickColor(): string {

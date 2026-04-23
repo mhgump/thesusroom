@@ -10,6 +10,8 @@ export interface ScenarioSpec {
   scriptFactory: () => GameScript
   initialVisibility?: Record<string, boolean>
   initialRoomVisibility?: Record<string, boolean>
+  timeoutMs: number
+  onTerminate(cb: () => void): void
 }
 
 export class ScenarioRegistry {
@@ -49,8 +51,8 @@ export class ScenarioRegistry {
       scenario.initialVisibility ?? {},
       scenario.initialRoomVisibility ?? {},
       scenario.scriptFactory(),
+      () => { this.openRooms.delete(scenarioId) },
       () => {
-        this.openRooms.delete(scenarioId)
         const arr = this.allRooms.get(scenarioId)
         if (arr) arr[instanceIndex] = null
       },

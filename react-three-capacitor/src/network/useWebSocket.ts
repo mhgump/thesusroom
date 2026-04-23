@@ -184,6 +184,10 @@ export function useWebSocket(): void {
           store.applyButtonConfigUpdate(msg.id, msg.changes)
           break
 
+        case 'add_rule':
+          if (!isObserver) store.addRule(msg.text)
+          break
+
         case 'notification':
           store.addNotification(msg.text)
           break

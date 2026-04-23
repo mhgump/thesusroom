@@ -37,7 +37,7 @@ export class GameServer {
   private readonly playerRoom: Map<string, Room> = new Map()
   private readonly botManager: BotManager
 
-  constructor(portOrServer: number | http.Server) {
+  constructor(portOrServer: number | http.Server, httpServerPort?: number) {
     let botServerUrl: string
     if (typeof portOrServer === 'number') {
       this.wss = new WebSocketServer({ port: portOrServer })
@@ -45,8 +45,9 @@ export class GameServer {
       console.log(`[GameServer] ws://localhost:${portOrServer}`)
     } else {
       this.wss = new WebSocketServer({ server: portOrServer })
-      botServerUrl = `ws://localhost:${process.env.PORT ?? '8080'}`
-      console.log('[GameServer] attached to HTTP server')
+      const port = httpServerPort ?? process.env.PORT ?? '8080'
+      botServerUrl = `ws://localhost:${port}`
+      console.log(`[GameServer] attached to HTTP server, bot url: ${botServerUrl}`)
     }
     this.botManager = new BotManager(botServerUrl)
     this.registry = new ScenarioRegistry([
@@ -62,6 +63,10 @@ export class GameServer {
 
   getRegistry(): ScenarioRegistry {
     return this.registry
+  }
+
+  getBotManager(): BotManager {
+    return this.botManager
   }
 
   private handleConnection(ws: WebSocket, request: IncomingMessage): void {
@@ -118,6 +123,5 @@ export class GameServer {
 
     room.registerObserver(playerId, ws)
     ws.on('close', () => room.unregisterObserver(playerId, ws))
-    // Inbound messages from observers are ignored
   }
 }

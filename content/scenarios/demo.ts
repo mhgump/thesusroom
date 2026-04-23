@@ -2,6 +2,8 @@ import type { ScenarioSpec } from '../../react-three-capacitor/server/src/Scenar
 import type { GameScript, GameScriptContext } from '../../react-three-capacitor/server/src/GameScript.js'
 import { DEMO_BOT } from '../bots/demo/demoBot.js'
 
+let _terminateCb: (() => void) | null = null
+
 const BOT_FILL_DELAY_MS  = 2_000
 const MOVE_WARN_DELAY_MS = 2_000
 const ELIM_DELAY_MS      = 6_000
@@ -26,6 +28,9 @@ class DemoScript implements GameScript {
     if (ctx.getPlayerIds().length >= 4 && !this.doorOpened) {
       this.doorOpened = true
       ctx.closeScenario()
+      for (const pid of ctx.getPlayerIds()) {
+        ctx.addRule(pid, 'Players that do not continue will be eliminated.')
+      }
       ctx.setGeometryVisible(['north_door'], false)
       ctx.setGeometryVisible(['door_open'], true)
 
@@ -70,12 +75,15 @@ class DemoScript implements GameScript {
       ctx.setGeometryVisible(['room2_north_wall'], false)
       ctx.setGeometryVisible(['room3_accessible'], true)
       ctx.setRoomVisible(['room3'], true)
+      _terminateCb?.()
     })
   }
 }
 
 export const DEMO_SCENARIO: ScenarioSpec = {
   id: 'demo',
+  timeoutMs: 120_000,
+  onTerminate(cb) { _terminateCb = cb },
   scriptFactory: () => new DemoScript(),
   initialVisibility: {
     'door_open':        false,

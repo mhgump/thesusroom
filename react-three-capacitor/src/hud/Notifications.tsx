@@ -9,13 +9,13 @@ export function Notifications() {
     <div
       style={{
         position: 'absolute',
-        top: 'calc(50px + env(safe-area-inset-top, 0px))',
+        top: 'calc(clamp(36px, 6vh, 60px) + env(safe-area-inset-top, 0px))',
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: 8,
+        gap: 'clamp(5px, 0.8vw, 10px)',
         pointerEvents: 'none',
         zIndex: 5,
       }}
@@ -26,9 +26,9 @@ export function Notifications() {
           style={{
             background: 'rgba(0, 0, 0, 0.75)',
             color: 'white',
-            padding: '6px 18px',
-            borderRadius: 20,
-            fontSize: 14,
+            padding: 'clamp(4px, 0.7vh, 8px) clamp(12px, 2vw, 22px)',
+            borderRadius: 'clamp(14px, 2vw, 22px)',
+            fontSize: 'clamp(11px, 1.8vw, 16px)',
             fontWeight: 'bold',
             letterSpacing: '0.02em',
             backdropFilter: 'blur(6px)',

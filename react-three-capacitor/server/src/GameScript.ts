@@ -66,6 +66,8 @@ export interface GameScriptContext {
   unlockPlayerFromRoom(playerId: string): void
   // Show or hide an entire room for the specified players (all players if playerIds is omitted).
   setRoomVisible(roomIds: string[], visible: boolean, playerIds?: string[]): void
+  // Add a persistent cosmetic rule for a player. Rules accumulate and are shown in the rules panel.
+  addRule(playerId: string, text: string): void
 }
 
 // Interface that a game script must implement.

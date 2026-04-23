@@ -8,6 +8,12 @@ const MOVE_REPORT_DISTANCE = 0.5
 const MOVE_REPORT_INTERVAL_MS = 500
 const NEXT_ACTION_INTERVAL_MS = 250
 
+export interface BotLogEntry {
+  time: number
+  level: 'info' | 'warn' | 'error'
+  message: string
+}
+
 export class BotClient {
   private ws: WebSocket | null = null
   private playerId: string | null = null
@@ -17,6 +23,7 @@ export class BotClient {
   private tickInterval: ReturnType<typeof setInterval> | null = null
   private lastTickTime = Date.now()
   private running = false
+  private readonly _logs: BotLogEntry[] = []
 
   private readonly otherPlayers = new Map<string, { x: number; z: number }>()
   private readonly lastReportedPos = new Map<string, { x: number; z: number }>()
@@ -35,8 +42,15 @@ export class BotClient {
     this.state = { ...spec.initialState }
   }
 
+  get logs(): readonly BotLogEntry[] { return this._logs }
+
+  private log(level: BotLogEntry['level'], message: string): void {
+    this._logs.push({ time: Date.now(), level, message })
+  }
+
   start(): void {
     this.running = true
+    this.log('info', `starting — server: ${this.serverUrl}/${this.scenarioId}`)
     this.connect()
   }
 
@@ -47,6 +61,7 @@ export class BotClient {
       this.ws.close()
       this.ws = null
     }
+    this.log('info', 'stopped')
   }
 
   private connect(): void {
@@ -55,6 +70,7 @@ export class BotClient {
     this.ws = ws
 
     ws.on('open', () => {
+      this.log('info', 'connected')
       this.seq = 0
       this.lastTickTime = Date.now()
       this.startTick()
@@ -63,20 +79,21 @@ export class BotClient {
     ws.on('message', (data) => {
       try {
         this.handleMessage(JSON.parse(data.toString()))
-      } catch {
-        // ignore malformed messages
+      } catch (err) {
+        this.log('error', `message parse error: ${err}`)
       }
     })
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
+      this.log('info', `disconnected (code=${code} reason=${reason.toString() || '—'})`)
       this.stopTick()
       if (this.running) {
         setTimeout(() => this.connect(), RECONNECT_MS)
       }
     })
 
-    ws.on('error', () => {
-      // handled by close
+    ws.on('error', (err) => {
+      this.log('error', `ws error: ${err.message}`)
     })
   }
 
@@ -85,6 +102,7 @@ export class BotClient {
       case 'welcome': {
         this.playerId = msg.playerId as string
         this.position = { x: msg.x as number, z: msg.z as number }
+        this.log('info', `welcome as ${this.playerId} at (${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)})`)
         break
       }
 
@@ -107,7 +125,7 @@ export class BotClient {
       case 'player_left': {
         const pid = msg.playerId as string
         if (pid === this.playerId) {
-          // Bot eliminated — stop without reconnecting
+          this.log('warn', 'eliminated by server')
           this.stop()
           return
         }
@@ -188,7 +206,12 @@ export class BotClient {
       if (actionCompleted || now - this.lastNextActionMs >= NEXT_ACTION_INTERVAL_MS) {
         const phase = this.state.phase
         const fn = this.spec.nextAction[phase]
-        this.currentAction = fn ? fn(this.makeContext(), { ...this.position }) : { type: 'idle' }
+        try {
+          this.currentAction = fn ? fn(this.makeContext(), { ...this.position }) : { type: 'idle' }
+        } catch (err) {
+          this.log('error', `nextAction[${phase}] threw: ${err}`)
+          this.currentAction = { type: 'idle' }
+        }
         this.lastNextActionMs = now
       }
 

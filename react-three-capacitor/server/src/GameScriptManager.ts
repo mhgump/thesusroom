@@ -45,6 +45,7 @@ export class GameScriptManager {
   private readonly spawnBotFn: (spec: BotSpec) => void
   private readonly broadcastActiveVoteRegions: (event: ActiveVoteRegionChangeEvent) => void
   private readonly onVoteAssignmentChange: (assignments: Map<string, string[]>) => void
+  private readonly sendRule: (playerId: string, text: string) => void
 
   constructor(
     world: World,
@@ -73,6 +74,7 @@ export class GameScriptManager {
     spawnBotFn: (spec: BotSpec) => void = () => {},
     onActiveVoteRegionsChange: (event: ActiveVoteRegionChangeEvent) => void = () => {},
     onVoteAssignmentChange: (assignments: Map<string, string[]>) => void = () => {},
+    sendRule: (playerId: string, text: string) => void = () => {},
   ) {
     this.world = world
     this.script = script
@@ -104,6 +106,7 @@ export class GameScriptManager {
     this.spawnBotFn = spawnBotFn
     this.broadcastActiveVoteRegions = onActiveVoteRegionsChange
     this.onVoteAssignmentChange = onVoteAssignmentChange
+    this.sendRule = sendRule
   }
 
   private emitVoteAssignments(): void {
@@ -393,6 +396,10 @@ export class GameScriptManager {
         if (!perPlayer) {
           for (const roomId of roomIds) self.globalRoomVisible.set(roomId, visible)
         }
+      },
+      addRule(playerId, text) {
+        self.world.addPlayerRule(playerId, text)
+        self.sendRule(playerId, text)
       },
     }
   }

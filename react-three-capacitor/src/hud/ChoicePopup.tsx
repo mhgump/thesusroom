@@ -43,7 +43,7 @@ export function ChoicePopup() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '20px',
+          padding: 'clamp(12px, 3vw, 24px)',
           fontFamily: 'system-ui, monospace',
         }}
       >
@@ -51,9 +51,9 @@ export function ChoicePopup() {
           style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${count}, 1fr)`,
-            gap: '12px',
+            gap: 'clamp(8px, 2vw, 16px)',
             width: '90vw',
-            maxWidth: `${count * 160}px`,
+            maxWidth: `min(${count * 200}px, 90vw)`,
           }}
         >
           {event.options.map((option, i) => (
@@ -72,17 +72,17 @@ export function ChoicePopup() {
                 justifyContent: 'center',
                 gap: '4px',
                 cursor: 'pointer',
-                padding: '12px',
+                padding: 'clamp(8px, 1.5vw, 14px)',
                 color: '#fff',
                 textAlign: 'center',
               }}
             >
               {option.upperDetail && (
-                <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>{option.upperDetail}</span>
+                <span style={{ fontSize: 'clamp(0.65rem, 1.8vw, 0.85rem)', opacity: 0.85 }}>{option.upperDetail}</span>
               )}
-              <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>{option.title}</span>
+              <span style={{ fontSize: 'clamp(0.9rem, 2.8vw, 1.2rem)', fontWeight: 700 }}>{option.title}</span>
               {option.lowerDetail && (
-                <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>{option.lowerDetail}</span>
+                <span style={{ fontSize: 'clamp(0.65rem, 1.8vw, 0.85rem)', opacity: 0.85 }}>{option.lowerDetail}</span>
               )}
             </button>
           ))}

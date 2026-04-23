@@ -41,6 +41,7 @@ export type ServerMessage =
   | { type: 'button_config'; id: string; changes: Partial<ButtonConfig> }
   | { type: 'notification'; text: string }
   | { type: 'room_visibility_state'; updates: Array<{ roomId: string; visible: boolean }>; perPlayer?: boolean }
+  | { type: 'add_rule'; text: string }
   | { type: 'error'; message: string }
   | { type: 'observer_player_left'; eliminated: boolean }
 

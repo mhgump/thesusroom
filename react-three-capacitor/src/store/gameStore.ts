@@ -35,6 +35,8 @@ interface GameState {
   eliminated: boolean
   activeChoiceEvent: ShowChoiceEvent | null
   activeRuleEvent: ShowRuleEvent | null
+  activeRules: string[]
+  rulesOpen: boolean
   geometryObjects: FloorGeometrySpec[]
   geometryVisibility: Record<string, boolean>
   localGeometryOverride: Record<string, boolean>
@@ -62,6 +64,8 @@ interface GameState {
   dismissChoice: () => void
   showRule: (event: ShowRuleEvent) => void
   dismissRule: () => void
+  addRule: (text: string) => void
+  setRulesOpen: (v: boolean) => void
   setGeometryObjects: (objects: FloorGeometrySpec[]) => void
   applyGeometryUpdates: (updates: Array<{ id: string; visible: boolean }>) => void
   applyLocalGeometryOverride: (updates: Array<{ id: string; visible: boolean }>) => void
@@ -90,6 +94,8 @@ export const useGameStore = create<GameState>((set) => ({
   eliminated: false,
   activeChoiceEvent: null,
   activeRuleEvent: null,
+  activeRules: [],
+  rulesOpen: false,
   geometryObjects: [],
   geometryVisibility: {},
   localGeometryOverride: {},
@@ -145,6 +151,8 @@ export const useGameStore = create<GameState>((set) => ({
   dismissChoice: () => set({ activeChoiceEvent: null }),
   showRule: (event) => set((s) => s.eliminated ? {} : { activeRuleEvent: event }),
   dismissRule: () => set({ activeRuleEvent: null }),
+  addRule: (text) => set((s) => ({ activeRules: [...s.activeRules, text] })),
+  setRulesOpen: (v) => set({ rulesOpen: v }),
 
   setGeometryObjects: (objects) => set({ geometryObjects: objects }),
 
@@ -217,6 +225,8 @@ export const useGameStore = create<GameState>((set) => ({
     eliminated: false,
     activeChoiceEvent: null,
     activeRuleEvent: null,
+    activeRules: [],
+    rulesOpen: false,
     geometryObjects: [],
     geometryVisibility: {},
     localGeometryOverride: {},
