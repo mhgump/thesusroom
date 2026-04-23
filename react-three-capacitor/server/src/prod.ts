@@ -3,8 +3,10 @@ import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { GameServer } from './GameServer.js'
+import { initPhysics } from './World.js'
 
 const PORT = parseInt(process.env.PORT ?? '8080', 10)
+await initPhysics()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Running via tsx: __dirname = .../react-three-capacitor/server/src

@@ -1,18 +1,14 @@
 import type { MapSpec } from '../../../react-three-capacitor/server/src/ScenarioRegistry.js'
 import type { WalkableArea } from '../../../react-three-capacitor/server/src/World.js'
 
-const R = 0.35  // CAPSULE_RADIUS — must match World.ts
+const R = 0.0282
 
-const VIEWPORT_W = 20
-const CAMERA_ANGLE = 25 * (Math.PI / 180)
-const VIEWPORT_D = (VIEWPORT_W / (16 / 9)) / Math.cos(CAMERA_ANGLE)
-
-const GRID_X = VIEWPORT_W / 4    // 5
-const GRID_Z = VIEWPORT_D / 4    // ~3.1
-const VOTE_R = 1.8
+const GRID_X = 0.4028
+const GRID_Z = 0.25
+const VOTE_R = 0.1450
 
 const WALKABLE: WalkableArea = {
-  rects: [{ cx: 0, cz: 0, hw: VIEWPORT_W / 2 - R, hd: VIEWPORT_D / 2 - R }],
+  rects: [{ cx: 0, cz: 0, hw: 0.7774, hd: 0.4718 }],
 }
 
 export const SCENARIO2_MAP: MapSpec = {

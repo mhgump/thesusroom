@@ -3,8 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { AnimationHandlerProps } from './types';
 
-const CAPSULE_RADIUS = 0.35;
-const CAPSULE_LENGTH = 1.0;
+const CAPSULE_RADIUS = 0.0282;
+const CAPSULE_LENGTH = 0.0806;
 
 const COLOR_BLINK_A = new THREE.Color(0xffffff);
 const COLOR_BLINK_B = new THREE.Color(0x222222);
@@ -36,8 +36,8 @@ export function CapsuleFallback({ animationState, color = '#cccccc' }: Animation
         <capsuleGeometry args={[CAPSULE_RADIUS, CAPSULE_LENGTH, 8, 16]} />
         <meshLambertMaterial ref={matRef} color={color} />
       </mesh>
-      <mesh position={[0, CAPSULE_LENGTH / 2 + CAPSULE_RADIUS - 0.05, 0]}>
-        <sphereGeometry args={[0.1, 8, 8]} />
+      <mesh position={[0, CAPSULE_LENGTH / 2 + CAPSULE_RADIUS - 0.004, 0]}>
+        <sphereGeometry args={[0.008, 8, 8]} />
         <meshBasicMaterial color="#00ccff" />
       </mesh>
     </group>

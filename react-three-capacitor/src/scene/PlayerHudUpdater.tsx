@@ -3,10 +3,10 @@ import * as THREE from 'three'
 import { getInterpolatedPos } from '../network/positionBuffer'
 import { useGameStore } from '../store/gameStore'
 import { hudRegistry } from './hudRegistry'
-import { VIEWPORT_W } from '../game/constants'
+import { CAMERA_ANGLE } from '../game/constants'
 
 const DELAY_MS = 250
-const HEART_WORLD_SIZE = 0.35
+const HEART_WORLD_SIZE = 0.0282
 const BASE_HEART_PX = 20
 
 const _v = new THREE.Vector3()
@@ -37,7 +37,7 @@ export function PlayerHudUpdater() {
 
     camera.updateMatrixWorld()
 
-    const scale = (HEART_WORLD_SIZE * (size.width / VIEWPORT_W)) / BASE_HEART_PX
+    const scale = (HEART_WORLD_SIZE * size.height / Math.cos(CAMERA_ANGLE)) / BASE_HEART_PX
     const store = useGameStore.getState()
 
     for (const id of Object.keys(store.remotePlayers)) {

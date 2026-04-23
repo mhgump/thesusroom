@@ -33,7 +33,7 @@ export type ServerMessage =
   | { type: 'move_ack'; seq: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
   | { type: 'player_update'; playerId: string; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
   | { type: 'game_event'; event: GlobalGameEvent; serverTime: number }
-  | { type: 'instruction'; text: string; label: RuleLabel }
+  | { type: 'instruction'; lines: Array<{ text: string; label: RuleLabel; specId: string }> }
   | { type: 'map_init'; geometry: FloorGeometrySpec[] }
   | { type: 'geometry_state'; updates: Array<{ id: string; visible: boolean }> }
   | { type: 'button_init'; buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }> }

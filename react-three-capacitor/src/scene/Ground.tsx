@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { RoomSpec } from '../game/RoomSpec';
 import { Textures } from '../game/textures';
 
-const FALLBACK_TILE = 4  // world units per fallback tile
+const FALLBACK_TILE = 0.32  // world units per fallback tile
 
 export function Ground({ room }: { room: RoomSpec }) {
   const { floorWidth: fw, floorDepth: fd, floorTextures } = room

@@ -46,16 +46,20 @@ interface BarrierProps {
 export function Barrier({ room, openings = {} }: BarrierProps) {
   const { floorWidth: fw, floorDepth: fd, barrierHeight: bh, barrierThickness: bt } = room
   const hw = fw / 2, hd = fd / 2, hy = bh / 2
+  const disabled = new Set(room.disabledWalls ?? [])
 
   const mats = useMemo(makeMaterials, [])
 
   const inset = (opens: WallOpening[]) =>
     opens.map(o => ({ center: o.center, width: o.width - 2 * bt }))
 
-  const northSegs = segmentWall(-hw, hw, inset(openings.north ?? []))
-  const southSegs = segmentWall(-hw, hw, inset(openings.south ?? []))
-  const eastSegs  = segmentWall(-(hd - bt), +(hd - bt), inset(openings.east  ?? []))
-  const westSegs  = segmentWall(-(hd - bt), +(hd - bt), inset(openings.west  ?? []))
+  const ewFrom = disabled.has('north') ? -hd : -(hd - bt)
+  const ewTo   = disabled.has('south') ? +hd : +(hd - bt)
+
+  const northSegs = disabled.has('north') ? [] : segmentWall(-hw, hw, inset(openings.north ?? []))
+  const southSegs = disabled.has('south') ? [] : segmentWall(-hw, hw, inset(openings.south ?? []))
+  const eastSegs  = disabled.has('east')  ? [] : segmentWall(ewFrom, ewTo, inset(openings.east  ?? []))
+  const westSegs  = disabled.has('west')  ? [] : segmentWall(ewFrom, ewTo, inset(openings.west  ?? []))
 
   return (
     <group>

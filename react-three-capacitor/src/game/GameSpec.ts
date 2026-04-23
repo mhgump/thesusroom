@@ -2,6 +2,15 @@ import type { RuleLabel } from '../network/types'
 
 export type ButtonState = 'idle' | 'pressed' | 'cooldown' | 'disabled'
 
+// Default visual dimensions — spread into a ButtonSpec, then override per-scenario as needed.
+export const DEFAULT_BUTTON_DIMENSIONS = {
+  platformRadius: 1.2,
+  ringOuterRadius: 1.32,  // ~10% wider than platformRadius
+  ringInnerRadius: 1.2,   // = platformRadius (no gap)
+  raisedHeight: 0.36,
+  triggerRadius: 1.5,
+}
+
 export interface ButtonConfig {
   requiredPlayers: number
   holdAfterRelease: boolean
@@ -53,7 +62,6 @@ export interface GameSpec {
   voteRegions: VoteRegionSpec[]
   geometry: FloorGeometrySpec[]
   buttons?: ButtonSpec[]
-  initialVisibility?: Record<string, boolean>
 }
 
 interface RoomBounds { x: number; z: number; width: number; depth: number }

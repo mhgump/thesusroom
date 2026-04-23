@@ -1,12 +1,12 @@
 import type { MapSpec } from '../../../react-three-capacitor/server/src/ScenarioRegistry.js'
 
-const R = 0.35  // CAPSULE_RADIUS
-const ROOM_SIZE = 12  // small square room
+const R = 0.0282
+const ROOM_SIZE = 0.9672
 
 const BTN_Z = 0
-const BTN_LEFT_X = -2.5
-const BTN_RIGHT_X = 2.5
-const BTN_TRIGGER_R = 0.8
+const BTN_LEFT_X = -0.2014
+const BTN_RIGHT_X = 0.2014
+const BTN_TRIGGER_R = 0.0645
 
 export const SCENARIO3_MAP: MapSpec = {
   id: 'scenario3',
@@ -25,10 +25,10 @@ export const SCENARIO3_MAP: MapSpec = {
       x: BTN_LEFT_X,
       z: BTN_Z,
       triggerRadius: BTN_TRIGGER_R,
-      ringOuterRadius: 1.4,
-      ringInnerRadius: 0.9,
-      platformRadius: 0.6,
-      raisedHeight: 0.18,
+      ringOuterRadius: 0.1128,
+      ringInnerRadius: 0.0725,
+      platformRadius: 0.0483,
+      raisedHeight: 0.0145,
       color: '#c0392b',
       ringColor: '#e74c3c',
       // Resets as soon as player leaves; always immediately pressable.
@@ -42,10 +42,10 @@ export const SCENARIO3_MAP: MapSpec = {
       x: BTN_RIGHT_X,
       z: BTN_Z,
       triggerRadius: BTN_TRIGGER_R,
-      ringOuterRadius: 1.4,
-      ringInnerRadius: 0.9,
-      platformRadius: 0.6,
-      raisedHeight: 0.18,
+      ringOuterRadius: 0.1128,
+      ringInnerRadius: 0.0725,
+      platformRadius: 0.0483,
+      raisedHeight: 0.0145,
       color: '#1a5276',
       ringColor: '#2980b9',
       // Requires 2 players to actually press; enableClientPress toggled by script.

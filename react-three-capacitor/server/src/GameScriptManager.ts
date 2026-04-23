@@ -1,7 +1,8 @@
-import type { GameScript, GameScriptContext } from './GameScript.js'
-import type { VoteRegionSpec, InstructionEventSpec, FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState } from './GameSpec.js'
-import type { World, WalkableArea } from './World.js'
+import type { GameScript, GameScriptContext, ActiveVoteRegionChangeEvent } from './GameScript.js'
+import type { VoteRegionSpec, InstructionEventSpec, FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState, RuleLabel } from './GameSpec.js'
+import type { World, WalkableArea, DamageEvent } from './World.js'
 import { ButtonManager } from './ButtonManager.js'
+import type { BotSpec } from './bot/BotTypes.js'
 
 export class GameScriptManager {
   private readonly script: GameScript | null
@@ -12,19 +13,24 @@ export class GameScriptManager {
   private readonly activeRegions: Set<string>
   private readonly playerRegions: Map<string, string | null> = new Map()
   private readonly playerGeometry: Map<string, Record<string, boolean>> = new Map()
+  private readonly playerCurrentRoom: Map<string, string | null> = new Map()
   private readonly voteListeners: Array<{
     regionIds: Set<string>
     callback: (assignments: Map<string, string | null>) => void
   }> = []
+  private readonly roomEnterListeners: Array<(playerId: string, roomId: string) => void> = []
 
   private readonly world: World
-  private readonly sendInstruction: (playerId: string, text: string, label: string) => void
+  private readonly sendInstruction: (playerId: string, lines: Array<{ text: string; label: RuleLabel; specId: string }>) => void
   private readonly removePlayer: (playerId: string) => void
   private readonly onCloseScenario: () => void
   private readonly sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>) => void
   private readonly walkableVariants: Array<{ triggerIds: Set<string>; walkable: WalkableArea }>
   private readonly onWalkableUpdate: (area: WalkableArea) => void
+  private readonly doorVariants: Array<{ triggerIds: Set<string>; doorIds: string[] }>
+  private readonly onDoorUpdate: (doorIds: string[]) => void
   private readonly globalGeomVisible: Map<string, boolean>
+  private readonly getRoomAtPosition: ((x: number, z: number) => string | null) | undefined
 
   private readonly buttonManager: ButtonManager | null
   private readonly buttonPressListeners: Map<string, Array<(occupants: string[]) => void>> = new Map()
@@ -33,6 +39,10 @@ export class GameScriptManager {
   private readonly broadcastButtonConfig: (id: string, changes: Partial<ButtonConfig>) => void
   private readonly sendButtonInit: (playerId: string, buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }>) => void
   private readonly sendNotificationToPlayer: (playerId: string, text: string) => void
+  private readonly broadcastDamageEvent: (targetId: string, x: number, z: number, event: DamageEvent, time: number) => void
+  private readonly spawnBotFn: (spec: BotSpec) => void
+  private readonly broadcastActiveVoteRegions: (event: ActiveVoteRegionChangeEvent) => void
+  private readonly onVoteAssignmentChange: (assignments: Map<string, string[]>) => void
 
   constructor(
     world: World,
@@ -41,17 +51,24 @@ export class GameScriptManager {
     instructionSpecs: InstructionEventSpec[],
     geometry: FloorGeometrySpec[],
     initialVisibility: Record<string, boolean>,
-    sendInstruction: (playerId: string, text: string, label: string) => void,
+    sendInstruction: (playerId: string, lines: Array<{ text: string; label: RuleLabel; specId: string }>) => void,
     removePlayer: (playerId: string) => void,
     onCloseScenario: () => void,
     sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>) => void,
     walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [],
     onWalkableUpdate: (area: WalkableArea) => void = () => {},
+    doorVariants: Array<{ triggerIds: string[]; doorIds: string[] }> = [],
+    onDoorUpdate: (doorIds: string[]) => void = () => {},
     buttons: ButtonSpec[] = [],
     broadcastButtonState: (id: string, state: ButtonState, occupancy: number) => void = () => {},
     broadcastButtonConfig: (id: string, changes: Partial<ButtonConfig>) => void = () => {},
     sendButtonInit: (playerId: string, buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }>) => void = () => {},
     sendNotificationToPlayer: (playerId: string, text: string) => void = () => {},
+    broadcastDamageEvent: (targetId: string, x: number, z: number, event: DamageEvent, time: number) => void = () => {},
+    getRoomAtPosition?: (x: number, z: number) => string | null,
+    spawnBotFn: (spec: BotSpec) => void = () => {},
+    onActiveVoteRegionsChange: (event: ActiveVoteRegionChangeEvent) => void = () => {},
+    onVoteAssignmentChange: (assignments: Map<string, string[]>) => void = () => {},
   ) {
     this.world = world
     this.script = script
@@ -65,15 +82,29 @@ export class GameScriptManager {
     this.sendGeometryState = sendGeometryState
     this.onWalkableUpdate = onWalkableUpdate
     this.walkableVariants = walkableVariants.map(v => ({ triggerIds: new Set(v.triggerIds), walkable: v.walkable }))
+    this.doorVariants = doorVariants.map(v => ({ triggerIds: new Set(v.triggerIds), doorIds: v.doorIds }))
+    this.onDoorUpdate = onDoorUpdate
     this.globalGeomVisible = new Map(geometry.map(g => [g.id, initialVisibility[g.id] ?? true]))
-    this.activeRegions = new Set(
-      voteRegions.filter(r => initialVisibility[r.id] === true).map(r => r.id)
-    )
+    this.activeRegions = new Set()
     this.buttonManager = buttons.length > 0 ? new ButtonManager(buttons) : null
     this.broadcastButtonState = broadcastButtonState
     this.broadcastButtonConfig = broadcastButtonConfig
     this.sendButtonInit = sendButtonInit
     this.sendNotificationToPlayer = sendNotificationToPlayer
+    this.broadcastDamageEvent = broadcastDamageEvent
+    this.getRoomAtPosition = getRoomAtPosition
+    this.spawnBotFn = spawnBotFn
+    this.broadcastActiveVoteRegions = onActiveVoteRegionsChange
+    this.onVoteAssignmentChange = onVoteAssignmentChange
+  }
+
+  private emitVoteAssignments(): void {
+    const assignments = new Map<string, string[]>()
+    for (const regionId of this.activeRegions) assignments.set(regionId, [])
+    for (const [pid, rid] of this.playerRegions) {
+      if (rid && assignments.has(rid)) assignments.get(rid)!.push(pid)
+    }
+    this.onVoteAssignmentChange(assignments)
   }
 
   private checkWalkableVariants(): void {
@@ -85,8 +116,17 @@ export class GameScriptManager {
     }
   }
 
+  private checkDoorVariants(): void {
+    for (const v of this.doorVariants) {
+      if ([...v.triggerIds].every(id => this.globalGeomVisible.get(id) === true)) {
+        this.onDoorUpdate(v.doorIds)
+      }
+    }
+  }
+
   onPlayerConnect(playerId: string): void {
     this.playerRegions.set(playerId, null)
+    this.playerCurrentRoom.set(playerId, null)
 
     const geomState: Record<string, boolean> = {}
     for (const g of this.geometrySpecs) {
@@ -110,11 +150,13 @@ export class GameScriptManager {
 
   onPlayerDisconnect(playerId: string): void {
     this.playerRegions.delete(playerId)
+    this.playerCurrentRoom.delete(playerId)
     this.playerGeometry.delete(playerId)
     if (this.buttonManager) {
       const changes = this.buttonManager.removePlayer(playerId)
       for (const { buttonId } of changes) this.evaluateButton(buttonId)
     }
+    this.emitVoteAssignments()
   }
 
   onPlayerMoved(playerId: string): void {
@@ -132,10 +174,17 @@ export class GameScriptManager {
       const changes = this.buttonManager.updatePlayerPosition(playerId, p.x, p.z)
       for (const { buttonId } of changes) this.evaluateButton(buttonId)
     }
+
+    if (this.getRoomAtPosition) {
+      const oldRoom = this.playerCurrentRoom.get(playerId) ?? null
+      const newRoom = this.getRoomAtPosition(p.x, p.z)
+      if (newRoom !== null && newRoom !== oldRoom) {
+        this.playerCurrentRoom.set(playerId, newRoom)
+        for (const cb of this.roomEnterListeners) cb(playerId, newRoom)
+      }
+    }
   }
 
-  // Called by GameScriptManager whenever occupancy changes for a button.
-  // Evaluates press/release criteria and drives state transitions.
   private evaluateButton(buttonId: string): void {
     const bm = this.buttonManager!
     const state = bm.getState(buttonId)
@@ -166,7 +215,6 @@ export class GameScriptManager {
       return
     }
 
-    // Occupancy changed without a state transition — broadcast updated count.
     this.broadcastButtonState(buttonId, state, occupants.size)
   }
 
@@ -188,6 +236,7 @@ export class GameScriptManager {
         listener.callback(assignments)
       }
     }
+    this.emitVoteAssignments()
   }
 
   private makeContext(): GameScriptContext {
@@ -195,11 +244,20 @@ export class GameScriptManager {
     return {
       sendInstruction(playerId, specId) {
         const spec = self.instructionSpecs.get(specId)
-        if (spec) self.sendInstruction(playerId, spec.text, spec.label)
+        if (spec) self.sendInstruction(playerId, [{ text: spec.text, label: spec.label, specId }])
+      },
+      sendInstructions(playerId, specIds) {
+        const lines = specIds
+          .map(id => self.instructionSpecs.get(id))
+          .filter((s): s is InstructionEventSpec => s !== undefined)
+          .map(s => ({ text: s.text, label: s.label, specId: s.id }))
+        if (lines.length > 0) self.sendInstruction(playerId, lines)
       },
       toggleVoteRegion(regionId, active) {
         if (active) self.activeRegions.add(regionId)
         else self.activeRegions.delete(regionId)
+        self.broadcastActiveVoteRegions({ type: 'active_vote_region_change', activeIds: [...self.activeRegions] })
+        self.emitVoteAssignments()
       },
       onVoteChanged(regionIds, callback) {
         self.voteListeners.push({ regionIds: new Set(regionIds), callback })
@@ -235,6 +293,7 @@ export class GameScriptManager {
         if (!playerIds || playerIds.length === 0) {
           for (const id of geometryIds) self.globalGeomVisible.set(id, visible)
           self.checkWalkableVariants()
+          self.checkDoorVariants()
         }
       },
       getVoteAssignments() {
@@ -269,6 +328,27 @@ export class GameScriptManager {
       sendNotification(text, playerIds) {
         const targets = playerIds ?? [...self.playerRegions.keys()]
         for (const pid of targets) self.sendNotificationToPlayer(pid, text)
+      },
+      applyDamage(playerId, amount) {
+        const event = self.world.applyDamage(playerId, amount)
+        if (!event) return
+        const p = self.world.getPlayer(playerId)
+        if (p) self.broadcastDamageEvent(playerId, p.x, p.z, event, Date.now())
+        if (event.newHp === 0) self.removePlayer(playerId)
+      },
+      onPlayerEnterRoom(callback) {
+        self.roomEnterListeners.push(callback)
+      },
+      spawnBot(spec) {
+        for (const key of Object.keys(spec.onInstructMap)) {
+          if (!self.instructionSpecs.has(key)) {
+            throw new Error(`[BotSpec] onInstructMap key "${key}" is not a valid instruction spec id for this scenario`)
+          }
+        }
+        self.spawnBotFn(spec)
+      },
+      closeDoorForPlayer(playerId, doorId) {
+        self.world.closeDoorForPlayer(playerId, doorId)
       },
     }
   }

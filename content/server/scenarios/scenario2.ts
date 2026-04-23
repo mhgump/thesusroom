@@ -53,5 +53,4 @@ export const SCENARIO2_SCENARIO: ScenarioSpec = {
     { id: 'warning_instruction', text: '10 seconds to vote!', label: 'COMMAND' },
   ],
   scriptFactory: () => new Scenario2Script(),
-  initialVisibility: {},
 }

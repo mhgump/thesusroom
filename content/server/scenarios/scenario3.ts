@@ -37,5 +37,4 @@ export const SCENARIO3_SCENARIO: ScenarioSpec = {
   mapId: 'scenario3',
   instructionSpecs: [],
   scriptFactory: () => new Scenario3Script(),
-  initialVisibility: {},
 }

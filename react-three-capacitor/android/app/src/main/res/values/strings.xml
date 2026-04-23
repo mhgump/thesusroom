@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sus Rooms</string>
+    <string name="title_activity_main">Sus Rooms</string>
+    <string name="package_name">com.supercell.susrooms</string>
+    <string name="custom_url_scheme">com.supercell.susrooms</string>
+</resources>

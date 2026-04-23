@@ -1,75 +1,86 @@
-// Side-effect import registers the NPC type before the spec references it.
-import '../../../react-three-capacitor/server/src/npc/entities/StillDamager.js'
-
 import type { MapSpec } from '../../../react-three-capacitor/server/src/ScenarioRegistry.js'
-import type { WalkableArea } from '../../../react-three-capacitor/server/src/World.js'
+import type { WalkableArea, PhysicsSpec } from '../../../react-three-capacitor/server/src/World.js'
 
-// ── Geometry constants (must stay in sync with content/client/maps/demo.ts) ──
+const R1W = 1.2084, R1D = 1.2084
+const R2W = 1.2084, R2D = 0.8056
+const DOOR_WIDTH = 0.1611
 
-const R = 0.35  // CAPSULE_RADIUS — must match World.ts
+const R1Z = 0
+const R2Z = -1.0070
 
-const VIEWPORT_W = 20
-const CAMERA_ANGLE = 25 * (Math.PI / 180)
-const VIEWPORT_H = (VIEWPORT_W / (16 / 9)) / Math.cos(CAMERA_ANGLE)
+// ── Walkable rects (kept for AABB snap after door opens) ────────────────────
+const R1_RECT   = { cx: 0, cz: 0,       hw: 0.5760, hd: 0.5760 }
+const CONN_RECT = { cx: 0, cz: -0.6042, hw: 0.0524, hd: 0.0282 }
+const R2_RECT   = { cx: 0, cz: -1.0070, hw: 0.5760, hd: 0.3746 }
 
-const R1W = VIEWPORT_W * 0.75
-const R1H = VIEWPORT_H * 0.75
-const R2W = VIEWPORT_W * 0.25
-const R2H = VIEWPORT_H
-const R3W = VIEWPORT_W * 2.0
-const R3H = VIEWPORT_H * 2.0
-const R_SH_W = VIEWPORT_W * 0.25
-const R_SH_H = VIEWPORT_H
-const R_SR_W = VIEWPORT_W
-const R_SR_H = VIEWPORT_H
+export const DEFAULT_WALKABLE: WalkableArea = { rects: [R1_RECT] }
+const BOTH_ROOMS: WalkableArea             = { rects: [R1_RECT, CONN_RECT, R2_RECT] }
 
-const R2Z = -(R1H / 2 + R2H / 2)
-const R3Z = R2Z - (R2H / 2 + R3H / 2)
-const R_SH_Z = R1H / 2 + R_SH_H / 2
-const R_SR_Z = R_SH_Z + R_SH_H / 2 + R_SR_H / 2
+// ── Rapier physics geometry ─────────────────────────────────────────────────
+// Room edges (inner faces that capsules bounce off):
+//   Room 1: x ∈ [-0.6042, 0.6042], z ∈ [-0.6042, 0.6042]
+//   Room 2: x ∈ [-0.6042, 0.6042], z ∈ [-1.4098, -0.6042]
+// Shared boundary at z = -0.6042: door gap x ∈ [-0.08055, 0.08055]
 
-const DOOR_HW = R2W / 2 - R
-const EDGE1 = -(R1H / 2)
-const EDGE2 = R2Z - R2H / 2
-const EDGE3 = R1H / 2
-const EDGE4 = R_SH_Z + R_SH_H / 2
+const ROOM_HW  = R1W / 2        // 0.6042 — half-width, same for both rooms
+const R1_HD    = R1D / 2        // 0.6042 — room 1 half-depth
+const R2_HD    = R2D / 2        // 0.4028 — room 2 half-depth
+const R2_NORTH = R2Z - R2_HD   // -1.4098 — room 2 north inner face
+const DOOR_HW  = DOOR_WIDTH / 2 // 0.08055 — door half-width
+const WT       = 0.03           // collider half-thickness
 
-const ROOM3_CENTER_X = 0
-const ROOM3_CENTER_Z = R3Z
-const SOUTH_ROOM_CENTER_X = 0
-const SOUTH_ROOM_CENTER_Z = R_SR_Z
+// Derived positions
+const SOUTH_WALL_CZ = R1_HD + WT           //  0.6342  inner face at z= 0.6042
+const NORTH_WALL_CZ = R2_NORTH - WT        // -1.4398  inner face at z=-1.4098
+const DOOR_WALL_CZ  = -(R1_HD + WT)        // -0.6342  inner face at z=-0.6042
+const EAST_WALL_CX  = ROOM_HW + WT         //  0.6342  inner face at x= 0.6042
+const COMB_CZ       = (R1_HD + R2_NORTH) / 2  // -0.4028 — east/west wall center z
+const COMB_HD       = (R1_HD - R2_NORTH) / 2 + WT // 1.037  — east/west wall half-depth
+const DW_CX         = (ROOM_HW + DOOR_HW) / 2  //  0.34238 — door-wall segment center x
+const DW_HW         = (ROOM_HW - DOOR_HW) / 2  //  0.26183 — door-wall segment half-width
 
-const WALKABLE: WalkableArea = {
-  rects: [
-    { cx: 0, cz: 0,      hw: R1W / 2 - R,    hd: R1H / 2 - R },
-    { cx: 0, cz: R2Z,    hw: R2W / 2 - R,    hd: R2H / 2 - R },
-    { cx: 0, cz: R3Z,    hw: R3W / 2 - R,    hd: R3H / 2 - R },
-    { cx: 0, cz: R_SH_Z, hw: R_SH_W / 2 - R, hd: R_SH_H / 2 - R },
-    { cx: 0, cz: R_SR_Z, hw: R_SR_W / 2 - R, hd: R_SR_H / 2 - R },
-    { cx: 0, cz: EDGE1,  hw: DOOR_HW, hd: R },
-    { cx: 0, cz: EDGE2,  hw: DOOR_HW, hd: R },
-    { cx: 0, cz: EDGE3,  hw: DOOR_HW, hd: R },
-    { cx: 0, cz: EDGE4,  hw: DOOR_HW, hd: R },
+export const DEMO_PHYSICS: PhysicsSpec = {
+  walls: [
+    { cx: 0,           cz: SOUTH_WALL_CZ, hw: ROOM_HW + WT, hd: WT      }, // south
+    { cx:  EAST_WALL_CX, cz: COMB_CZ,    hw: WT,           hd: COMB_HD }, // east (full height)
+    { cx: -EAST_WALL_CX, cz: COMB_CZ,    hw: WT,           hd: COMB_HD }, // west (full height)
+    { cx: -DW_CX,       cz: DOOR_WALL_CZ, hw: DW_HW,       hd: WT      }, // door wall — left
+    { cx:  DW_CX,       cz: DOOR_WALL_CZ, hw: DW_HW,       hd: WT      }, // door wall — right
+    { cx: 0,           cz: NORTH_WALL_CZ, hw: ROOM_HW + WT, hd: WT     }, // north
   ],
+  doors: [
+    // Fills the gap in the door wall. Added to disabledDoors when opened.
+    { id: 'north_door', cx: 0, cz: DOOR_WALL_CZ, hw: DOOR_HW, hd: WT },
+  ],
+}
+
+// ── Room detection ────────────────────────────────────────────────────────────
+function demoGetRoomAtPosition(x: number, z: number): string | null {
+  const rooms = [
+    { id: 'room1', cx: 0, cz: R1Z,  hw: R1W / 2, hd: R1D / 2 },
+    { id: 'room2', cx: 0, cz: R2Z,  hw: R2W / 2, hd: R2D / 2 },
+  ]
+  for (const r of rooms) {
+    if (Math.abs(x - r.cx) <= r.hw && Math.abs(z - r.cz) <= r.hd) return r.id
+  }
+  return null
 }
 
 export const DEMO_MAP: MapSpec = {
   id: 'demo',
-  walkable: WALKABLE,
-  npcs: [
-    {
-      id: 'room3-sentinel',
-      type: 'still-damager',
-      spawnX: ROOM3_CENTER_X,
-      spawnZ: ROOM3_CENTER_Z,
-      trigger: 'each-action',
-      allowedActions: ['dealDamage'],
-      allowedHelpers: ['getPosition', 'getPlayersInRange'],
-      ux: { has_health: false },
-    },
+  walkable: DEFAULT_WALKABLE,
+  physics: DEMO_PHYSICS,
+  walkableVariants: [
+    { triggerIds: ['door_open'], walkable: BOTH_ROOMS },
   ],
-  voteRegions: [
-    { id: 'vote_yes', label: 'Yes', color: '#2ecc71', x: SOUTH_ROOM_CENTER_X - 5, z: SOUTH_ROOM_CENTER_Z, radius: 3 },
-    { id: 'vote_no',  label: 'No',  color: '#e74c3c', x: SOUTH_ROOM_CENTER_X + 5, z: SOUTH_ROOM_CENTER_Z, radius: 3 },
+  doorVariants: [
+    { triggerIds: ['door_open'], doorIds: ['north_door'] },
   ],
+  npcs: [],
+  voteRegions: [],
+  geometry: [
+    { id: 'north_door', x: 0, z: -0.6042, width: 0.1611, depth: 0.0242, height: 0.0242, color: '#555555' },
+    { id: 'door_open',  x: 0, z: -0.6042, width: 0.001,  depth: 0.001,  height: 0.001,  color: '#111111' },
+  ],
+  getRoomAtPosition: demoGetRoomAtPosition,
 }

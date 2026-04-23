@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../store/gameStore'
@@ -7,34 +7,29 @@ import { playButtonPress } from '../sounds'
 import type { ButtonSpec, ButtonState } from '../game/GameSpec'
 
 const PRESS_LERP_SPEED = 14
+const CAP_ABOVE_RING = 0.06   // cap top above ring top when idle
+const CAP_BELOW_RING = 0.04   // cap top below ring top when pressed
 
-function ringOpacity(state: ButtonState, occupancy: number): number {
-  if (state === 'pressed') return 0.95
-  if (state === 'cooldown') return 0.3
-  if (state === 'disabled') return 0.15
-  return occupancy > 0 ? 0.75 : 0.5
+function capTargetY(ringHeight: number, raisedHeight: number, isDown: boolean): number {
+  const capHalf = raisedHeight / 2
+  return isDown
+    ? ringHeight - CAP_BELOW_RING - capHalf
+    : ringHeight + CAP_ABOVE_RING - capHalf
 }
 
 function SingleButton({ spec }: { spec: ButtonSpec }) {
   const platformRef = useRef<THREE.Mesh>(null)
   const platformMatRef = useRef<THREE.MeshLambertMaterial>(null)
-  const ringMatRef = useRef<THREE.MeshBasicMaterial>(null)
   const prevStateRef = useRef<ButtonState>('idle')
   const localPressRef = useRef(false)
-
-  const ringGeo = useMemo(
-    () => new THREE.RingGeometry(spec.ringInnerRadius, spec.ringOuterRadius, 64),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [spec.ringInnerRadius, spec.ringOuterRadius],
-  )
+  const ringHeight = (spec.raisedHeight * 2) / 3
 
   useFrame((_, delta) => {
     const store = useGameStore.getState()
     const runtime = store.buttonStates[spec.id]
     if (!runtime) return
-    const { state, occupancy } = runtime
+    const { state } = runtime
 
-    // Local player press detection — immediate tactile response.
     if (spec.enableClientPress) {
       const { x: px, z: pz } = localPlayerPos
       const wasLocal = localPressRef.current
@@ -55,39 +50,36 @@ function SingleButton({ spec }: { spec: ButtonSpec }) {
     }
     prevStateRef.current = state
 
-    // Animate platform Y toward idle/pressed target.
     if (platformRef.current) {
-      const targetY = (state === 'pressed' || state === 'cooldown') ? 0.01 : spec.raisedHeight / 2
+      const localPressing = store.localButtonPressing[spec.id] ?? false
+      const isDown = state === 'pressed' || state === 'cooldown' || localPressing
+      const targetY = capTargetY(ringHeight, spec.raisedHeight, isDown)
       const curr = platformRef.current.position.y
       platformRef.current.position.y = curr + (targetY - curr) * Math.min(1, delta * PRESS_LERP_SPEED)
     }
 
-    // Update platform color for disabled state.
     if (platformMatRef.current) {
       platformMatRef.current.color.set(state === 'disabled' ? '#555555' : spec.color)
     }
-
-    // Update ring opacity based on state + occupancy.
-    if (ringMatRef.current) {
-      ringMatRef.current.opacity = ringOpacity(state, occupancy)
-    }
   })
+
+  const initialDown = spec.initialState === 'pressed' || spec.initialState === 'cooldown'
 
   return (
     <group position={[spec.x, 0, spec.z]}>
-      {/* Flat ring lying on the floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} geometry={ringGeo}>
-        <meshBasicMaterial
-          ref={ringMatRef}
-          color={spec.ringColor}
-          transparent
-          opacity={0.5}
-          side={THREE.DoubleSide}
-        />
+      {/* Outer ring wall — open-ended cylinder, no top/bottom faces */}
+      <mesh position={[0, ringHeight / 2, 0]}>
+        <cylinderGeometry args={[spec.ringOuterRadius, spec.ringOuterRadius, ringHeight, 32, 1, true]} />
+        <meshLambertMaterial color={spec.ringColor} />
       </mesh>
-      {/* Raised platform — animates down when pressed */}
-      <mesh ref={platformRef} position={[0, spec.raisedHeight / 2, 0]}>
-        <cylinderGeometry args={[spec.platformRadius, spec.platformRadius * 1.15, spec.raisedHeight, 32]} />
+      {/* Top annular face — seals the ring top, inner edge flush with cap */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, ringHeight, 0]}>
+        <ringGeometry args={[spec.platformRadius, spec.ringOuterRadius, 32]} />
+        <meshLambertMaterial color={spec.ringColor} />
+      </mesh>
+      {/* Button cap — slides up through ring when idle, slightly below ring top when pressed */}
+      <mesh ref={platformRef} position={[0, capTargetY(ringHeight, spec.raisedHeight, initialDown), 0]}>
+        <cylinderGeometry args={[spec.platformRadius, spec.platformRadius, spec.raisedHeight, 32]} />
         <meshLambertMaterial ref={platformMatRef} color={spec.color} />
       </mesh>
     </group>

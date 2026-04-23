@@ -1,0 +1,18 @@
+platforms:
+  ios:
+    targets:
+      App:
+        plist:
+          - replace:
+              UISupportedInterfaceOrientations:
+                - UIInterfaceOrientationLandscapeLeft
+                - UIInterfaceOrientationLandscapeRight
+              UISupportedInterfaceOrientations~ipad:
+                - UIInterfaceOrientationLandscapeLeft
+                - UIInterfaceOrientationLandscapeRight
+  android:
+    manifest:
+      - file: AndroidManifest.xml
+        target: manifest/application/activity[@android:name='.MainActivity']
+        attrs:
+          android:screenOrientation: sensorLandscape

@@ -67,6 +67,17 @@ export function useWebSocket(): void {
           updateServerTime(msg.endTime)
           pushRemotePosition(msg.playerId, msg.x, msg.z, msg.endTime)
           pushRemoteEvents(msg.playerId, msg.events, msg.startTime, msg.endTime)
+          // Apply damage directly if the local player is the target (script-triggered damage arrives this way)
+          {
+            const localId = useGameStore.getState().playerId
+            if (localId) {
+              for (const event of msg.events) {
+                if (event.type === 'damage' && event.targetId === localId) {
+                  useGameStore.getState().applyDamage(event.targetId, event.newHp)
+                }
+              }
+            }
+          }
           break
 
         case 'game_event': {
@@ -82,7 +93,7 @@ export function useWebSocket(): void {
           store.showRule({
             type: 'show_rule',
             eventId: `instruction-${Date.now()}`,
-            rules: [{ label: msg.label, text: msg.text }],
+            rules: msg.lines,
           })
           break
 

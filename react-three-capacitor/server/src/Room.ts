@@ -1,12 +1,13 @@
 import WebSocket from 'ws'
 import type { ServerMessage } from './types.js'
 import { World } from './World.js'
-import type { WalkableArea } from './World.js'
+import type { WalkableArea, PhysicsSpec } from './World.js'
 import { NpcManager } from './npc/NpcManager.js'
 import type { NpcSpec } from './npc/NpcSpec.js'
 import { GameScriptManager } from './GameScriptManager.js'
 import type { GameSpec, FloorGeometrySpec } from './GameSpec.js'
-import type { GameScript } from './GameScript.js'
+import type { GameScript, ActiveVoteRegionChangeEvent } from './GameScript.js'
+import type { BotSpec } from './bot/BotTypes.js'
 
 const NPC_COLOR = '#888888'
 
@@ -48,10 +49,11 @@ export class Room {
   private npcManager: NpcManager
   private gameScriptManager: GameScriptManager | null = null
   private readonly geometrySpecs: FloorGeometrySpec[]
+  private readonly voteRegionChangeCallbacks: Array<(event: ActiveVoteRegionChangeEvent) => void> = []
 
-  constructor(roomId: string, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, gameScript?: GameScript, onCloseScenario?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = []) {
+  constructor(roomId: string, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, gameScript?: GameScript, onCloseScenario?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [], getRoomAtPosition?: (x: number, z: number) => string | null, spawnBotFn?: (spec: BotSpec) => void, physics?: PhysicsSpec, doorVariants: Array<{ triggerIds: string[]; doorIds: string[] }> = []) {
     this.roomId = roomId
-    this.world = new World(walkable)
+    this.world = physics ? World.withPhysics(walkable, physics) : new World(walkable)
     this.geometrySpecs = gameSpec?.geometry ?? []
     this.npcManager = new NpcManager(this.world, (npcId, x, z, events, time) => {
       this.broadcast({ type: 'player_update', playerId: npcId, x, z, events, startTime: time, endTime: time })
@@ -65,19 +67,36 @@ export class Room {
         gameSpec.instructionSpecs,
         gameSpec.geometry,
         gameSpec.initialVisibility,
-        (playerId, text, label) => this.sendToPlayer(playerId, { type: 'instruction', text, label: label as 'RULE' | 'COMMAND' | 'FACT' }),
+        (playerId, lines) => this.sendToPlayer(playerId, { type: 'instruction', lines }),
         (playerId) => this.removePlayer(playerId),
         onCloseScenario ?? (() => {}),
         (playerId, updates) => this.sendToPlayer(playerId, { type: 'geometry_state', updates }),
         walkableVariants,
         (area) => { this.world.setWalkable(area); this.world.snapAllPlayers() },
+        doorVariants,
+        (doorIds) => { for (const id of doorIds) this.world.openDoor(id) },
         gameSpec.buttons,
         (id, state, occupancy) => this.broadcast({ type: 'button_state', id, state, occupancy }),
         (id, changes) => this.broadcast({ type: 'button_config', id, changes }),
         (playerId, buttons) => this.sendToPlayer(playerId, { type: 'button_init', buttons }),
         (playerId, text) => this.sendToPlayer(playerId, { type: 'notification', text }),
+        (targetId, x, z, event, time) => {
+          this.broadcast({ type: 'player_update', playerId: targetId, x, z, events: [event], startTime: time, endTime: time })
+        },
+        getRoomAtPosition,
+        spawnBotFn,
+        (event) => { for (const cb of this.voteRegionChangeCallbacks) cb(event) },
+        (assignments) => this.broadcast({ type: 'vote_assignment_change', assignments: Object.fromEntries(assignments) }),
       )
     }
+  }
+
+  setCallbackOnVoteRegionsChange(callback: (event: ActiveVoteRegionChangeEvent) => void): void {
+    this.voteRegionChangeCallbacks.push(callback)
+  }
+
+  clearCallbacks(): void {
+    this.voteRegionChangeCallbacks.length = 0
   }
 
   processMove(playerId: string, seq: number, jx: number, jz: number, dt: number): void {
@@ -200,4 +219,12 @@ export class Room {
     const p = this.players.get(playerId)
     if (p?.ws.readyState === WebSocket.OPEN) p.ws.send(JSON.stringify(msg))
   }
+}
+
+export function SetCallbackOnVoteRegionsChange(room: Room, callback: (event: ActiveVoteRegionChangeEvent) => void): void {
+  room.setCallbackOnVoteRegionsChange(callback)
+}
+
+export function ClearCallbacks(room: Room): void {
+  room.clearCallbacks()
 }

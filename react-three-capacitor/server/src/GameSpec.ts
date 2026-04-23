@@ -3,6 +3,15 @@ export type RuleLabel = 'RULE' | 'COMMAND' | 'FACT'
 
 export type ButtonState = 'idle' | 'pressed' | 'cooldown' | 'disabled'
 
+// Default visual dimensions — spread into a ButtonSpec, then override per-scenario as needed.
+export const DEFAULT_BUTTON_DIMENSIONS = {
+  platformRadius: 1.2,
+  ringOuterRadius: 1.32,  // ~10% wider than platformRadius
+  ringInnerRadius: 1.2,   // = platformRadius (no gap)
+  raisedHeight: 0.36,
+  triggerRadius: 1.5,
+}
+
 export interface ButtonConfig {
   requiredPlayers: number
   holdAfterRelease: boolean
@@ -54,7 +63,8 @@ export interface GameSpec {
   voteRegions: VoteRegionSpec[]
   geometry: FloorGeometrySpec[]
   buttons: ButtonSpec[]
-  // Initial visibility per element id (vote regions and geometry). Geometry defaults to true; vote regions to false.
+  // Initial visibility per geometry element id. Geometry defaults to visible (true) if not specified.
+  // Vote regions always start inactive.
   initialVisibility: Record<string, boolean>
 }
 

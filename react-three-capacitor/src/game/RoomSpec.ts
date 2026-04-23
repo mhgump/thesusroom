@@ -43,6 +43,8 @@ export interface RoomSpec {
   // The camera is constrained to this rect while the player is in this room.
   // If absent, defaults to a point at the room centre (camera stays fixed).
   cameraRect?: { xMin: number; xMax: number; zMin: number; zMax: number }
+  // Walls to suppress from rendering (e.g. shared walls with an adjacent room to avoid double thickness).
+  disabledWalls?: Wall[]
   floorTextures?: FloorTextureSpec[]
   outsideTextures?: OutsideTextureSpec[]
   geometry?: unknown[]      // future in-room objects

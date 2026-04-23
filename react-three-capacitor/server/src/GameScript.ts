@@ -1,27 +1,22 @@
 import type { ButtonConfig, ButtonState } from './GameSpec.js'
+import type { BotSpec } from './bot/BotTypes.js'
 
-export interface ToggleVoteRegionOnEvent {
-  type: 'toggle_vote_region_on'
+export interface ActivateVoteRegionEvent {
+  type: 'activate_vote_region'
   regionId: string
 }
 
-export interface ToggleVoteRegionOffEvent {
-  type: 'toggle_vote_region_off'
-  regionId: string
+export interface ActiveVoteRegionChangeEvent {
+  type: 'active_vote_region_change'
+  activeIds: string[]
 }
-
-export interface InstructionEvent {
-  type: 'instruction'
-  targetPlayerId: string
-  specId: string
-}
-
-export type GameScriptEvent = ToggleVoteRegionOnEvent | ToggleVoteRegionOffEvent | InstructionEvent
 
 // All capabilities available to a game script.
 export interface GameScriptContext {
   // Send an instruction (looked up by spec id) to a specific player.
   sendInstruction(playerId: string, specId: string): void
+  // Send multiple instructions as a single event to a specific player.
+  sendInstructions(playerId: string, specIds: string[]): void
   // Enable or disable a vote region for position-tracking purposes.
   toggleVoteRegion(regionId: string, active: boolean): void
   // Register a callback that fires whenever the player→vote-region assignment
@@ -57,6 +52,14 @@ export interface GameScriptContext {
   setButtonState(buttonId: string, state: ButtonState): void
   // Send a transient notification toast to the specified players (all players if omitted).
   sendNotification(text: string, playerIds?: string[]): void
+  // Apply damage to a player. Eliminates the player if HP reaches 0.
+  applyDamage(playerId: string, amount: number): void
+  // Register a callback that fires whenever a player transitions into a new room.
+  onPlayerEnterRoom(callback: (playerId: string, roomId: string) => void): void
+  // Spawn a bot that connects to this scenario as a player, driven by the given spec.
+  spawnBot(spec: BotSpec): void
+  // Make a specific door collider solid again for one player (others unaffected).
+  closeDoorForPlayer(playerId: string, doorId: string): void
 }
 
 // Interface that a game script must implement.

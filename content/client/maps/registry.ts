@@ -1,15 +1,19 @@
 import type { WorldSpec, WalkableArea, RoomWorldPos } from '../../../react-three-capacitor/src/game/WorldSpec'
 import type { CameraConstraintShapes } from '../../../react-three-capacitor/src/game/CameraConstraint'
 import type { GameSpec } from '../../../react-three-capacitor/src/game/GameSpec'
+import type { PhysicsSpec } from '../../../react-three-capacitor/src/game/World'
 
 export interface ClientMap {
   worldSpec: WorldSpec
   roomPositions: Map<string, RoomWorldPos>
   cameraShapes: CameraConstraintShapes
   walkable: WalkableArea
+  physics?: PhysicsSpec
   gameSpec: GameSpec
   getRoomAtPosition: (x: number, z: number) => string
   walkableVariants?: Array<{ triggerIds: string[]; walkable: WalkableArea }>
+  doorVariants?: Array<{ triggerIds: string[]; doorIds: string[] }>
+  roomEntryDoorClose?: Array<{ roomId: string; doorIds: string[] }>
 }
 
 // Computed once at module load from the page URL — stable for the session.

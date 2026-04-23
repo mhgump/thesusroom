@@ -6,8 +6,9 @@ import type { RemotePlayerInfo } from '../store/gameStore'
 import { getInterpolatedPos, consumeRemoteEvents } from '../network/positionBuffer'
 import { CapsuleFallback } from './animation/CapsuleFallback'
 import type { AnimationState } from '../game/World'
+import { CURRENT_MAP } from '../../../content/client/maps'
 
-const CAPSULE_CENTER_Y = 0.35 + 1.0 / 2
+const CAPSULE_CENTER_Y = 0.0282 + 0.0806 / 2
 
 // Positions are interpolated at (estimatedServerTime − DELAY_MS).
 // Events are consumed once max(receiptTime, serverStartTime + DELAY_MS) is reached,
@@ -26,8 +27,26 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
 
     const pos = getInterpolatedPos(id, DELAY_MS)
     if (pos !== null) {
-      g.visible = true
       g.position.set(pos.x, CAPSULE_CENTER_Y, pos.z)
+      // Hide remote players who are inside a room not visible from the local player's room.
+      // Players in corridors (not inside any room floor) are always shown.
+      const { currentRoomId } = useGameStore.getState()
+      const visibleRooms = new Set([currentRoomId, ...(CURRENT_MAP.worldSpec.visibility[currentRoomId] ?? [])])
+      let visible = true
+      for (const room of CURRENT_MAP.worldSpec.rooms) {
+        if (visibleRooms.has(room.id)) continue
+        const roomPos = CURRENT_MAP.roomPositions.get(room.id)
+        if (!roomPos) continue
+        const hw = room.floorWidth / 2
+        const hd = room.floorDepth / 2
+        if (Math.abs(pos.x - roomPos.x) <= hw && Math.abs(pos.z - roomPos.z) <= hd) {
+          visible = false
+          break
+        }
+      }
+      g.visible = visible
+    } else {
+      g.visible = false
     }
 
     const events = consumeRemoteEvents(id, DELAY_MS)

@@ -19,7 +19,6 @@ import type { Vec2 } from '../game/CameraConstraint';
 import {
   CAMERA_ANGLE,
   CAMERA_DIST,
-  VIEWPORT_W,
 } from '../game/constants';
 
 // Exponential smoothing time constants (seconds) for camera follow per axis.
@@ -33,7 +32,7 @@ export function GameScene() {
   const camTargetRef = useRef<Vec2 | null>(null);
 
   useEffect(() => {
-    const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 300);
+    const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 10);
     ortho.position.set(0, CAMERA_DIST * Math.cos(CAMERA_ANGLE), CAMERA_DIST * Math.sin(CAMERA_ANGLE));
     ortho.up.set(0, 1, 0);
     ortho.lookAt(0, 0, 0);
@@ -42,8 +41,10 @@ export function GameScene() {
 
   useEffect(() => {
     if (!(camera instanceof THREE.OrthographicCamera)) return;
-    const halfW = VIEWPORT_W / 2;
-    const halfH = halfW / (size.width / size.height);
+    // halfH is fixed so that screen height = 1 world unit of ground-plane distance.
+    // Ground depth = 2*halfH/cos(θ) = 1  =>  halfH = cos(θ)/2
+    const halfH = Math.cos(CAMERA_ANGLE) / 2;
+    const halfW = halfH * (size.width / size.height);
     camera.left = -halfW; camera.right = halfW;
     camera.top = halfH;   camera.bottom = -halfH;
     camera.updateProjectionMatrix();
@@ -81,7 +82,7 @@ export function GameScene() {
   return (
     <>
       <ambientLight intensity={0.65} />
-      <directionalLight position={[6, 12, 8]} intensity={0.75} castShadow />
+      <directionalLight position={[0.48, 0.97, 0.64]} intensity={0.75} castShadow />
       <BgPlane />
       {roomsToRender.map(room => {
         const pos = CURRENT_MAP.roomPositions.get(room.id)!;
@@ -96,7 +97,7 @@ export function GameScene() {
       })}
       <GeometryLayer />
       <ButtonLayer />
-      <VoteRegions />
+      <VoteRegions visibleIds={visibleIds} />
       <Player />
       <RemotePlayers />
       <PlayerHudUpdater />

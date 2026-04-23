@@ -3,17 +3,16 @@ import type { GameSpec } from '../../../react-three-capacitor/src/game/GameSpec'
 import type { ClientMap } from './registry'
 import { computeRoomPositions, computeWalkableArea, getRoomAtPosition, validateWorldSpec } from '../../../react-three-capacitor/src/game/WorldSpec'
 import { buildCameraConstraintShapes } from '../../../react-three-capacitor/src/game/CameraConstraint'
-import { VIEWPORT_W, VIEWPORT_DEPTH } from '../../../react-three-capacitor/src/game/constants'
 
-const CAPSULE_RADIUS = 0.35
+const CAPSULE_RADIUS = 0.0282
 
 export const S2_WORLD_SPEC: WorldSpec = {
   rooms: [
     {
       id: 'main', name: 'Scenario 2',
-      floorWidth: VIEWPORT_W,
-      floorDepth: VIEWPORT_DEPTH,
-      barrierHeight: 0.3, barrierThickness: 0.3,
+      floorWidth: 1.6112,
+      floorDepth: 1.0,
+      barrierHeight: 0.0242, barrierThickness: 0.0242,
       cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
     },
   ],
@@ -31,9 +30,9 @@ function getS2RoomAtPosition(x: number, z: number): string {
 }
 
 // Vote positions matching content/server/maps/scenario2.ts
-const GRID_X = VIEWPORT_W / 4
-const GRID_Z = VIEWPORT_DEPTH / 4
-const VOTE_R = 1.8
+const GRID_X = 0.4028
+const GRID_Z = 0.25
+const VOTE_R = 0.1450
 
 export const S2_GAME_SPEC: GameSpec = {
   instructionSpecs: [],
@@ -44,7 +43,6 @@ export const S2_GAME_SPEC: GameSpec = {
     { id: 's2_v4', label: 'D', color: '#f1c40f', x: +GRID_X, z: +GRID_Z, radius: VOTE_R },
   ],
   geometry: [],
-  initialVisibility: {},
 }
 
 export const SCENARIO2_CLIENT_MAP: ClientMap = {

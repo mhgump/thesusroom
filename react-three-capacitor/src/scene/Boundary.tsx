@@ -5,8 +5,8 @@ import { Textures } from '../game/textures';
 
 // Large black-with-stripes plane covering everything outside all rooms.
 // Rendered once at the GameScene level, below all floor planes.
-const BG_HALF = 200
-const BG_TILE = 6
+const BG_HALF = 16
+const BG_TILE = 0.5
 
 export function BgPlane() {
   const texture = useMemo(() => {

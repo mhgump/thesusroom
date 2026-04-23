@@ -2,8 +2,8 @@ import { registerNpcType } from '../NpcEntity.js'
 import type { NpcEntity, NpcContext } from '../NpcEntity.js'
 import type { NpcSpec } from '../NpcSpec.js'
 
-// TOUCH_RADIUS must match World.ts: CAPSULE_RADIUS * 2 + 0.1
-const TOUCH_RADIUS = 0.35 * 2 + 0.1
+// TOUCH_RADIUS must match World.ts: CAPSULE_RADIUS * 2 + 0.0081
+const TOUCH_RADIUS = 0.0282 * 2 + 0.0081
 
 // Stands still at spawn. Deals 1 damage to any player on first contact.
 // Damage re-arms per player once they leave touch range.

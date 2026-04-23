@@ -10,17 +10,17 @@ import { consumeMoveAck } from '../network/positionBuffer'
 import { localPlayerPos } from '../game/localPlayerPos'
 import { CURRENT_MAP } from '../../../content/client/maps'
 import { hudRegistry } from './hudRegistry'
-import { VIEWPORT_W } from '../game/constants'
+import { CAMERA_ANGLE } from '../game/constants'
 
-const HEART_WORLD_SIZE = 0.35
+const HEART_WORLD_SIZE = 0.0282
 const BASE_HEART_PX = 20
 const _hv = new THREE.Vector3()
 
-const CAPSULE_RADIUS = 0.35
-const CAPSULE_LENGTH = 1.0
+const CAPSULE_RADIUS = 0.0282
+const CAPSULE_LENGTH = 0.0806
 const CAPSULE_CENTER_Y = CAPSULE_RADIUS + CAPSULE_LENGTH / 2
 
-const CORRECTION_THRESHOLD = 0.02
+const CORRECTION_THRESHOLD = 0.0016
 const INPUT_HISTORY_MAX = 180 // ~3 s at 60 fps
 
 interface InputRecord { seq: number; jx: number; jz: number; dt: number }
@@ -33,6 +33,7 @@ export function Player() {
   const inputHistory = useRef<InputRecord[]>([])
   const animStateRef = useRef<AnimationState>('IDLE')
   const appliedWalkableRef = useRef<import('../game/WorldSpec').WalkableArea | null>(null)
+  const appliedDoorsRef = useRef<Set<string>>(new Set())
 
   const localColor = useGameStore((s) => s.localColor)
   const activeWalkable = useGameStore((s) => s.activeWalkable)
@@ -45,23 +46,41 @@ export function Player() {
     if (!playerId || !groupRef.current) return
 
     if (initializedForRef.current !== playerId) {
-      const w = new World(CURRENT_MAP.walkable, ['touched'])
+      const w = CURRENT_MAP.physics
+        ? World.withPhysics(CURRENT_MAP.walkable, CURRENT_MAP.physics, ['touched'])
+        : new World(CURRENT_MAP.walkable, ['touched'])
       w.addPlayer(playerId, store.initialPosition.x, store.initialPosition.z)
       worldRef.current = w
       initializedForRef.current = playerId
       seqRef.current = 0
       inputHistory.current = []
       animStateRef.current = 'IDLE'
-      appliedWalkableRef.current = null  // force re-apply after init
+      appliedWalkableRef.current = null
+      appliedDoorsRef.current = new Set()
     }
     const world = worldRef.current!
 
-    // ── Sync walkable area when it changes ───────────────────────────────────
+    // ── Sync walkable area when it changes (AABB mode) ───────────────────────
     const currentWalkable = store.activeWalkable ?? CURRENT_MAP.walkable
     if (currentWalkable !== appliedWalkableRef.current) {
       world.setWalkable(currentWalkable)
       world.snapPlayer(playerId)
       appliedWalkableRef.current = currentWalkable
+    }
+
+    // ── Sync door state when geometry visibility changes (Rapier mode) ───────
+    if (CURRENT_MAP.doorVariants?.length) {
+      const vis = store.geometryVisibility
+      for (const v of CURRENT_MAP.doorVariants) {
+        if (v.triggerIds.every(id => vis[id] === true)) {
+          for (const doorId of v.doorIds) {
+            if (!appliedDoorsRef.current.has(doorId)) {
+              appliedDoorsRef.current.add(doorId)
+              world.openDoor(doorId)
+            }
+          }
+        }
+      }
     }
 
     // ── 1. Apply server correction ───────────────────────────────────────────
@@ -121,9 +140,6 @@ export function Player() {
     localPlayerPos.x = player.x
     localPlayerPos.z = player.z
 
-    // Heart overlay: project this frame's position through the camera GameScene just moved.
-    // camera.updateMatrixWorld() is needed because Three.js only syncs matrixWorldInverse
-    // during gl.render(); without it the projection uses last frame's matrix.
     const heartDiv = hudRegistry.get('__local__')
     if (heartDiv) {
       const { camera, size } = state
@@ -132,7 +148,7 @@ export function Player() {
         _hv.set(player.x, 0, player.z).project(camera)
         const sx = (_hv.x * 0.5 + 0.5) * size.width
         const sy = (-_hv.y * 0.5 + 0.5) * size.height
-        const scale = (HEART_WORLD_SIZE * (size.width / VIEWPORT_W)) / BASE_HEART_PX
+        const scale = (HEART_WORLD_SIZE * size.height / Math.cos(CAMERA_ANGLE)) / BASE_HEART_PX
         heartDiv.style.transform = `translate(${sx}px,${sy}px) translate(-50%,-50%) scale(${scale})`
         if (heartDiv.style.display === 'none') heartDiv.style.display = ''
       }
@@ -140,6 +156,13 @@ export function Player() {
 
     const newRoomId = CURRENT_MAP.getRoomAtPosition(player.x, player.z)
     if (newRoomId !== localPlayerPos.roomId) {
+      if (CURRENT_MAP.roomEntryDoorClose && newRoomId) {
+        for (const entry of CURRENT_MAP.roomEntryDoorClose) {
+          if (entry.roomId === newRoomId) {
+            for (const doorId of entry.doorIds) world.closeDoorForPlayer(playerId, doorId)
+          }
+        }
+      }
       localPlayerPos.roomId = newRoomId
       store.setCurrentRoomId(newRoomId)
     }
