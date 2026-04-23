@@ -1,4 +1,4 @@
-import type { RoomSpec, Wall } from './RoomSpec'
+import type { RoomSpec, Wall } from './RoomSpec.js'
 
 // Walkable area for physics — precomputed rects, already inset by capsule radius.
 export interface WalkableRect { cx: number; cz: number; hw: number; hd: number }

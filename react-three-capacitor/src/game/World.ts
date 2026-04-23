@@ -1,5 +1,7 @@
 import type RAPIER_TYPE from '@dimforge/rapier2d-compat'
-import type { WalkableArea } from './WorldSpec'
+import type { WalkableArea } from './WorldSpec.js'
+
+export type { WalkableArea, WalkableRect } from './WorldSpec.js'
 
 export type AnimationState = 'IDLE' | 'WALKING'
 export type WorldEventType = 'update_animation_state' | 'touched' | 'damage'
@@ -30,15 +32,17 @@ export interface WorldPlayerState {
   z: number
   animState: AnimationState
   hp: 0 | 1 | 2
+  vx: number  // last frame movement delta, used to disambiguate push-out direction
+  vz: number
 }
 
 // Rapier physics geometry — when provided, replaces AABB collision.
 export interface PhysicsWall { cx: number; cz: number; hw: number; hd: number }
-export interface PhysicsToggle { id: string; cx: number; cz: number; hw: number; hd: number }
-export interface PhysicsSpec { walls: PhysicsWall[]; toggles: PhysicsToggle[] }
+export interface PhysicsGeometry { id: string; cx: number; cz: number; hw: number; hd: number }
+export interface PhysicsSpec { walls: PhysicsWall[]; geometry: PhysicsGeometry[] }
 
-const MOVE_SPEED = 0.645    // must match server/src/World.ts
-const CAPSULE_RADIUS = 0.0282 // must match server/src/World.ts
+const MOVE_SPEED = 0.645
+const CAPSULE_RADIUS = 0.0282
 const ANIM_THRESHOLD = 0.05
 const TOUCH_RADIUS = CAPSULE_RADIUS * 2 + 0.0081
 
@@ -73,8 +77,9 @@ export class World {
   private controller: RAPIER_TYPE.KinematicCharacterController | null = null
   private charBodies: Map<string, CharBody> = new Map()
   private toggleColliders: Map<string, RAPIER_TYPE.Collider> = new Map()
-  private globalHidden: Set<string> = new Set()
-  private playerSolid: Map<string, Set<string>> = new Map()
+  private physicsGeomSpecs: Map<string, PhysicsGeometry> = new Map()
+  private geometryState: Map<string, boolean> = new Map() // true=on/solid (default), false=off/passable
+  private playerGeomOverride: Map<string, Map<string, boolean>> = new Map()
 
   constructor(walkable: WalkableArea, disabledEvents: WorldEventType[] = []) {
     this.walkable = walkable
@@ -101,46 +106,123 @@ export class World {
       this.rapierWorld.createCollider(desc, body)
     }
 
-    for (const toggle of physics.toggles) {
+    for (const geom of physics.geometry) {
       const body = this.rapierWorld.createRigidBody(R.RigidBodyDesc.fixed())
-      const desc = R.ColliderDesc.cuboid(toggle.hw, toggle.hd).setTranslation(toggle.cx, toggle.cz)
+      const desc = R.ColliderDesc.cuboid(geom.hw, geom.hd).setTranslation(geom.cx, geom.cz)
       const collider = this.rapierWorld.createCollider(desc, body)
-      this.toggleColliders.set(toggle.id, collider)
+      this.toggleColliders.set(geom.id, collider)
+      this.physicsGeomSpecs.set(geom.id, geom)
     }
 
     this.controller = this.rapierWorld.createCharacterController(0.0)
     this.rapierWorld.step()
   }
 
-  setGeometryVisible(id: string, visible: boolean): void {
-    if (visible) this.globalHidden.delete(id)
-    else this.globalHidden.add(id)
+  toggleGeometryOn(id: string, playerId?: string): void {
+    if (playerId !== undefined) {
+      if (!this.playerGeomOverride.has(playerId)) this.playerGeomOverride.set(playerId, new Map())
+      this.playerGeomOverride.get(playerId)!.set(id, true)
+      this.resolveOverlap(playerId, id)
+    } else {
+      this.geometryState.set(id, true)
+      for (const pid of this.players.keys()) this.resolveOverlap(pid, id)
+    }
   }
-  setGeometryVisibleForPlayer(playerId: string, id: string, visible: boolean): void {
-    if (!this.playerSolid.has(playerId)) this.playerSolid.set(playerId, new Set())
-    if (visible) this.playerSolid.get(playerId)!.add(id)
-    else this.playerSolid.get(playerId)!.delete(id)
+
+  toggleGeometryOff(id: string, playerId?: string): void {
+    if (playerId !== undefined) {
+      if (!this.playerGeomOverride.has(playerId)) this.playerGeomOverride.set(playerId, new Map())
+      this.playerGeomOverride.get(playerId)!.set(id, false)
+    } else {
+      this.geometryState.set(id, false)
+    }
+  }
+
+  // When geometry turns solid, eject any player overlapping it.
+  // Push direction: velocity-based (direction player was moving), then reverse, then toward home rect
+  // center. Validity: pushed position must be in the walkable area and outside the collider.
+  private resolveOverlap(playerId: string, geomId: string): void {
+    const player = this.players.get(playerId)
+    const spec = this.physicsGeomSpecs.get(geomId)
+    if (!player || !spec) return
+
+    const ox = (spec.hw + CAPSULE_RADIUS) - Math.abs(player.x - spec.cx)
+    const oz = (spec.hd + CAPSULE_RADIUS) - Math.abs(player.z - spec.cz)
+    if (ox <= 0 || oz <= 0) return  // no overlap
+
+    // Clear positions on each face (player center just outside the collider + capsule radius).
+    const clearNegX = spec.cx - spec.hw - CAPSULE_RADIUS
+    const clearPosX = spec.cx + spec.hw + CAPSULE_RADIUS
+    const clearNegZ = spec.cz - spec.hd - CAPSULE_RADIUS
+    const clearPosZ = spec.cz + spec.hd + CAPSULE_RADIUS
+
+    // Pick minimum-penetration axis; use velocity to select primary/reverse targets on that axis.
+    // Using the face-clear positions (not just oz/ox) ensures the push is always large enough
+    // to exit the geometry regardless of which face we're heading toward.
+    let primaryX = 0, primaryZ = 0, reverseX = 0, reverseZ = 0
+    if (ox <= oz) {
+      const goNeg = player.vx < 0 || (player.vx === 0 && player.x <= spec.cx)
+      primaryX = (goNeg ? clearNegX : clearPosX) - player.x
+      reverseX = (goNeg ? clearPosX : clearNegX) - player.x
+    } else {
+      const goNeg = player.vz < 0 || (player.vz === 0 && player.z <= spec.cz)
+      primaryZ = (goNeg ? clearNegZ : clearPosZ) - player.z
+      reverseZ = (goNeg ? clearPosZ : clearNegZ) - player.z
+    }
+
+    // Home rect: the walkable rect the player is deepest inside (prefers rooms over corridors).
+    let homeRect = this.walkable.rects[0] ?? null
+    let homeDepth = -Infinity
+    for (const r of this.walkable.rects) {
+      const dx = r.hw - Math.abs(player.x - r.cx)
+      const dz = r.hd - Math.abs(player.z - r.cz)
+      if (dx < 0 || dz < 0) continue
+      const depth = Math.min(dx, dz)
+      if (depth > homeDepth) { homeDepth = depth; homeRect = r }
+    }
+
+    const isValid = (nx: number, nz: number): boolean => {
+      const remOx = (spec.hw + CAPSULE_RADIUS) - Math.abs(nx - spec.cx)
+      const remOz = (spec.hd + CAPSULE_RADIUS) - Math.abs(nz - spec.cz)
+      if (remOx > 0 && remOz > 0) return false  // still inside geometry
+      return this.inWalkable(nx, nz)
+    }
+
+    const candidates: Array<[number, number]> = [
+      [player.x + primaryX, player.z + primaryZ],
+      [player.x + reverseX, player.z + reverseZ],
+      ...(homeRect ? [[homeRect.cx, homeRect.cz] as [number, number]] : []),
+    ]
+
+    for (const [nx, nz] of candidates) {
+      if (isValid(nx, nz)) {
+        this.setPlayerPosition(playerId, nx, nz)
+        return
+      }
+    }
+    // All candidates failed — leave player in place.
   }
 
   setWalkable(area: WalkableArea): void { this.walkable = area }
 
-  snapPlayer(id: string): void {
-    if (this.rapierWorld) return // Rapier keeps players in bounds continuously.
-    const p = this.players.get(id)
-    if (!p || this.inWalkable(p.x, p.z)) return
-    let bestX = p.x, bestZ = p.z, bestDist = Infinity
-    for (const r of this.walkable.rects) {
-      const cx = Math.max(r.cx - r.hw, Math.min(r.cx + r.hw, p.x))
-      const cz = Math.max(r.cz - r.hd, Math.min(r.cz + r.hd, p.z))
-      const dist = Math.hypot(p.x - cx, p.z - cz)
-      if (dist < bestDist) { bestDist = dist; bestX = cx; bestZ = cz }
+  snapAllPlayers(): void {
+    if (this.rapierWorld) return // Rapier enforces bounds continuously.
+    for (const p of this.players.values()) {
+      if (this.inWalkable(p.x, p.z)) continue
+      let bestX = p.x, bestZ = p.z, bestDist = Infinity
+      for (const r of this.walkable.rects) {
+        const cx = Math.max(r.cx - r.hw, Math.min(r.cx + r.hw, p.x))
+        const cz = Math.max(r.cz - r.hd, Math.min(r.cz + r.hd, p.z))
+        const dist = Math.hypot(p.x - cx, p.z - cz)
+        if (dist < bestDist) { bestDist = dist; bestX = cx; bestZ = cz }
+      }
+      p.x = bestX; p.z = bestZ
     }
-    p.x = bestX; p.z = bestZ
   }
 
   addPlayer(id: string, x = 0, z = 0): void {
-    this.players.set(id, { id, x, z, animState: 'IDLE', hp: 2 })
-    this.playerSolid.set(id, new Set())
+    this.players.set(id, { id, x, z, animState: 'IDLE', hp: 2, vx: 0, vz: 0 })
+    this.playerGeomOverride.set(id, new Map())
     if (this.rapierWorld && this.rapier) {
       const R = this.rapier
       const body = this.rapierWorld.createRigidBody(
@@ -154,7 +236,7 @@ export class World {
 
   removePlayer(id: string): void {
     this.players.delete(id)
-    this.playerSolid.delete(id)
+    this.playerGeomOverride.delete(id)
     for (const key of [...this.touchingPairs]) {
       const [a, b] = key.split(':')
       if (a === id || b === id) this.touchingPairs.delete(key)
@@ -198,14 +280,16 @@ export class World {
       const charData = this.charBodies.get(playerId)!
       const desired = { x: jx * MOVE_SPEED * safeDt, y: jz * MOVE_SPEED * safeDt }
 
-      const forcedSolid = this.playerSolid.get(playerId) ?? new Set<string>()
-      const passableHandles = new Set(
-        [...this.globalHidden]
-          .filter(id => !forcedSolid.has(id))
-          .map(id => this.toggleColliders.get(id))
-          .filter((c): c is RAPIER_TYPE.Collider => c !== undefined)
-          .map(c => c.handle)
-      )
+      const playerOverride = this.playerGeomOverride.get(playerId)
+      const passableHandles = new Set<number>()
+      for (const [id, collider] of this.toggleColliders) {
+        const globalOn = this.geometryState.get(id) ?? true
+        const effectiveOn = playerOverride?.has(id) ? playerOverride.get(id)! : globalOn
+        if (!effectiveOn) passableHandles.add(collider.handle)
+      }
+      for (const [id, charBody] of this.charBodies) {
+        if (id !== playerId) passableHandles.add(charBody.collider.handle)
+      }
 
       this.controller.computeColliderMovement(
         charData.collider,
@@ -214,8 +298,6 @@ export class World {
         undefined,
         (collider: RAPIER_TYPE.Collider) => {
           if (collider.handle === charData.collider.handle) return false
-          const parent = collider.parent()
-          if (parent && parent.isKinematic()) return false
           if (passableHandles.has(collider.handle)) return false
           return true
         },
@@ -224,9 +306,13 @@ export class World {
       const movement = this.controller.computedMovement()
       player.x += movement.x
       player.z += movement.y
+      player.vx = movement.x
+      player.vz = movement.y
       charData.body.setNextKinematicTranslation({ x: player.x, y: player.z })
       this.rapierWorld.step()
     } else {
+      const prevX = player.x
+      const prevZ = player.z
       const nx = player.x + jx * MOVE_SPEED * safeDt
       const nz = player.z + jz * MOVE_SPEED * safeDt
       if (this.inWalkable(nx, nz)) {
@@ -236,6 +322,8 @@ export class World {
       } else if (this.inWalkable(player.x, nz)) {
         player.z = nz
       }
+      player.vx = player.x - prevX
+      player.vz = player.z - prevZ
     }
 
     const newAnimState: AnimationState = Math.hypot(jx, jz) > ANIM_THRESHOLD ? 'WALKING' : 'IDLE'
@@ -264,6 +352,16 @@ export class World {
     }
 
     return events
+  }
+
+  applyDamage(targetId: string, amount: number): DamageEvent | null {
+    const p = this.players.get(targetId)
+    if (!p) return null
+    const raw = p.hp - amount
+    const newHp = (raw <= 0 ? 0 : raw >= 2 ? 2 : raw) as 0 | 1 | 2
+    if (newHp === p.hp) return null
+    p.hp = newHp
+    return { type: 'damage', targetId, newHp }
   }
 
   private inWalkable(x: number, z: number): boolean {

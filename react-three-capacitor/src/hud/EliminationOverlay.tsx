@@ -18,7 +18,7 @@ export function EliminationOverlay() {
     }}>
       <span style={{
         color: '#e74c3c',
-        fontSize: '3.5rem',
+        fontSize: 'clamp(3.5rem, 14vw, 7rem)',
         fontWeight: 800,
         letterSpacing: '0.05em',
         fontFamily: 'system-ui, monospace',

@@ -35,6 +35,7 @@ interface GameState {
   activeRuleEvent: ShowRuleEvent | null
   geometryObjects: FloorGeometrySpec[]
   geometryVisibility: Record<string, boolean>
+  localGeometryOverride: Record<string, boolean>
   activeWalkable: WalkableArea | null
   buttonSpecs: Record<string, ButtonSpec>
   buttonStates: Record<string, { state: ButtonState; occupancy: number }>
@@ -57,6 +58,7 @@ interface GameState {
   dismissRule: () => void
   setGeometryObjects: (objects: FloorGeometrySpec[]) => void
   applyGeometryUpdates: (updates: Array<{ id: string; visible: boolean }>) => void
+  applyLocalGeometryOverride: (updates: Array<{ id: string; visible: boolean }>) => void
   setActiveWalkable: (area: WalkableArea | null) => void
   initButtons: (buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }>) => void
   applyButtonStateUpdate: (id: string, state: ButtonState, occupancy: number) => void
@@ -79,6 +81,7 @@ export const useGameStore = create<GameState>((set) => ({
   activeRuleEvent: null,
   geometryObjects: [],
   geometryVisibility: {},
+  localGeometryOverride: {},
   activeWalkable: null,
   buttonSpecs: {},
   buttonStates: {},
@@ -137,6 +140,13 @@ export const useGameStore = create<GameState>((set) => ({
       const geometryVisibility = { ...s.geometryVisibility }
       for (const { id, visible } of updates) geometryVisibility[id] = visible
       return { geometryVisibility }
+    }),
+
+  applyLocalGeometryOverride: (updates) =>
+    set((s) => {
+      const localGeometryOverride = { ...s.localGeometryOverride }
+      for (const { id, visible } of updates) localGeometryOverride[id] = visible
+      return { localGeometryOverride }
     }),
 
   initButtons: (buttons) =>

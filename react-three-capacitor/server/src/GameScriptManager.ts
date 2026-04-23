@@ -9,7 +9,6 @@ export class GameScriptManager {
   private readonly voteRegionSpecs: Map<string, VoteRegionSpec>
   private readonly instructionSpecs: Map<string, InstructionEventSpec>
   private readonly geometrySpecs: FloorGeometrySpec[]
-  private readonly initialVisibility: Record<string, boolean>
   private readonly activeRegions: Set<string>
   private readonly playerRegions: Map<string, string | null> = new Map()
   private readonly playerGeometry: Map<string, Record<string, boolean>> = new Map()
@@ -24,7 +23,7 @@ export class GameScriptManager {
   private readonly sendInstruction: (playerId: string, lines: Array<{ text: string; label: RuleLabel; specId: string }>) => void
   private readonly removePlayer: (playerId: string) => void
   private readonly onCloseScenario: () => void
-  private readonly sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>) => void
+  private readonly sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>, perPlayer?: boolean) => void
   private readonly walkableVariants: Array<{ triggerIds: Set<string>; walkable: WalkableArea }>
   private readonly onWalkableUpdate: (area: WalkableArea) => void
   private readonly toggleVariants: Array<{ triggerIds: Set<string>; toggleIds: string[] }>
@@ -54,7 +53,7 @@ export class GameScriptManager {
     sendInstruction: (playerId: string, lines: Array<{ text: string; label: RuleLabel; specId: string }>) => void,
     removePlayer: (playerId: string) => void,
     onCloseScenario: () => void,
-    sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>) => void,
+    sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>, perPlayer?: boolean) => void,
     walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [],
     onWalkableUpdate: (area: WalkableArea) => void = () => {},
     toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = [],
@@ -75,7 +74,6 @@ export class GameScriptManager {
     this.voteRegionSpecs = new Map(voteRegions.map(r => [r.id, r]))
     this.instructionSpecs = new Map(instructionSpecs.map(s => [s.id, s]))
     this.geometrySpecs = geometry
-    this.initialVisibility = initialVisibility
     this.sendInstruction = sendInstruction
     this.removePlayer = removePlayer
     this.onCloseScenario = onCloseScenario
@@ -85,6 +83,9 @@ export class GameScriptManager {
     this.toggleVariants = toggleVariants.map(v => ({ triggerIds: new Set(v.triggerIds), toggleIds: v.toggleIds }))
     this.onToggleUpdate = onToggleUpdate
     this.globalGeomVisible = new Map(geometry.map(g => [g.id, initialVisibility[g.id] ?? true]))
+    for (const [id, visible] of this.globalGeomVisible) {
+      if (!visible) this.world.toggleGeometryOff(id)
+    }
     this.activeRegions = new Set()
     this.buttonManager = buttons.length > 0 ? new ButtonManager(buttons) : null
     this.broadcastButtonState = broadcastButtonState
@@ -130,7 +131,7 @@ export class GameScriptManager {
 
     const geomState: Record<string, boolean> = {}
     for (const g of this.geometrySpecs) {
-      geomState[g.id] = this.initialVisibility[g.id] ?? true
+      geomState[g.id] = this.globalGeomVisible.get(g.id) ?? true
     }
     this.playerGeometry.set(playerId, geomState)
 
@@ -280,27 +281,30 @@ export class GameScriptManager {
         self.onCloseScenario()
       },
       setGeometryVisible(geometryIds, visible, playerIds) {
-        const targets = playerIds && playerIds.length > 0
-          ? playerIds
+        const perPlayer = !!(playerIds && playerIds.length > 0)
+        const targets = perPlayer
+          ? playerIds!
           : [...self.playerGeometry.keys()]
         const updates = geometryIds.map(id => ({ id, visible }))
         for (const pid of targets) {
           const geom = self.playerGeometry.get(pid)
           if (!geom) continue
           for (const id of geometryIds) geom[id] = visible
-          self.sendGeometryState(pid, updates)
+          self.sendGeometryState(pid, updates, perPlayer)
         }
         if (!playerIds || playerIds.length === 0) {
           for (const id of geometryIds) {
             self.globalGeomVisible.set(id, visible)
-            self.world.setGeometryVisible(id, visible)
+            if (visible) self.world.toggleGeometryOn(id)
+            else self.world.toggleGeometryOff(id)
           }
           self.checkWalkableVariants()
           self.checkToggleVariants()
         } else {
           for (const pid of targets) {
             for (const id of geometryIds) {
-              self.world.setGeometryVisibleForPlayer(pid, id, visible)
+              if (visible) self.world.toggleGeometryOn(id, pid)
+              else self.world.toggleGeometryOff(id, pid)
             }
           }
         }

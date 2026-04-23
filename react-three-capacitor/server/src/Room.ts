@@ -1,7 +1,7 @@
 import WebSocket from 'ws'
 import type { ServerMessage } from './types.js'
 import { World } from './World.js'
-import type { WalkableArea, PhysicsSpec } from './World.js'
+import type { WalkableArea, PhysicsSpec, TouchedEvent } from './World.js'
 import { NpcManager } from './npc/NpcManager.js'
 import type { NpcSpec } from './npc/NpcSpec.js'
 import { GameScriptManager } from './GameScriptManager.js'
@@ -70,11 +70,11 @@ export class Room {
         (playerId, lines) => this.sendToPlayer(playerId, { type: 'instruction', lines }),
         (playerId) => this.removePlayer(playerId),
         onCloseScenario ?? (() => {}),
-        (playerId, updates) => this.sendToPlayer(playerId, { type: 'geometry_state', updates }),
+        (playerId, updates, perPlayer) => this.sendToPlayer(playerId, { type: 'geometry_state', updates, perPlayer }),
         walkableVariants,
         (area) => { this.world.setWalkable(area); this.world.snapAllPlayers() },
         toggleVariants,
-        (toggleIds) => { for (const id of toggleIds) this.world.setGeometryVisible(id, false) },
+        (toggleIds) => { for (const id of toggleIds) this.world.toggleGeometryOff(id) },
         gameSpec.buttons,
         (id, state, occupancy) => this.broadcast({ type: 'button_state', id, state, occupancy }),
         (id, changes) => this.broadcast({ type: 'button_config', id, changes }),
@@ -117,7 +117,15 @@ export class Room {
     const allEvents = npcEvents.length > 0 ? [...moveEvents, ...npcEvents] : moveEvents
     const wp = this.world.getPlayer(playerId)!
     this.sendToPlayer(playerId, { type: 'move_ack', seq, x: wp.x, z: wp.z, events: allEvents, startTime, endTime })
-    this.broadcastExcept(playerId, { type: 'player_update', playerId, x: wp.x, z: wp.z, events: allEvents, startTime, endTime })
+
+    const touchEvents = allEvents.filter((e): e is TouchedEvent => e.type === 'touched')
+    const nonTouchEvents = touchEvents.length > 0 ? allEvents.filter(e => e.type !== 'touched') : allEvents
+    for (const [id] of this.players) {
+      if (id === playerId) continue
+      const playerTouchEvents = touchEvents.filter(e => e.playerIdA === id || e.playerIdB === id)
+      const events = playerTouchEvents.length > 0 ? [...nonTouchEvents, ...playerTouchEvents] : nonTouchEvents
+      this.sendToPlayer(id, { type: 'player_update', playerId, x: wp.x, z: wp.z, events, startTime, endTime })
+    }
 
     for (const event of allEvents) {
       if (event.type === 'damage' && event.newHp === 0 && this.players.has(event.targetId)) {

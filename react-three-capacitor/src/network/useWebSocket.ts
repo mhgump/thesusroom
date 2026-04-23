@@ -11,6 +11,7 @@ import {
 } from './positionBuffer'
 import type { ServerMessage } from './types'
 import { CURRENT_MAP } from '../../../content/client/maps'
+import { localWorld } from '../game/localWorld'
 
 function getWsUrl(): string {
   const scenarioPath = window.location.pathname.replace(/^\/+/, '') || 'demo'
@@ -48,6 +49,7 @@ export function useWebSocket(): void {
           store.addRemotePlayer(msg.playerId, msg.color, msg.animState, msg.isNpc, msg.hasHealth ?? true)
           store.setPlayerHp(msg.playerId, msg.hp)
           pushRemotePosition(msg.playerId, msg.x, msg.z, estimatedServerTime())
+          localWorld.current?.addPlayer(msg.playerId, msg.x, msg.z)
           break
 
         case 'player_left':
@@ -56,6 +58,7 @@ export function useWebSocket(): void {
           } else {
             store.removeRemotePlayer(msg.playerId)
             clearRemotePlayer(msg.playerId)
+            localWorld.current?.removePlayer(msg.playerId)
           }
           break
 
@@ -101,17 +104,36 @@ export function useWebSocket(): void {
           store.setGeometryObjects(msg.geometry)
           break
 
-        case 'geometry_state':
-          store.applyGeometryUpdates(msg.updates)
-          if (CURRENT_MAP.walkableVariants?.length) {
-            const vis = useGameStore.getState().geometryVisibility
-            let matched: import('../game/WorldSpec').WalkableArea | null = null
-            for (const v of CURRENT_MAP.walkableVariants) {
-              if (v.triggerIds.every(id => vis[id] === true)) { matched = v.walkable; break }
+        case 'geometry_state': {
+          const world = localWorld.current
+          const localId = useGameStore.getState().playerId
+          if (msg.perPlayer && localId) {
+            store.applyLocalGeometryOverride(msg.updates)
+            if (world) {
+              for (const { id, visible } of msg.updates) {
+                if (visible) world.toggleGeometryOn(id, localId)
+                else world.toggleGeometryOff(id, localId)
+              }
             }
-            store.setActiveWalkable(matched)
+          } else {
+            store.applyGeometryUpdates(msg.updates)
+            if (world) {
+              for (const { id, visible } of msg.updates) {
+                if (visible) world.toggleGeometryOn(id)
+                else world.toggleGeometryOff(id)
+              }
+            }
+            if (CURRENT_MAP.walkableVariants?.length) {
+              const vis = useGameStore.getState().geometryVisibility
+              let matched: import('../game/WorldSpec').WalkableArea | null = null
+              for (const v of CURRENT_MAP.walkableVariants) {
+                if (v.triggerIds.every(id => vis[id] === true)) { matched = v.walkable; break }
+              }
+              store.setActiveWalkable(matched)
+            }
           }
           break
+        }
 
         case 'button_init':
           store.initButtons(msg.buttons)

@@ -13,12 +13,14 @@ function makeWallMaterials(): THREE.Material[] {
 export function GeometryLayer() {
   const geometryObjects = useGameStore((s) => s.geometryObjects)
   const geometryVisibility = useGameStore((s) => s.geometryVisibility)
+  const localGeometryOverride = useGameStore((s) => s.localGeometryOverride)
   const wallMats = useMemo(makeWallMaterials, [])
 
   return (
     <>
       {geometryObjects.map((obj) => {
-        if (geometryVisibility[obj.id] === false) return null
+        const effectiveVisible = localGeometryOverride[obj.id] ?? geometryVisibility[obj.id]
+        if (effectiveVisible === false) return null
         if (obj.height != null && obj.height > 0) {
           return (
             <mesh

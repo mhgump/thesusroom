@@ -6,11 +6,12 @@ import { World } from '../game/World'
 import type { AnimationState } from '../game/World'
 import { CapsuleFallback } from './animation/CapsuleFallback'
 import { useWsSend } from '../network/useWebSocket'
-import { consumeMoveAck } from '../network/positionBuffer'
+import { consumeMoveAck, getInterpolatedPos } from '../network/positionBuffer'
 import { localPlayerPos } from '../game/localPlayerPos'
 import { CURRENT_MAP } from '../../../content/client/maps'
 import { hudRegistry } from './hudRegistry'
 import { CAMERA_ANGLE } from '../game/constants'
+import { localWorld } from '../game/localWorld'
 
 const HEART_WORLD_SIZE = 0.0282
 const BASE_HEART_PX = 20
@@ -20,6 +21,7 @@ const CAPSULE_RADIUS = 0.0282
 const CAPSULE_LENGTH = 0.0806
 const CAPSULE_CENTER_Y = CAPSULE_RADIUS + CAPSULE_LENGTH / 2
 
+const REMOTE_DELAY_MS = 250
 const CORRECTION_THRESHOLD = 0.0016
 const INPUT_HISTORY_MAX = 180 // ~3 s at 60 fps
 
@@ -33,7 +35,6 @@ export function Player() {
   const inputHistory = useRef<InputRecord[]>([])
   const animStateRef = useRef<AnimationState>('IDLE')
   const appliedWalkableRef = useRef<import('../game/WorldSpec').WalkableArea | null>(null)
-  const prevDoorVisRef = useRef<Record<string, boolean>>({})
 
   const localColor = useGameStore((s) => s.localColor)
   const activeWalkable = useGameStore((s) => s.activeWalkable)
@@ -50,13 +51,31 @@ export function Player() {
         ? World.withPhysics(CURRENT_MAP.walkable, CURRENT_MAP.physics, ['touched'])
         : new World(CURRENT_MAP.walkable, ['touched'])
       w.addPlayer(playerId, store.initialPosition.x, store.initialPosition.z)
+      // Apply any geometry state already received before World was ready.
+      // All applied as global since per-player state will re-arrive via room-entry events.
+      if (CURRENT_MAP.physics) {
+        const vis = useGameStore.getState().geometryVisibility
+        const localOverride = useGameStore.getState().localGeometryOverride
+        for (const geom of CURRENT_MAP.physics.geometry) {
+          if (vis[geom.id] === false) w.toggleGeometryOff(geom.id)
+          const ov = localOverride[geom.id]
+          if (ov !== undefined) {
+            if (ov) w.toggleGeometryOn(geom.id, playerId)
+            else w.toggleGeometryOff(geom.id, playerId)
+          }
+        }
+      }
+      for (const id of Object.keys(store.remotePlayers)) {
+        const pos = getInterpolatedPos(id, REMOTE_DELAY_MS)
+        w.addPlayer(id, pos?.x ?? 0, pos?.z ?? 0)
+      }
       worldRef.current = w
+      localWorld.current = w
       initializedForRef.current = playerId
       seqRef.current = 0
       inputHistory.current = []
       animStateRef.current = 'IDLE'
       appliedWalkableRef.current = null
-      prevDoorVisRef.current = {}
     }
     const world = worldRef.current!
 
@@ -64,21 +83,8 @@ export function Player() {
     const currentWalkable = store.activeWalkable ?? CURRENT_MAP.walkable
     if (currentWalkable !== appliedWalkableRef.current) {
       world.setWalkable(currentWalkable)
-      world.snapPlayer(playerId)
+      world.snapAllPlayers()
       appliedWalkableRef.current = currentWalkable
-    }
-
-    // ── Sync toggle physics directly from geometry visibility (Rapier mode) ──
-    if (CURRENT_MAP.physics?.toggles.length) {
-      const vis = store.geometryVisibility
-      const prev = prevDoorVisRef.current
-      for (const toggle of CURRENT_MAP.physics.toggles) {
-        const visible = vis[toggle.id] !== false
-        if (prev[toggle.id] !== visible) {
-          prev[toggle.id] = visible
-          world.setGeometryVisible(toggle.id, visible)
-        }
-      }
     }
 
     // ── 1. Apply server correction ───────────────────────────────────────────
@@ -114,6 +120,12 @@ export function Player() {
       groupRef.current.position.x = player.x
       groupRef.current.position.z = player.z
       return
+    }
+
+    // Update remote player positions in World for local collision prediction
+    for (const id of Object.keys(store.remotePlayers)) {
+      const pos = getInterpolatedPos(id, REMOTE_DELAY_MS)
+      if (pos) world.setPlayerPosition(id, pos.x, pos.z)
     }
 
     const { x: jx, y: jz } = store.joystickInput
