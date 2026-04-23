@@ -47,10 +47,20 @@ export function Player() {
   const { sendMove } = useWsSend()
   const [animState, setAnimState] = useState<AnimationState>('IDLE')
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const store = useGameStore.getState()
     const playerId = store.playerId
     if (!playerId || !groupRef.current) return
+
+    // Player draw-order layer: offset keeps groupOrder above 0 so players
+    // render AFTER scene geometry (ground, walls) — otherwise the ground
+    // paints over the heart tip that dangles below the feet. Back players
+    // still get a smaller renderOrder than front players, so a front
+    // capsule paints over a back heart. Within each group, heart
+    // renderOrder=1 sits after capsule renderOrder=0.
+    const gp = groupRef.current.position
+    const cp = state.camera.position
+    groupRef.current.renderOrder = 1000 - Math.hypot(cp.x - gp.x, cp.y - gp.y, cp.z - gp.z)
 
     // ── Observer mode: no World, no prediction, no sends ────────────────────
     if (store.observerMode) {

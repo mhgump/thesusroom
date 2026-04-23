@@ -22,13 +22,15 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
   const [animState, setAnimState] = useState<AnimationState>(initialAnimState)
   const hp = useGameStore((s) => (s.playerHp[id] ?? 2)) as 0 | 1 | 2
 
-  useFrame(() => {
+  useFrame((state) => {
     const g = groupRef.current
     if (!g) return
 
     const pos = getInterpolatedPos(id)
     if (pos !== null) {
       g.position.set(pos.x, CAPSULE_CENTER_Y, pos.z)
+      const cp = state.camera.position
+      g.renderOrder = 1000 - Math.hypot(cp.x - pos.x, cp.y - CAPSULE_CENTER_Y, cp.z - pos.z)
       // Hide remote players who are inside a room not visible from the local player's room.
       // Players in corridors (not inside any room floor) are always shown.
       const { currentRoomId } = useGameStore.getState()

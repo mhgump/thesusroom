@@ -1,5 +1,3 @@
-import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { CAMERA_ANGLE } from '../game/constants'
 
@@ -51,40 +49,37 @@ const CAPSULE_RADIUS = 0.0282
 const CAPSULE_LENGTH = 0.0806
 const CAPSULE_CENTER_Y = CAPSULE_RADIUS + CAPSULE_LENGTH / 2
 const CAPSULE_TOP_Y = CAPSULE_LENGTH / 2 + CAPSULE_RADIUS + CAPSULE_CENTER_Y
-// HEART_Y / HEART_Z pair purely shapes where the sprite projects on screen
-// (directly below the feet). Draw ordering is handled by renderOrder, not
-// depth, so we don't need the anchor to beat any capsule depth.
+// HEART_Y and HEART_Z only exist to shape where the sprite projects on screen
+// (directly below the feet). Player-to-player layering is driven by the parent
+// group's renderOrder — see Player.tsx / RemotePlayers.tsx.
 const HEART_MARGIN = 0.008
 const HEART_Y = CAPSULE_TOP_Y + HEART_MARGIN
 const HEART_Z =
   HEART_WORLD_SIZE / (2 * Math.cos(CAMERA_ANGLE)) + HEART_Y * Math.tan(CAMERA_ANGLE)
 const HEART_LOCAL_Y = HEART_Y - CAPSULE_CENTER_Y
 
-const _worldPos = new THREE.Vector3()
-
 interface Props {
   hp: 0 | 1 | 2
 }
 
 export function HeartSprite({ hp }: Props) {
-  const spriteRef = useRef<THREE.Sprite>(null)
-  useFrame(({ camera }) => {
-    const s = spriteRef.current
-    if (!s) return
-    s.getWorldPosition(_worldPos)
-    s.renderOrder = -camera.position.distanceTo(_worldPos)
-  })
   if (hp === 0) return null
   if (!fullTex) fullTex = makeHeartTexture(false)
   if (!halfTex) halfTex = makeHeartTexture(true)
   const tex = hp === 2 ? fullTex : halfTex
   return (
     <sprite
-      ref={spriteRef}
       position={[0, HEART_LOCAL_Y, HEART_Z]}
       scale={[HEART_WORLD_SIZE, HEART_WORLD_SIZE, 1]}
+      renderOrder={1}
     >
-      <spriteMaterial map={tex} transparent depthTest={false} depthWrite={false} />
+      <spriteMaterial
+        map={tex}
+        transparent={false}
+        alphaTest={0.5}
+        depthTest={false}
+        depthWrite={false}
+      />
     </sprite>
   )
 }

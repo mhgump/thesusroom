@@ -31,7 +31,7 @@ export function CapsuleFallback({ animationState, color = '#cccccc' }: Animation
   });
 
   return (
-    <group>
+    <>
       <mesh castShadow>
         <capsuleGeometry args={[CAPSULE_RADIUS, CAPSULE_LENGTH, 8, 16]} />
         <meshLambertMaterial ref={matRef} color={color} />
@@ -40,6 +40,6 @@ export function CapsuleFallback({ animationState, color = '#cccccc' }: Animation
         <sphereGeometry args={[0.008, 8, 8]} />
         <meshBasicMaterial color="#00ccff" />
       </mesh>
-    </group>
+    </>
   );
 }
