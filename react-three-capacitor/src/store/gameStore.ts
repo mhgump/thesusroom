@@ -3,8 +3,10 @@ import type { AnimationState } from '../game/World'
 import type { ShowChoiceEvent, ShowRuleEvent } from '../network/types'
 import type { FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState } from '../game/GameSpec'
 import type { WalkableArea } from '../game/WorldSpec'
+import { getInputMode, setInputMode as persistInputMode, type InputMode } from '../settings'
 
 interface JoystickInput { x: number; y: number }
+interface MoveTarget { x: number; z: number }
 
 export interface RemotePlayerInfo {
   id: string
@@ -29,6 +31,9 @@ interface GameState {
   initialPosition: { x: number; z: number }
   currentRoomId: string
   joystickInput: JoystickInput
+  inputMode: InputMode
+  moveTarget: MoveTarget | null
+  settingsOpen: boolean
   remotePlayers: Record<string, RemotePlayerInfo>
   notifications: Notification[]
   playerHp: Record<string, 0 | 1 | 2>
@@ -55,6 +60,9 @@ interface GameState {
   setInitialPosition: (x: number, z: number) => void
   setCurrentRoomId: (roomId: string) => void
   setJoystickInput: (input: JoystickInput) => void
+  setInputMode: (mode: InputMode) => void
+  setMoveTarget: (target: MoveTarget | null) => void
+  setSettingsOpen: (open: boolean) => void
   addRemotePlayer: (id: string, color: string, animState: AnimationState, isNpc?: boolean, hasHealth?: boolean) => void
   removeRemotePlayer: (id: string) => void
   addNotification: (message: string, durationMs?: number) => void
@@ -88,6 +96,9 @@ export const useGameStore = create<GameState>((set) => ({
   initialPosition: { x: 0, z: 0 },
   currentRoomId: 'room1',
   joystickInput: { x: 0, y: 0 },
+  inputMode: getInputMode(),
+  moveTarget: null,
+  settingsOpen: false,
   remotePlayers: {},
   notifications: [],
   playerHp: {},
@@ -114,6 +125,15 @@ export const useGameStore = create<GameState>((set) => ({
   setInitialPosition: (x, z) => set({ initialPosition: { x, z } }),
   setCurrentRoomId: (roomId) => set({ currentRoomId: roomId }),
   setJoystickInput: (input) => set({ joystickInput: input }),
+
+  setInputMode: (mode) => {
+    persistInputMode(mode)
+    set({ inputMode: mode, joystickInput: { x: 0, y: 0 }, moveTarget: null })
+  },
+
+  setMoveTarget: (target) => set({ moveTarget: target }),
+
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
 
   addRemotePlayer: (id, color, animState, isNpc = false, hasHealth = true) =>
     set((s) => ({ remotePlayers: { ...s.remotePlayers, [id]: { id, color, initialAnimState: animState, isNpc, hasHealth } } })),
@@ -219,6 +239,8 @@ export const useGameStore = create<GameState>((set) => ({
     initialPosition: { x: 0, z: 0 },
     currentRoomId: 'room1',
     joystickInput: { x: 0, y: 0 },
+    moveTarget: null,
+    settingsOpen: false,
     remotePlayers: {},
     notifications: [],
     playerHp: {},
@@ -238,3 +260,13 @@ export const useGameStore = create<GameState>((set) => ({
     localButtonPressing: {},
   }),
 }))
+
+export function selectInputBlocked(s: GameState): boolean {
+  return (
+    s.activeChoiceEvent !== null ||
+    s.activeRuleEvent !== null ||
+    s.rulesOpen ||
+    s.settingsOpen ||
+    s.eliminated
+  )
+}

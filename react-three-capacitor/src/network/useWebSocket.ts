@@ -2,18 +2,18 @@ import { useEffect } from 'react'
 import { WebSocketClient } from './WebSocketClient'
 import { useGameStore } from '../store/gameStore'
 import {
-  setMoveAck,
+  pushMoveAck,
   pushRemotePosition,
   pushRemoteEvents,
   clearRemotePlayer,
-  updateServerTime,
-  estimatedServerTime,
+  registerServerTick,
   resetBuffers,
-  updateAdaptiveDelay,
+  getRenderTick,
 } from './positionBuffer'
 import type { ServerMessage } from './types'
 import { CURRENT_MAP } from '../../../content/maps'
 import { localWorld } from '../game/localWorld'
+import { TICK_RATE_HZ } from '../game/World'
 
 function getWsUrl(): string {
   const scenarioPath = window.location.pathname.replace(/^\/+/, '') || 'demo'
@@ -50,6 +50,7 @@ export function useWebSocket(): void {
 
       switch (msg.type) {
         case 'welcome':
+          registerServerTick(msg.serverTick)
           store.setPlayerId(msg.playerId)
           store.setLocalColor(msg.color)
           store.setInitialPosition(msg.x, msg.z)
@@ -58,9 +59,10 @@ export function useWebSocket(): void {
           break
 
         case 'player_joined':
+          registerServerTick(msg.serverTick)
           store.addRemotePlayer(msg.playerId, msg.color, msg.animState, msg.isNpc, msg.hasHealth ?? true)
           store.setPlayerHp(msg.playerId, msg.hp)
-          pushRemotePosition(msg.playerId, msg.x, msg.z, estimatedServerTime())
+          pushRemotePosition(msg.playerId, msg.x, msg.z, msg.serverTick)
           localWorld.current?.addPlayer(msg.playerId, msg.x, msg.z)
           break
 
@@ -77,15 +79,14 @@ export function useWebSocket(): void {
           break
 
         case 'move_ack':
-          updateAdaptiveDelay(msg.endTime)
-          setMoveAck(msg.tick, msg.x, msg.z, msg.events, msg.endTime)
+          registerServerTick(msg.serverTick)
+          pushMoveAck({ tick: msg.tick, x: msg.x, z: msg.z, events: msg.events, outOfOrder: msg.outOfOrder ?? false })
           break
 
         case 'player_update':
-          updateAdaptiveDelay(msg.endTime)
-          updateServerTime(msg.endTime)
-          pushRemotePosition(msg.playerId, msg.x, msg.z, msg.endTime)
-          pushRemoteEvents(msg.playerId, msg.events, msg.startTime, msg.endTime)
+          registerServerTick(msg.serverTick)
+          pushRemotePosition(msg.playerId, msg.x, msg.z, msg.serverTick)
+          pushRemoteEvents(msg.playerId, msg.events, msg.serverTick)
           // Apply damage directly if the observed/local player is the target.
           // This handles both script-triggered damage and hits from other players.
           {
@@ -102,7 +103,10 @@ export function useWebSocket(): void {
 
         case 'game_event':
           if (!isObserver) {
-            const delayMs = Math.max(0, msg.serverTime - estimatedServerTime())
+            // Defer until the render tick reaches the event's tick. Approximate
+            // by converting tick-lag to ms at the fixed 20 Hz tick rate.
+            const ticksUntil = Math.max(0, msg.serverTick - getRenderTick())
+            const delayMs = ticksUntil * (1000 / TICK_RATE_HZ)
             setTimeout(() => {
               if (msg.event.type === 'show_choice') store.showChoice(msg.event)
               else if (msg.event.type === 'show_rule') store.showRule(msg.event)

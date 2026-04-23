@@ -4,11 +4,11 @@ import type { AnimationState, WorldEvent, MoveInput } from './World.js'
 import type { FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState, RuleLabel } from './GameSpec.js'
 
 export type ServerMessage =
-  | { type: 'welcome'; playerId: string; color: string; x: number; z: number; hp: 0 | 1 | 2 }
-  | { type: 'player_joined'; playerId: string; color: string; x: number; z: number; animState: AnimationState; hp: 0 | 1 | 2; isNpc?: boolean; hasHealth?: boolean }
+  | { type: 'welcome'; playerId: string; color: string; x: number; z: number; hp: 0 | 1 | 2; serverTick: number }
+  | { type: 'player_joined'; playerId: string; color: string; x: number; z: number; animState: AnimationState; hp: 0 | 1 | 2; isNpc?: boolean; hasHealth?: boolean; serverTick: number }
   | { type: 'player_left'; playerId: string }
-  | { type: 'move_ack'; tick: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
-  | { type: 'player_update'; playerId: string; tick: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
+  | { type: 'move_ack'; tick: number; x: number; z: number; events: WorldEvent[]; serverTick: number; outOfOrder?: boolean }
+  | { type: 'player_update'; playerId: string; tick: number; x: number; z: number; events: WorldEvent[]; serverTick: number }
   | { type: 'instruction'; lines: Array<{ text: string; label: RuleLabel; specId: string }> }
   | { type: 'vote_assignment_change'; assignments: Record<string, string[]> }
   | { type: 'map_init'; geometry: FloorGeometrySpec[] }

@@ -27,12 +27,12 @@ export type ShowRuleEvent = {
 export type GlobalGameEvent = ShowChoiceEvent | ShowRuleEvent
 
 export type ServerMessage =
-  | { type: 'welcome'; playerId: string; color: string; x: number; z: number; hp: 0 | 1 | 2 }
-  | { type: 'player_joined'; playerId: string; color: string; x: number; z: number; animState: AnimationState; hp: 0 | 1 | 2; isNpc?: boolean; hasHealth?: boolean }
+  | { type: 'welcome'; playerId: string; color: string; x: number; z: number; hp: 0 | 1 | 2; serverTick: number }
+  | { type: 'player_joined'; playerId: string; color: string; x: number; z: number; animState: AnimationState; hp: 0 | 1 | 2; isNpc?: boolean; hasHealth?: boolean; serverTick: number }
   | { type: 'player_left'; playerId: string }
-  | { type: 'move_ack'; tick: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
-  | { type: 'player_update'; playerId: string; tick: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
-  | { type: 'game_event'; event: GlobalGameEvent; serverTime: number }
+  | { type: 'move_ack'; tick: number; x: number; z: number; events: WorldEvent[]; serverTick: number; outOfOrder?: boolean }
+  | { type: 'player_update'; playerId: string; tick: number; x: number; z: number; events: WorldEvent[]; serverTick: number }
+  | { type: 'game_event'; event: GlobalGameEvent; serverTick: number }
   | { type: 'instruction'; lines: Array<{ text: string; label: RuleLabel; specId: string }> }
   | { type: 'map_init'; geometry: FloorGeometrySpec[] }
   | { type: 'geometry_state'; updates: Array<{ id: string; visible: boolean }>; perPlayer?: boolean }

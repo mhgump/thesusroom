@@ -6,13 +6,14 @@ import { Barrier } from './Walls';
 import { BgPlane, RoomOutsideTextures } from './Boundary';
 import { Player } from './Player';
 import { RemotePlayers } from './RemotePlayers';
-import { PlayerHudUpdater } from './PlayerHudUpdater';
+import { TapToMoveLayer } from './TapToMoveLayer';
 import { VoteRegions } from './VoteRegions';
 import { GeometryLayer } from './GeometryLayer';
 import { ButtonLayer } from './ButtonLayer';
 import { CURRENT_MAP } from '../../../content/maps';
 import { localPlayerPos } from '../game/localPlayerPos';
 import { useGameStore } from '../store/gameStore';
+import { advanceRenderTick } from '../network/positionBuffer';
 import { clampToShapes } from '../game/CameraConstraint';
 import type { Vec2 } from '../game/CameraConstraint';
 import {
@@ -54,8 +55,13 @@ export function GameScene() {
     camera.updateProjectionMatrix();
   }, [camera, size]);
 
-  // priority -2: runs before PlayerHudUpdater (-1) and Player (0) so both can call
-  // camera.updateMatrixWorld() against the freshly-positioned camera this frame.
+  // priority -3: advance the global remote-render-tick before any consumer
+  // (Player, RemotePlayers — both at default priority 0) reads it this frame.
+  useFrame((_state, delta) => {
+    advanceRenderTick(delta);
+  }, -3);
+
+  // priority -2: runs before Player (0) so Player's useFrame sees the freshly-positioned camera.
   useFrame((state, delta) => {
     const cam = state.camera;
     if (!(cam instanceof THREE.OrthographicCamera)) return;
@@ -109,7 +115,7 @@ export function GameScene() {
       <VoteRegions visibleIds={visibleIds} />
       <Player />
       <RemotePlayers />
-      <PlayerHudUpdater />
+      <TapToMoveLayer />
     </>
   );
 }

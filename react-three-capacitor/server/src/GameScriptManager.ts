@@ -41,7 +41,7 @@ export class GameScriptManager {
   private readonly broadcastButtonConfig: (id: string, changes: Partial<ButtonConfig>) => void
   private readonly sendButtonInit: (playerId: string, buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }>) => void
   private readonly sendNotificationToPlayer: (playerId: string, text: string) => void
-  private readonly broadcastDamageEvent: (targetId: string, x: number, z: number, event: DamageEvent, time: number) => void
+  private readonly broadcastDamageEvent: (targetId: string, x: number, z: number, event: DamageEvent) => void
   private readonly spawnBotFn: (spec: BotSpec) => void
   private readonly broadcastActiveVoteRegions: (event: ActiveVoteRegionChangeEvent) => void
   private readonly onVoteAssignmentChange: (assignments: Map<string, string[]>) => void
@@ -69,7 +69,7 @@ export class GameScriptManager {
     broadcastButtonConfig: (id: string, changes: Partial<ButtonConfig>) => void = () => {},
     sendButtonInit: (playerId: string, buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }>) => void = () => {},
     sendNotificationToPlayer: (playerId: string, text: string) => void = () => {},
-    broadcastDamageEvent: (targetId: string, x: number, z: number, event: DamageEvent, time: number) => void = () => {},
+    broadcastDamageEvent: (targetId: string, x: number, z: number, event: DamageEvent) => void = () => {},
     getRoomAtPosition?: (x: number, z: number) => string | null,
     spawnBotFn: (spec: BotSpec) => void = () => {},
     onActiveVoteRegionsChange: (event: ActiveVoteRegionChangeEvent) => void = () => {},
@@ -363,7 +363,7 @@ export class GameScriptManager {
         const event = self.world.applyDamage(playerId, amount)
         if (!event) return
         const p = self.world.getPlayer(playerId)
-        if (p) self.broadcastDamageEvent(playerId, p.x, p.z, event, Date.now())
+        if (p) self.broadcastDamageEvent(playerId, p.x, p.z, event)
         if (event.newHp === 0) self.removePlayer(playerId, true)
       },
       onPlayerEnterRoom(callback) {

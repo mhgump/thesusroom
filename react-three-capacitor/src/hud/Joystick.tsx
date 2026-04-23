@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { useGameStore } from '../store/gameStore';
+import { useGameStore, selectInputBlocked } from '../store/gameStore';
 
 // CSS clamp keeps 120px on phones; scales up proportionally on tablets/desktop
 const OUTER_CSS = 'clamp(120px, 20vw, 220px)';
@@ -51,14 +51,11 @@ export function Joystick() {
       setJoystick({ x: 0, y: 0 });
     };
 
-    const isEliminated = () => {
-      const { playerId, playerHp } = useGameStore.getState();
-      return playerId !== null && (playerHp[playerId] ?? 2) === 0;
-    };
+    const isBlocked = () => selectInputBlocked(useGameStore.getState());
 
     const onTouchStart = (e: TouchEvent) => {
       e.preventDefault();
-      if (isEliminated()) return;
+      if (isBlocked()) return;
       if (activeTouchId.current !== null) return;
       const t = e.changedTouches[0];
       activeTouchId.current = t.identifier;
@@ -68,7 +65,7 @@ export function Joystick() {
 
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
-      if (isEliminated()) return;
+      if (isBlocked()) { reset(); return; }
       const t = Array.from(e.changedTouches).find(
         (x) => x.identifier === activeTouchId.current,
       );
@@ -85,17 +82,27 @@ export function Joystick() {
     // Mouse fallback for desktop testing
     let mouseDown = false;
     const onMouseDown = (e: MouseEvent) => {
-      if (isEliminated()) return;
+      if (isBlocked()) return;
       mouseDown = true;
       updateCenter();
       moveKnob(e.clientX, e.clientY);
     };
     const onMouseMove = (e: MouseEvent) => {
-      if (mouseDown && !isEliminated()) moveKnob(e.clientX, e.clientY);
+      if (!mouseDown) return;
+      if (isBlocked()) { mouseDown = false; reset(); return; }
+      moveKnob(e.clientX, e.clientY);
     };
     const onMouseUp = () => {
       if (mouseDown) { mouseDown = false; reset(); }
     };
+
+    // Clear the joystick whenever a popup opens (or any other input-blocking state).
+    const unsubscribe = useGameStore.subscribe((state, prev) => {
+      if (selectInputBlocked(state) && !selectInputBlocked(prev)) {
+        mouseDown = false;
+        reset();
+      }
+    });
 
     el.addEventListener('touchstart', onTouchStart, { passive: false });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -111,6 +118,7 @@ export function Joystick() {
       el.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      unsubscribe();
     };
   }, [setJoystick]);
 

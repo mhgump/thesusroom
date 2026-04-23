@@ -52,8 +52,8 @@ export class Room {
 
   private nextPlayerIndex = 0
   private readonly observers: Map<string, Set<WebSocket>> = new Map()
-  private expectedTick: Map<string, number> = new Map()
   private moveQueue: Map<string, QueuedMove> = new Map()
+  private serverTick = 0
   private tickInterval: ReturnType<typeof setInterval>
   private npcManager: NpcManager
   private gameScriptManager: GameScriptManager | null = null
@@ -69,8 +69,8 @@ export class Room {
     this.onRoomDone = onRoomDone
     this.world = physics ? World.withPhysics(walkable, physics) : new World(walkable)
     this.geometrySpecs = gameSpec?.geometry ?? []
-    this.npcManager = new NpcManager(this.world, (npcId, x, z, events, time) => {
-      this.broadcast({ type: 'player_update', playerId: npcId, tick: -1, x, z, events, startTime: time, endTime: time })
+    this.npcManager = new NpcManager(this.world, (npcId, x, z, events) => {
+      this.broadcast({ type: 'player_update', playerId: npcId, tick: -1, x, z, events, serverTick: this.serverTick })
     })
     this.npcManager.spawnAll(npcs)
     if (gameSpec) {
@@ -101,8 +101,8 @@ export class Room {
         (id, changes) => this.broadcast({ type: 'button_config', id, changes }),
         (playerId, buttons) => this.sendToPlayer(playerId, { type: 'button_init', buttons }),
         (playerId, text) => this.sendToPlayer(playerId, { type: 'notification', text }),
-        (targetId, x, z, event, time) => {
-          this.broadcast({ type: 'player_update', playerId: targetId, tick: -1, x, z, events: [event], startTime: time, endTime: time })
+        (targetId, x, z, event) => {
+          this.broadcast({ type: 'player_update', playerId: targetId, tick: -1, x, z, events: [event], serverTick: this.serverTick })
         },
         getRoomAtPosition,
         spawnBotFn,
@@ -125,12 +125,24 @@ export class Room {
   handleMove(playerId: string, clientTick: number, inputs: MoveInput[]): void {
     if (!this.players.has(playerId)) return
 
-    const expected = this.expectedTick.get(playerId) ?? 0
-    if (clientTick !== expected) {
-      this.sendToPlayer(playerId, { type: 'error', message: `Expected tick ${expected}, got ${clientTick}` })
-      return
+    // The client's `tick` is a sequence number, not a sync gate. The server never
+    // rejects a move. If a move for this player is already queued for the next
+    // server tick, the older one is displaced — ack it as outOfOrder so the client
+    // drops it from its prediction history without trying to reconcile a position
+    // that the server never actually applied.
+    const displaced = this.moveQueue.get(playerId)
+    if (displaced) {
+      const wp = this.world.getPlayer(playerId)
+      this.sendToPlayer(playerId, {
+        type: 'move_ack',
+        tick: displaced.clientTick,
+        x: wp?.x ?? 0,
+        z: wp?.z ?? 0,
+        events: [],
+        serverTick: this.serverTick,
+        outOfOrder: true,
+      })
     }
-    this.expectedTick.set(playerId, expected + 1)
     this.moveQueue.set(playerId, { clientTick, inputs })
   }
 
@@ -140,14 +152,14 @@ export class Room {
       return
     }
 
+    this.serverTick++
+
     // Queue all pending player moves into the world
     for (const [playerId, queued] of this.moveQueue) {
       this.world.queueMove(playerId, queued.inputs)
     }
 
-    const tickStart = Date.now()
     const eventsPerPlayer = this.world.processTick()
-    const tickEnd = Date.now()
 
     for (const [playerId, queued] of this.moveQueue) {
       const playerEvents = eventsPerPlayer.get(playerId) ?? []
@@ -161,8 +173,7 @@ export class Room {
         x: wp.x,
         z: wp.z,
         events: allEvents,
-        startTime: tickStart,
-        endTime: tickEnd,
+        serverTick: this.serverTick,
       })
 
       const touchEvents = allEvents.filter((e): e is TouchedEvent => e.type === 'touched')
@@ -178,8 +189,7 @@ export class Room {
           x: wp.x,
           z: wp.z,
           events,
-          startTime: tickStart,
-          endTime: tickEnd,
+          serverTick: this.serverTick,
         })
       }
 
@@ -202,10 +212,9 @@ export class Room {
     const index = this.nextPlayerIndex++
     this.players.set(playerId, { id: playerId, ws, color, index })
     this.world.addPlayer(playerId)
-    this.expectedTick.set(playerId, 0)
 
     const wp = this.world.getPlayer(playerId)!
-    this.sendToPlayer(playerId, { type: 'welcome', playerId, color, x: wp.x, z: wp.z, hp: wp.hp })
+    this.sendToPlayer(playerId, { type: 'welcome', playerId, color, x: wp.x, z: wp.z, hp: wp.hp, serverTick: this.serverTick })
 
     // Send map geometry definitions to the new player.
     if (this.geometrySpecs.length > 0) {
@@ -216,8 +225,8 @@ export class Room {
     for (const [id, p] of this.players) {
       if (id === playerId) continue
       const ep = this.world.getPlayer(id)!
-      this.sendToPlayer(playerId, { type: 'player_joined', playerId: id, color: p.color, x: ep.x, z: ep.z, animState: ep.animState, hp: ep.hp })
-      this.sendToPlayer(id, { type: 'player_joined', playerId, color, x: wp.x, z: wp.z, animState: wp.animState, hp: wp.hp })
+      this.sendToPlayer(playerId, { type: 'player_joined', playerId: id, color: p.color, x: ep.x, z: ep.z, animState: ep.animState, hp: ep.hp, serverTick: this.serverTick })
+      this.sendToPlayer(id, { type: 'player_joined', playerId, color, x: wp.x, z: wp.z, animState: wp.animState, hp: wp.hp, serverTick: this.serverTick })
     }
 
     // Inform new player of all NPC entities in the world.
@@ -233,6 +242,7 @@ export class Room {
         hp: np.hp,
         isNpc: true,
         hasHealth: spec.ux.has_health,
+        serverTick: this.serverTick,
       })
     }
 
@@ -257,7 +267,6 @@ export class Room {
     this.sendToPlayer(playerId, { type: 'player_left', playerId })
     this.players.delete(playerId)
     this.world.removePlayer(playerId)
-    this.expectedTick.delete(playerId)
     this.moveQueue.delete(playerId)
     this.broadcast({ type: 'player_left', playerId })
     console.log(`[Room:${this.roomId}] -player ${playerId} (total:${this.players.size})`)
@@ -330,7 +339,7 @@ export class Room {
     const wp = this.world.getPlayer(playerId)
     if (!p || !wp) return msgs
 
-    msgs.push({ type: 'welcome', playerId: p.id, color: p.color, x: wp.x, z: wp.z, hp: wp.hp })
+    msgs.push({ type: 'welcome', playerId: p.id, color: p.color, x: wp.x, z: wp.z, hp: wp.hp, serverTick: this.serverTick })
 
     if (this.geometrySpecs.length > 0) {
       msgs.push({ type: 'map_init', geometry: this.geometrySpecs })
@@ -340,13 +349,13 @@ export class Room {
       if (id === playerId) continue
       const ep = this.world.getPlayer(id)
       if (!ep) continue
-      msgs.push({ type: 'player_joined', playerId: id, color: other.color, x: ep.x, z: ep.z, animState: ep.animState, hp: ep.hp })
+      msgs.push({ type: 'player_joined', playerId: id, color: other.color, x: ep.x, z: ep.z, animState: ep.animState, hp: ep.hp, serverTick: this.serverTick })
     }
 
     for (const { id, spec } of this.npcManager.getNpcEntries()) {
       const np = this.world.getPlayer(id)
       if (!np) continue
-      msgs.push({ type: 'player_joined', playerId: id, color: NPC_COLOR, x: np.x, z: np.z, animState: np.animState, hp: np.hp, isNpc: true, hasHealth: spec.ux.has_health })
+      msgs.push({ type: 'player_joined', playerId: id, color: NPC_COLOR, x: np.x, z: np.z, animState: np.animState, hp: np.hp, isNpc: true, hasHealth: spec.ux.has_health, serverTick: this.serverTick })
     }
 
     if (this.gameScriptManager) {

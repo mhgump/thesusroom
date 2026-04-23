@@ -8,7 +8,7 @@ import { buildNpcHelpers } from './NpcHelpers.js'
 import type { NpcHelperName } from './NpcHelpers.js'
 
 // Called by Room when a periodic NPC tick produces events or a position change.
-type PeriodicBroadcast = (npcId: string, x: number, z: number, events: WorldEvent[], time: number) => void
+type PeriodicBroadcast = (npcId: string, x: number, z: number, events: WorldEvent[]) => void
 
 export class NpcManager {
   private readonly entities: Map<string, NpcEntity> = new Map()
@@ -37,7 +37,7 @@ export class NpcManager {
         this.runTick(entity, [], emitted)
         const np = this.world.getPlayer(entity.id)
         if (np && emitted.length > 0) {
-          this.periodicBroadcast(entity.id, np.x, np.z, emitted, Date.now())
+          this.periodicBroadcast(entity.id, np.x, np.z, emitted)
         }
       }, spec.trigger.period)
       this.timers.set(npcId, timer)

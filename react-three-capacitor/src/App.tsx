@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { GameScene } from './scene/GameScene';
 import { HUD } from './hud/HUD';
-import { PlayerHudOverlay } from './hud/PlayerHudOverlay';
 import { useWebSocket } from './network/useWebSocket';
 import { useGameStore } from './store/gameStore';
 
@@ -43,7 +42,6 @@ export default function App() {
       </Canvas>
 
       {sceneReady && <HUD />}
-      <PlayerHudOverlay />
 
       <div
         style={{

@@ -1,5 +1,6 @@
 import { useState, useEffect, CSSProperties } from 'react'
-import { getSoundEnabled, setSoundEnabled } from '../settings'
+import { getSoundEnabled, setSoundEnabled, type InputMode } from '../settings'
+import { useGameStore } from '../store/gameStore'
 
 interface Props {
   onClose: () => void
@@ -23,6 +24,8 @@ const btnStyle: CSSProperties = {
 export function SettingsPanel({ onClose }: Props) {
   const [view, setView] = useState<'main' | 'settings'>('main')
   const [soundEnabled, setSoundEnabledState] = useState(getSoundEnabled)
+  const inputMode = useGameStore((s) => s.inputMode)
+  const setInputMode = useGameStore((s) => s.setInputMode)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -34,6 +37,21 @@ export function SettingsPanel({ onClose }: Props) {
     setSoundEnabledState(checked)
     setSoundEnabled(checked)
   }
+
+  const modeBtnStyle = (active: boolean): CSSProperties => ({
+    pointerEvents: 'auto',
+    background: active ? 'rgba(120,200,255,0.35)' : 'rgba(255,255,255,0.12)',
+    border: `1px solid ${active ? 'rgba(120,200,255,0.7)' : 'rgba(255,255,255,0.25)'}`,
+    borderRadius: 4,
+    color: '#fff',
+    fontSize: 'clamp(9px, 1.3vw, 12px)',
+    fontWeight: 700,
+    letterSpacing: '0.06em',
+    padding: 'clamp(5px, 0.8vw, 8px) clamp(10px, 1.8vw, 16px)',
+    cursor: 'pointer',
+    fontFamily: 'system-ui, monospace',
+    flex: 1,
+  })
 
   return (
     <div
@@ -91,6 +109,37 @@ export function SettingsPanel({ onClose }: Props) {
               />
               SOUND
             </label>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'clamp(4px, 0.6vw, 7px)',
+                width: '100%',
+                marginTop: 'clamp(4px, 0.6vw, 8px)',
+              }}
+            >
+              <span
+                style={{
+                  color: 'rgba(255,255,255,0.7)',
+                  fontSize: 'clamp(9px, 1.3vw, 12px)',
+                  fontFamily: 'system-ui, monospace',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                CONTROLS
+              </span>
+              <div style={{ display: 'flex', gap: 'clamp(4px, 0.6vw, 7px)', width: '100%' }}>
+                {(['joystick', 'tap'] as InputMode[]).map((m) => (
+                  <button
+                    key={m}
+                    style={modeBtnStyle(inputMode === m)}
+                    onClick={() => setInputMode(m)}
+                  >
+                    {m === 'joystick' ? 'JOYSTICK' : 'TAP TO MOVE'}
+                  </button>
+                ))}
+              </div>
+            </div>
             <button
               style={{ ...btnStyle, marginTop: 'clamp(5px, 0.8vw, 10px)', background: 'transparent', fontSize: 'clamp(8px, 1.2vw, 12px)' }}
               onClick={() => setView('main')}

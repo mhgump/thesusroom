@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { Joystick } from './Joystick'
 import { Notifications } from './Notifications'
@@ -15,7 +14,9 @@ export function HUD() {
   const observerMode = useGameStore((s) => s.observerMode)
   const activeRules = useGameStore((s) => s.activeRules)
   const setRulesOpen = useGameStore((s) => s.setRulesOpen)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const inputMode = useGameStore((s) => s.inputMode)
+  const settingsOpen = useGameStore((s) => s.settingsOpen)
+  const setSettingsOpen = useGameStore((s) => s.setSettingsOpen)
 
   const roomName = CURRENT_MAP.worldSpec.rooms.find(r => r.id === currentRoomId)?.name ?? currentRoomId
 
@@ -103,8 +104,8 @@ export function HUD() {
       {!observerMode && <RulesPanel />}
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
 
-      {/* Joystick — bottom-left, hidden in observer mode */}
-      {!observerMode && (
+      {/* Joystick — bottom-left, hidden in observer mode and tap-to-move mode */}
+      {!observerMode && inputMode === 'joystick' && (
         <div
           style={{
             position: 'absolute',

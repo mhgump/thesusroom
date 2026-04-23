@@ -6,16 +6,11 @@ import { World, TICK_RATE_HZ } from '../game/World'
 import type { AnimationState, MoveInput } from '../game/World'
 import { CapsuleFallback } from './animation/CapsuleFallback'
 import { useWsSend } from '../network/useWebSocket'
-import { consumeMoveAck, getInterpolatedPos, getAdaptiveDelayMs } from '../network/positionBuffer'
+import { consumeMoveAcks, getInterpolatedPos } from '../network/positionBuffer'
 import { localPlayerPos } from '../game/localPlayerPos'
 import { CURRENT_MAP } from '../../../content/client/maps'
-import { hudRegistry } from './hudRegistry'
-import { CAMERA_ANGLE } from '../game/constants'
 import { localWorld } from '../game/localWorld'
-
-const HEART_WORLD_SIZE = 0.0282
-const BASE_HEART_PX = 20
-const _hv = new THREE.Vector3()
+import { HeartSprite } from './HeartSprite'
 
 const CAPSULE_RADIUS = 0.0282
 const CAPSULE_LENGTH = 0.0806
@@ -23,41 +18,6 @@ const CAPSULE_CENTER_Y = CAPSULE_RADIUS + CAPSULE_LENGTH / 2
 
 const CORRECTION_THRESHOLD = 0.0016
 export const TICK_MS = 1000 / TICK_RATE_HZ
-
-/**
- * Compute the effective client tick duration (ms) given the current backlog
- * between the latest server-acked tick and the latest locally-generated tick.
- *
- * When the client falls behind (large backlog relative to the adaptive buffer),
- * we tick faster to catch up:
- *   - diff < 1.5× target → 1.0× speed (normal TICK_MS)
- *   - diff ≥ 3.0× target → 2.0× speed (TICK_MS / 2)
- *   - linear interpolation between those bounds
- *
- * adaptiveDelayMs MUST be the live value from getAdaptiveDelayMs() — never
- * a cached/hardcoded constant — so the buffer target tracks current network
- * conditions.
- */
-export function computeTickDurationMs(
-  latestAckedTick: number,
-  currentTick: number,
-  adaptiveDelayMs: number,
-): number {
-  const diff = Math.max(0, (currentTick - 1) - latestAckedTick)
-  const targetBufferTicks = adaptiveDelayMs / TICK_MS
-  const lo = 1.5 * targetBufferTicks
-  const hi = 3.0 * targetBufferTicks
-  let speed: number
-  if (diff < lo) {
-    speed = 1.0
-  } else if (diff >= hi) {
-    speed = 2.0
-  } else {
-    // Linear interp: at diff=lo speed=1.0, at diff=hi speed=2.0
-    speed = 1.0 + (diff - lo) / (hi - lo)
-  }
-  return TICK_MS / speed
-}
 
 // ── Per-tick entity snapshot ─────────────────────────────────────────────────
 
@@ -102,25 +62,25 @@ export function Player() {
   const currentTickRef = useRef(0)
   const pendingInputsRef = useRef<MoveInput[]>([])
   const lastTickTimeRef = useRef(0)          // performance.now() at last tick boundary
-  const latestAckedTickRef = useRef(-1)
 
   // Per-tick history
   const tickInputsRef = useRef<Map<number, MoveInput[]>>(new Map())
   const tickSnapshotsRef = useRef<Map<number, TickSnapshot>>(new Map())
 
   const localColor = useGameStore((s) => s.localColor)
+  const hp = useGameStore((s) => (s.playerId ? (s.playerHp[s.playerId] ?? 2) : 2)) as 0 | 1 | 2
   const { sendMove } = useWsSend()
   const [animState, setAnimState] = useState<AnimationState>('IDLE')
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     const store = useGameStore.getState()
     const playerId = store.playerId
     if (!playerId || !groupRef.current) return
 
     // ── Observer mode: no World, no prediction, no sends ────────────────────
     if (store.observerMode) {
-      const ack = consumeMoveAck()
-      if (ack) {
+      for (const ack of consumeMoveAcks()) {
+        if (ack.outOfOrder) continue
         groupRef.current.position.x = ack.x
         groupRef.current.position.z = ack.z
         localPlayerPos.x = ack.x
@@ -137,19 +97,6 @@ export function Player() {
           } else if (event.type === 'damage') {
             store.applyDamage(event.targetId, event.newHp)
           }
-        }
-      }
-      const heartDiv = hudRegistry.get('__local__')
-      if (heartDiv) {
-        const { camera, size } = state
-        if (camera instanceof THREE.OrthographicCamera) {
-          camera.updateMatrixWorld()
-          _hv.set(groupRef.current.position.x, 0, groupRef.current.position.z).project(camera)
-          const sx = (_hv.x * 0.5 + 0.5) * size.width
-          const sy = (-_hv.y * 0.5 + 0.5) * size.height
-          const scale = (HEART_WORLD_SIZE * size.height / Math.cos(CAMERA_ANGLE)) / BASE_HEART_PX
-          heartDiv.style.transform = `translate(${sx}px,${sy}px) translate(-50%,-50%) scale(${scale})`
-          if (heartDiv.style.display === 'none') heartDiv.style.display = ''
         }
       }
       return
@@ -174,7 +121,7 @@ export function Player() {
         }
       }
       for (const id of Object.keys(store.remotePlayers)) {
-        const pos = getInterpolatedPos(id, getAdaptiveDelayMs())
+        const pos = getInterpolatedPos(id)
         w.addPlayer(id, pos?.x ?? 0, pos?.z ?? 0)
       }
       worldRef.current = w
@@ -183,7 +130,6 @@ export function Player() {
       currentTickRef.current = 0
       pendingInputsRef.current = []
       lastTickTimeRef.current = 0
-      latestAckedTickRef.current = -1
       tickInputsRef.current.clear()
       tickSnapshotsRef.current.clear()
       animStateRef.current = 'IDLE'
@@ -199,9 +145,16 @@ export function Player() {
       appliedWalkableRef.current = currentWalkable
     }
 
-    // ── 1. Apply server ack ──────────────────────────────────────────────────
-    const ack = consumeMoveAck()
-    if (ack) {
+    // ── 1. Apply server acks ─────────────────────────────────────────────────
+    // outOfOrder acks: server received but didn't apply this tick (a newer one
+    // displaced it). Drop the tick from local history so reconciliation never
+    // tries to use the stale snapshot — but skip the position-correction path.
+    for (const ack of consumeMoveAcks()) {
+      if (ack.outOfOrder) {
+        tickInputsRef.current.delete(ack.tick)
+        tickSnapshotsRef.current.delete(ack.tick)
+        continue
+      }
       const snapshot = tickSnapshotsRef.current.get(ack.tick)
       if (snapshot) {
         const predicted = snapshot.get(playerId)
@@ -247,14 +200,12 @@ export function Player() {
         }
       }
 
-      // Mark tick as acknowledged and prune history
-      latestAckedTickRef.current = ack.tick
+      // Prune history through the acked tick
       clearOldHistory(tickInputsRef.current, tickSnapshotsRef.current, ack.tick)
 
       // Apply authoritative events from the ack
       for (const event of ack.events) {
-        if (event.type === 'touched') store.addNotification('Touched!')
-        else if (event.type === 'damage') store.applyDamage(event.targetId, event.newHp)
+        if (event.type === 'damage') store.applyDamage(event.targetId, event.newHp)
       }
     }
 
@@ -268,11 +219,28 @@ export function Player() {
 
     // Update remote player positions in World for local collision prediction
     for (const id of Object.keys(store.remotePlayers)) {
-      const pos = getInterpolatedPos(id, getAdaptiveDelayMs())
+      const pos = getInterpolatedPos(id)
       if (pos) world.setPlayerPosition(id, pos.x, pos.z)
     }
 
-    const { x: jx, y: jz } = store.joystickInput
+    let jx: number, jz: number
+    if (store.inputMode === 'tap' && store.moveTarget) {
+      const p = world.getPlayer(playerId)!
+      const dx = store.moveTarget.x - p.x
+      const dz = store.moveTarget.z - p.z
+      const dist = Math.hypot(dx, dz)
+      const ARRIVAL_EPSILON = 0.01
+      if (dist < ARRIVAL_EPSILON) {
+        store.setMoveTarget(null)
+        jx = 0; jz = 0
+      } else {
+        jx = dx / dist
+        jz = dz / dist
+      }
+    } else {
+      jx = store.joystickInput.x
+      jz = store.joystickInput.y
+    }
     const events = world.processMove(playerId, jx, jz, delta)
     for (const event of events) {
       if (event.type === 'update_animation_state' && event.animState !== animStateRef.current) {
@@ -285,15 +253,14 @@ export function Player() {
     pendingInputsRef.current.push({ jx, jz, dt: delta })
 
     // ── 3. Tick boundary: snapshot, store, and send ──────────────────────────
+    // Local input is sent at a fixed 20 Hz, period. Variable-rate playback (for
+    // remote-world catch-up) lives in positionBuffer.advanceRenderTick — never
+    // here. Distorting the user's own input cadence to "catch up" would change
+    // what the user actually did.
     const now = performance.now()
     if (lastTickTimeRef.current === 0) lastTickTimeRef.current = now
 
-    const tickDurationMs = computeTickDurationMs(
-      latestAckedTickRef.current,
-      currentTickRef.current,
-      getAdaptiveDelayMs(),
-    )
-    if (now - lastTickTimeRef.current >= tickDurationMs) {
+    if (now - lastTickTimeRef.current >= TICK_MS) {
       lastTickTimeRef.current = now
       const tick = currentTickRef.current++
 
@@ -314,20 +281,6 @@ export function Player() {
     localPlayerPos.x = player.x
     localPlayerPos.z = player.z
 
-    const heartDiv = hudRegistry.get('__local__')
-    if (heartDiv) {
-      const { camera, size } = state
-      if (camera instanceof THREE.OrthographicCamera) {
-        camera.updateMatrixWorld()
-        _hv.set(player.x, 0, player.z).project(camera)
-        const sx = (_hv.x * 0.5 + 0.5) * size.width
-        const sy = (-_hv.y * 0.5 + 0.5) * size.height
-        const scale = (HEART_WORLD_SIZE * size.height / Math.cos(CAMERA_ANGLE)) / BASE_HEART_PX
-        heartDiv.style.transform = `translate(${sx}px,${sy}px) translate(-50%,-50%) scale(${scale})`
-        if (heartDiv.style.display === 'none') heartDiv.style.display = ''
-      }
-    }
-
     const newRoomId = CURRENT_MAP.getRoomAtPosition(player.x, player.z) ?? localPlayerPos.roomId
     if (newRoomId !== localPlayerPos.roomId) {
       localPlayerPos.roomId = newRoomId
@@ -338,6 +291,7 @@ export function Player() {
   return (
     <group ref={groupRef} position={[0, CAPSULE_CENTER_Y, 0]}>
       <CapsuleFallback animationState={animState} color={localColor} />
+      <HeartSprite hp={hp} />
     </group>
   )
 }

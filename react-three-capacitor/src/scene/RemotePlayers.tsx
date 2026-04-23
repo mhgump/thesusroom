@@ -3,28 +3,30 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../store/gameStore'
 import type { RemotePlayerInfo } from '../store/gameStore'
-import { getInterpolatedPos, consumeRemoteEvents, getAdaptiveDelayMs } from '../network/positionBuffer'
+import { getInterpolatedPos, consumeRemoteEvents } from '../network/positionBuffer'
 import { CapsuleFallback } from './animation/CapsuleFallback'
 import type { AnimationState } from '../game/World'
 import { CURRENT_MAP } from '../../../content/client/maps'
+import { HeartSprite } from './HeartSprite'
 
 const CAPSULE_CENTER_Y = 0.0282 + 0.0806 / 2
 
-// Positions are interpolated at (estimatedServerTime − adaptiveDelayMs).
-// Events are consumed once max(receiptTime, serverStartTime + adaptiveDelayMs) is reached,
-// keeping both streams temporally aligned to server time.
+// Both positions and events play back against a single client-side render-tick
+// pointer (positionBuffer.renderTickFloat) that lags the latest received server
+// tick by a fixed buffer. No wall clock is consulted.
 
 function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
-  const { id, color, initialAnimState } = info
+  const { id, color, initialAnimState, hasHealth } = info
   const groupRef = useRef<THREE.Group>(null)
   const animStateRef = useRef<AnimationState>(initialAnimState)
   const [animState, setAnimState] = useState<AnimationState>(initialAnimState)
+  const hp = useGameStore((s) => (s.playerHp[id] ?? 2)) as 0 | 1 | 2
 
   useFrame(() => {
     const g = groupRef.current
     if (!g) return
 
-    const pos = getInterpolatedPos(id, getAdaptiveDelayMs())
+    const pos = getInterpolatedPos(id)
     if (pos !== null) {
       g.position.set(pos.x, CAPSULE_CENTER_Y, pos.z)
       // Hide remote players who are inside a room not visible from the local player's room.
@@ -48,13 +50,11 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
       g.visible = false
     }
 
-    const events = consumeRemoteEvents(id, getAdaptiveDelayMs())
-    for (const { event } of events) {
+    const events = consumeRemoteEvents(id)
+    for (const event of events) {
       if (event.type === 'update_animation_state' && event.animState !== animStateRef.current) {
         animStateRef.current = event.animState
         setAnimState(event.animState)
-      } else if (event.type === 'touched') {
-        useGameStore.getState().addNotification('Touched!')
       } else if (event.type === 'damage') {
         useGameStore.getState().applyDamage(event.targetId, event.newHp)
       }
@@ -64,6 +64,7 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
   return (
     <group ref={groupRef} visible={false}>
       <CapsuleFallback animationState={animState} color={color} />
+      {hasHealth && <HeartSprite hp={hp} />}
     </group>
   )
 }
