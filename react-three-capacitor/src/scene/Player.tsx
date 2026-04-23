@@ -19,38 +19,6 @@ const CAPSULE_CENTER_Y = CAPSULE_RADIUS + CAPSULE_LENGTH / 2
 const CORRECTION_THRESHOLD = 0.0016
 export const TICK_MS = 1000 / TICK_RATE_HZ
 
-// ── Per-tick entity snapshot ─────────────────────────────────────────────────
-
-type EntityState = { x: number; z: number; animState: AnimationState; hp: 0 | 1 | 2 }
-type TickSnapshot = Map<string, EntityState>
-
-function captureSnapshot(world: World): TickSnapshot {
-  const snap: TickSnapshot = new Map()
-  for (const [id, p] of world.players) {
-    snap.set(id, { x: p.x, z: p.z, animState: p.animState, hp: p.hp })
-  }
-  return snap
-}
-
-function restoreSnapshot(world: World, snap: TickSnapshot): void {
-  for (const [id, state] of snap) {
-    const p = world.getPlayer(id)
-    if (!p) continue
-    world.setPlayerPosition(id, state.x, state.z)
-    p.animState = state.animState
-    p.hp = state.hp
-  }
-}
-
-function clearOldHistory(
-  tickInputs: Map<number, MoveInput[]>,
-  tickSnapshots: Map<number, TickSnapshot>,
-  upToTick: number,
-): void {
-  for (const t of tickInputs.keys()) { if (t <= upToTick) tickInputs.delete(t) }
-  for (const t of tickSnapshots.keys()) { if (t <= upToTick) tickSnapshots.delete(t) }
-}
-
 export function Player() {
   const groupRef = useRef<THREE.Group>(null)
   const worldRef = useRef<World | null>(null)
@@ -59,13 +27,20 @@ export function Player() {
   const appliedWalkableRef = useRef<import('../game/WorldSpec').WalkableArea | null>(null)
 
   // ── Tick state ─────────────────────────────────────────────────────────────
-  const currentTickRef = useRef(0)
+  // client_predictive_tick — advances every TICK_MS when we send a `move`.
+  const clientPredictiveTickRef = useRef(0)
+  // client_world_tick — latest serverTick for which the server's authoritative
+  // state has been applied for the local player. Acks with serverTick <= this
+  // value are stale and their (x,z) adjustment is ignored.
+  const clientWorldTickRef = useRef(0)
   const pendingInputsRef = useRef<MoveInput[]>([])
   const lastTickTimeRef = useRef(0)          // performance.now() at last tick boundary
 
-  // Per-tick history
+  // Per-predictive-tick history, pruned as acks arrive.
   const tickInputsRef = useRef<Map<number, MoveInput[]>>(new Map())
-  const tickSnapshotsRef = useRef<Map<number, TickSnapshot>>(new Map())
+  // Local player's predicted (x,z) at the end of each predictive tick. Compared
+  // against the server's acked position to decide whether replay is needed.
+  const predictedPosPerTickRef = useRef<Map<number, { x: number; z: number }>>(new Map())
 
   const localColor = useGameStore((s) => s.localColor)
   const hp = useGameStore((s) => (s.playerId ? (s.playerHp[s.playerId] ?? 2) : 2)) as 0 | 1 | 2
@@ -80,7 +55,6 @@ export function Player() {
     // ── Observer mode: no World, no prediction, no sends ────────────────────
     if (store.observerMode) {
       for (const ack of consumeMoveAcks()) {
-        if (ack.outOfOrder) continue
         groupRef.current.position.x = ack.x
         groupRef.current.position.z = ack.z
         localPlayerPos.x = ack.x
@@ -127,11 +101,12 @@ export function Player() {
       worldRef.current = w
       localWorld.current = w
       initializedForRef.current = playerId
-      currentTickRef.current = 0
+      clientPredictiveTickRef.current = 0
+      clientWorldTickRef.current = 0
       pendingInputsRef.current = []
       lastTickTimeRef.current = 0
       tickInputsRef.current.clear()
-      tickSnapshotsRef.current.clear()
+      predictedPosPerTickRef.current.clear()
       animStateRef.current = 'IDLE'
       appliedWalkableRef.current = null
     }
@@ -146,66 +121,67 @@ export function Player() {
     }
 
     // ── 1. Apply server acks ─────────────────────────────────────────────────
-    // outOfOrder acks: server received but didn't apply this tick (a newer one
-    // displaced it). Drop the tick from local history so reconciliation never
-    // tries to use the stale snapshot — but skip the position-correction path.
-    for (const ack of consumeMoveAcks()) {
-      if (ack.outOfOrder) {
-        tickInputsRef.current.delete(ack.tick)
-        tickSnapshotsRef.current.delete(ack.tick)
-        continue
-      }
-      const snapshot = tickSnapshotsRef.current.get(ack.tick)
-      if (snapshot) {
-        const predicted = snapshot.get(playerId)
-        if (predicted && Math.hypot(ack.x - predicted.x, ack.z - predicted.z) > CORRECTION_THRESHOLD) {
-          // Restore world to the snapshot for the acked tick, then apply server's authoritative position
-          restoreSnapshot(world, snapshot)
-          world.setPlayerPosition(playerId, ack.x, ack.z)
-
-          // Replay subsequent ticks' inputs to reconstruct current state
-          for (let t = ack.tick + 1; t < currentTickRef.current; t++) {
-            const tickSnap = tickSnapshotsRef.current.get(t)
-            if (tickSnap) {
-              for (const [id, s] of tickSnap) {
-                if (id === playerId) continue
-                const rp = world.getPlayer(id)
-                if (rp) {
-                  world.setPlayerPosition(id, s.x, s.z)
-                  rp.animState = s.animState
-                  rp.hp = s.hp
-                }
-              }
-            }
-            const inputs = tickInputsRef.current.get(t) ?? []
-            for (const { jx, jz, dt } of inputs) {
-              world.processMove(playerId, jx, jz, dt)
-            }
-          }
-
-          // Replay inputs accumulated in the current (unsent) tick
-          for (const { jx, jz, dt } of pendingInputsRef.current) {
-            world.processMove(playerId, jx, jz, dt)
-          }
-
-          const wp = world.getPlayer(playerId)!
-          if (Math.hypot(wp.x - groupRef.current.position.x, wp.z - groupRef.current.position.z) > CORRECTION_THRESHOLD) {
-            groupRef.current.position.x = wp.x
-            groupRef.current.position.z = wp.z
-          }
-          if (wp.animState !== animStateRef.current) {
-            animStateRef.current = wp.animState
-            setAnimState(wp.animState)
-          }
-        }
-      }
-
-      // Prune history through the acked tick
-      clearOldHistory(tickInputsRef.current, tickSnapshotsRef.current, ack.tick)
-
-      // Apply authoritative events from the ack
+    // The server buffers every client move between its ticks and processes them
+    // sorted by clientTick, so several acks may arrive with the same serverTick.
+    // For each batch: prune input history per-ack, apply events once, then pick
+    // the single ack with the newest serverTick to drive reconciliation. Acks
+    // whose serverTick <= client_world_tick are stale (a newer tick was already
+    // played) and their (x,z) adjustment is ignored.
+    const acks = consumeMoveAcks()
+    let reconcileAck: typeof acks[number] | null = null
+    let reconcilePredicted: { x: number; z: number } | undefined = undefined
+    for (const ack of acks) {
+      const predicted = predictedPosPerTickRef.current.get(ack.clientTick)
+      predictedPosPerTickRef.current.delete(ack.clientTick)
+      tickInputsRef.current.delete(ack.clientTick)
       for (const event of ack.events) {
         if (event.type === 'damage') store.applyDamage(event.targetId, event.newHp)
+      }
+      if (ack.serverTick <= clientWorldTickRef.current) continue
+      if (
+        !reconcileAck ||
+        ack.serverTick > reconcileAck.serverTick ||
+        (ack.serverTick === reconcileAck.serverTick && ack.clientTick > reconcileAck.clientTick)
+      ) {
+        reconcileAck = ack
+        reconcilePredicted = predicted
+      }
+    }
+
+    if (reconcileAck) {
+      clientWorldTickRef.current = reconcileAck.serverTick
+      const needsReplay =
+        !reconcilePredicted ||
+        Math.hypot(reconcileAck.x - reconcilePredicted.x, reconcileAck.z - reconcilePredicted.z) > CORRECTION_THRESHOLD
+      if (needsReplay) {
+        // Reset local player to server's authoritative position, and other
+        // entities to what the client currently knows (latest interpolated
+        // positions from the remote-player buffer). Then replay all unacked
+        // client inputs up to client_predictive_tick.
+        world.setPlayerPosition(playerId, reconcileAck.x, reconcileAck.z)
+        for (const id of Object.keys(store.remotePlayers)) {
+          const pos = getInterpolatedPos(id)
+          if (pos) world.setPlayerPosition(id, pos.x, pos.z)
+        }
+        const replayTicks = [...tickInputsRef.current.keys()].sort((a, b) => a - b)
+        for (const t of replayTicks) {
+          const inputs = tickInputsRef.current.get(t)!
+          for (const { jx, jz, dt } of inputs) {
+            world.processMove(playerId, jx, jz, dt)
+          }
+        }
+        for (const { jx, jz, dt } of pendingInputsRef.current) {
+          world.processMove(playerId, jx, jz, dt)
+        }
+        const wp = world.getPlayer(playerId)!
+        if (Math.hypot(wp.x - groupRef.current.position.x, wp.z - groupRef.current.position.z) > CORRECTION_THRESHOLD) {
+          groupRef.current.position.x = wp.x
+          groupRef.current.position.z = wp.z
+        }
+        if (wp.animState !== animStateRef.current) {
+          animStateRef.current = wp.animState
+          setAnimState(wp.animState)
+        }
       }
     }
 
@@ -262,16 +238,17 @@ export function Player() {
 
     if (now - lastTickTimeRef.current >= TICK_MS) {
       lastTickTimeRef.current = now
-      const tick = currentTickRef.current++
+      const tick = clientPredictiveTickRef.current++
 
-      // Snapshot world state at the end of this tick
-      tickSnapshotsRef.current.set(tick, captureSnapshot(world))
-
-      // Store the inputs for this tick and send to server
       const inputs = pendingInputsRef.current
       tickInputsRef.current.set(tick, inputs)
       pendingInputsRef.current = []
       sendMove(tick, inputs)
+
+      // Record the local player's predicted end-of-tick position so the next
+      // ack for this clientTick can tell whether replay is needed.
+      const wp = world.getPlayer(playerId)!
+      predictedPosPerTickRef.current.set(tick, { x: wp.x, z: wp.z })
     }
 
     // ── 4. Update visuals + room tracking ───────────────────────────────────

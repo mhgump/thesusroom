@@ -1,4 +1,7 @@
+import { useRef } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { CAMERA_ANGLE } from '../game/constants'
 
 const HEART_PATH_D =
   'M8 14C3 9.5 0 7 0 4.5 0 2 1.8 1 4 1c1.5 0 3 1 4 2.5C9 2 10.5 1 12 1c2.2 0 4 1 4 3.5 0 2.5-3 5-8 9.5z'
@@ -44,30 +47,44 @@ let fullTex: THREE.CanvasTexture | null = null
 let halfTex: THREE.CanvasTexture | null = null
 
 const HEART_WORLD_SIZE = 0.0282
-// Capsule top in world: CAPSULE_RADIUS + CAPSULE_LENGTH/2 + CAPSULE_CENTER_Y = 0.137.
-// Placing the anchor above the top guarantees the sprite's (uniform) depth is
-// closer to the camera than every fragment of the owning capsule, so the heart
-// is never occluded by the player it belongs to. Other capsules can still
-// depth-test closer than the heart and occlude it.
-const HEART_Y = 0.15
-// Local offset for a parent group whose origin is at CAPSULE_CENTER_Y.
-const HEART_LOCAL_Y = HEART_Y - (0.0282 + 0.0806 / 2)
+const CAPSULE_RADIUS = 0.0282
+const CAPSULE_LENGTH = 0.0806
+const CAPSULE_CENTER_Y = CAPSULE_RADIUS + CAPSULE_LENGTH / 2
+const CAPSULE_TOP_Y = CAPSULE_LENGTH / 2 + CAPSULE_RADIUS + CAPSULE_CENTER_Y
+// HEART_Y / HEART_Z pair purely shapes where the sprite projects on screen
+// (directly below the feet). Draw ordering is handled by renderOrder, not
+// depth, so we don't need the anchor to beat any capsule depth.
+const HEART_MARGIN = 0.008
+const HEART_Y = CAPSULE_TOP_Y + HEART_MARGIN
+const HEART_Z =
+  HEART_WORLD_SIZE / (2 * Math.cos(CAMERA_ANGLE)) + HEART_Y * Math.tan(CAMERA_ANGLE)
+const HEART_LOCAL_Y = HEART_Y - CAPSULE_CENTER_Y
+
+const _worldPos = new THREE.Vector3()
 
 interface Props {
   hp: 0 | 1 | 2
 }
 
 export function HeartSprite({ hp }: Props) {
+  const spriteRef = useRef<THREE.Sprite>(null)
+  useFrame(({ camera }) => {
+    const s = spriteRef.current
+    if (!s) return
+    s.getWorldPosition(_worldPos)
+    s.renderOrder = -camera.position.distanceTo(_worldPos)
+  })
   if (hp === 0) return null
   if (!fullTex) fullTex = makeHeartTexture(false)
   if (!halfTex) halfTex = makeHeartTexture(true)
   const tex = hp === 2 ? fullTex : halfTex
   return (
     <sprite
-      position={[0, HEART_LOCAL_Y, 0]}
+      ref={spriteRef}
+      position={[0, HEART_LOCAL_Y, HEART_Z]}
       scale={[HEART_WORLD_SIZE, HEART_WORLD_SIZE, 1]}
     >
-      <spriteMaterial map={tex} transparent depthWrite={false} />
+      <spriteMaterial map={tex} transparent depthTest={false} depthWrite={false} />
     </sprite>
   )
 }

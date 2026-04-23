@@ -26,7 +26,8 @@ const SPEED_LO_MULT = 1.5
 const SPEED_HI_MULT = 3.0
 const MAX_BUFFER_AGE_TICKS = 40  // drop snapshots older than ~2s
 
-let latestServerTick = 0
+// server_world_tick: latest server tick observed in any incoming server message.
+let serverWorldTick = 0
 let renderTickFloat = 0
 let renderTickInitialized = false
 
@@ -34,15 +35,15 @@ export function getRenderTick(): number {
   return renderTickFloat
 }
 
-export function getLatestServerTick(): number {
-  return latestServerTick
+export function getServerWorldTick(): number {
+  return serverWorldTick
 }
 
 // Called when any server message carrying a serverTick arrives.
 export function registerServerTick(tick: number): void {
-  if (tick > latestServerTick) latestServerTick = tick
-  if (!renderTickInitialized && latestServerTick > 0) {
-    renderTickFloat = Math.max(0, latestServerTick - BUFFER_TICKS)
+  if (tick > serverWorldTick) serverWorldTick = tick
+  if (!renderTickInitialized && serverWorldTick > 0) {
+    renderTickFloat = Math.max(0, serverWorldTick - BUFFER_TICKS)
     renderTickInitialized = true
   }
 }
@@ -51,7 +52,7 @@ export function registerServerTick(tick: number): void {
 // tick this frame.
 export function advanceRenderTick(deltaSec: number): void {
   if (!renderTickInitialized) return
-  const target = latestServerTick - BUFFER_TICKS
+  const target = serverWorldTick - BUFFER_TICKS
   if (target <= renderTickFloat) return
   const lag = target - renderTickFloat
   const lo = SPEED_LO_MULT * BUFFER_TICKS
@@ -131,16 +132,16 @@ export function clearRemotePlayer(id: string): void {
 
 // ── move_ack queue for local player reconciliation ────────────────────────────
 // Acks may arrive faster than the frame loop consumes them (network bunching),
-// and outOfOrder acks must not be silently dropped because they carry the only
-// signal that lets the client clear that tick from its prediction history. So
-// queue all of them in arrival order.
+// so queue all of them in arrival order. Each ack carries both the clientTick
+// it echoes (for history pruning) and the serverTick it was processed on (for
+// stale-ack detection and reconciliation sequencing).
 
 export interface MoveAck {
-  tick: number
+  clientTick: number
+  serverTick: number
   x: number
   z: number
   events: WorldEvent[]
-  outOfOrder: boolean
 }
 
 let pendingMoveAcks: MoveAck[] = []
@@ -160,7 +161,7 @@ export function resetBuffers(): void {
   posBuffers.clear()
   eventQueues.clear()
   pendingMoveAcks = []
-  latestServerTick = 0
+  serverWorldTick = 0
   renderTickFloat = 0
   renderTickInitialized = false
 }

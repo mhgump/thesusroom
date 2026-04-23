@@ -80,7 +80,7 @@ export function useWebSocket(): void {
 
         case 'move_ack':
           registerServerTick(msg.serverTick)
-          pushMoveAck({ tick: msg.tick, x: msg.x, z: msg.z, events: msg.events, outOfOrder: msg.outOfOrder ?? false })
+          pushMoveAck({ clientTick: msg.clientTick, serverTick: msg.serverTick, x: msg.x, z: msg.z, events: msg.events })
           break
 
         case 'player_update':

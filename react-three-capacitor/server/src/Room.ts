@@ -42,7 +42,7 @@ function rgbDist(a: [number, number, number], b: [number, number, number]): numb
 
 interface PlayerState { id: string; ws: WebSocket; color: string; index: number }
 
-interface QueuedMove { clientTick: number; inputs: MoveInput[] }
+interface PendingMove { clientTick: number; inputs: MoveInput[] }
 
 export class Room {
   protected readonly roomId: string
@@ -52,7 +52,9 @@ export class Room {
 
   private nextPlayerIndex = 0
   private readonly observers: Map<string, Set<WebSocket>> = new Map()
-  private moveQueue: Map<string, QueuedMove> = new Map()
+  // All moves received from a client since the last server tick. Appended to
+  // unconditionally (never dropped, never displaced); drained in runTick().
+  private pendingMoves: Map<string, PendingMove[]> = new Map()
   private serverTick = 0
   private tickInterval: ReturnType<typeof setInterval>
   private npcManager: NpcManager
@@ -70,7 +72,7 @@ export class Room {
     this.world = physics ? World.withPhysics(walkable, physics) : new World(walkable)
     this.geometrySpecs = gameSpec?.geometry ?? []
     this.npcManager = new NpcManager(this.world, (npcId, x, z, events) => {
-      this.broadcast({ type: 'player_update', playerId: npcId, tick: -1, x, z, events, serverTick: this.serverTick })
+      this.broadcast({ type: 'player_update', playerId: npcId, x, z, events, serverTick: this.serverTick })
     })
     this.npcManager.spawnAll(npcs)
     if (gameSpec) {
@@ -102,7 +104,7 @@ export class Room {
         (playerId, buttons) => this.sendToPlayer(playerId, { type: 'button_init', buttons }),
         (playerId, text) => this.sendToPlayer(playerId, { type: 'notification', text }),
         (targetId, x, z, event) => {
-          this.broadcast({ type: 'player_update', playerId: targetId, tick: -1, x, z, events: [event], serverTick: this.serverTick })
+          this.broadcast({ type: 'player_update', playerId: targetId, x, z, events: [event], serverTick: this.serverTick })
         },
         getRoomAtPosition,
         spawnBotFn,
@@ -124,26 +126,12 @@ export class Room {
 
   handleMove(playerId: string, clientTick: number, inputs: MoveInput[]): void {
     if (!this.players.has(playerId)) return
-
-    // The client's `tick` is a sequence number, not a sync gate. The server never
-    // rejects a move. If a move for this player is already queued for the next
-    // server tick, the older one is displaced — ack it as outOfOrder so the client
-    // drops it from its prediction history without trying to reconcile a position
-    // that the server never actually applied.
-    const displaced = this.moveQueue.get(playerId)
-    if (displaced) {
-      const wp = this.world.getPlayer(playerId)
-      this.sendToPlayer(playerId, {
-        type: 'move_ack',
-        tick: displaced.clientTick,
-        x: wp?.x ?? 0,
-        z: wp?.z ?? 0,
-        events: [],
-        serverTick: this.serverTick,
-        outOfOrder: true,
-      })
-    }
-    this.moveQueue.set(playerId, { clientTick, inputs })
+    // The server never drops client moves. Everything received between the last
+    // runTick and the next is buffered and applied on the next tick, sorted by
+    // clientTick so that the server processes them in the client's intended order.
+    let arr = this.pendingMoves.get(playerId)
+    if (!arr) { arr = []; this.pendingMoves.set(playerId, arr) }
+    arr.push({ clientTick, inputs })
   }
 
   private runTick(): void {
@@ -154,28 +142,42 @@ export class Room {
 
     this.serverTick++
 
-    // Queue all pending player moves into the world
-    for (const [playerId, queued] of this.moveQueue) {
-      this.world.queueMove(playerId, queued.inputs)
+    // Sort each player's pending moves by clientTick, flatten inputs in order,
+    // then enqueue onto the world. `world.processTick()` iterates per player
+    // (see src/game/World.ts), which gives us the "process each client one at a
+    // time, in the tick order the client marked" semantics this design requires.
+    for (const [playerId, moves] of this.pendingMoves) {
+      moves.sort((a, b) => a.clientTick - b.clientTick)
+      const flat: MoveInput[] = []
+      for (const m of moves) flat.push(...m.inputs)
+      this.world.queueMove(playerId, flat)
     }
 
     const eventsPerPlayer = this.world.processTick()
 
-    for (const [playerId, queued] of this.moveQueue) {
+    for (const [playerId, moves] of this.pendingMoves) {
       const playerEvents = eventsPerPlayer.get(playerId) ?? []
       const npcEvents = this.npcManager.onActionCompleted(playerEvents)
       const allEvents = npcEvents.length > 0 ? [...playerEvents, ...npcEvents] : playerEvents
       const wp = this.world.getPlayer(playerId)!
 
-      this.sendToPlayer(playerId, {
-        type: 'move_ack',
-        tick: queued.clientTick,
-        x: wp.x,
-        z: wp.z,
-        events: allEvents,
-        serverTick: this.serverTick,
-      })
+      // One move_ack per received client move. All acks for this player share the
+      // same final (x, z) — the world position after server tick X. Events attach
+      // only to the final ack so the client applies them exactly once.
+      const lastIdx = moves.length - 1
+      for (let i = 0; i < moves.length; i++) {
+        this.sendToPlayer(playerId, {
+          type: 'move_ack',
+          clientTick: moves[i].clientTick,
+          x: wp.x,
+          z: wp.z,
+          events: i === lastIdx ? allEvents : [],
+          serverTick: this.serverTick,
+        })
+      }
 
+      // One player_update per moving player per server tick. Touch events are
+      // routed only to participants; other events go to everyone else.
       const touchEvents = allEvents.filter((e): e is TouchedEvent => e.type === 'touched')
       const nonTouchEvents = touchEvents.length > 0 ? allEvents.filter(e => e.type !== 'touched') : allEvents
       for (const [id] of this.players) {
@@ -185,7 +187,6 @@ export class Room {
         this.sendToPlayer(id, {
           type: 'player_update',
           playerId,
-          tick: queued.clientTick,
           x: wp.x,
           z: wp.z,
           events,
@@ -204,7 +205,7 @@ export class Room {
       }
     }
 
-    this.moveQueue.clear()
+    this.pendingMoves.clear()
   }
 
   addPlayer(playerId: string, ws: WebSocket): void {
@@ -267,7 +268,7 @@ export class Room {
     this.sendToPlayer(playerId, { type: 'player_left', playerId })
     this.players.delete(playerId)
     this.world.removePlayer(playerId)
-    this.moveQueue.delete(playerId)
+    this.pendingMoves.delete(playerId)
     this.broadcast({ type: 'player_left', playerId })
     console.log(`[Room:${this.roomId}] -player ${playerId} (total:${this.players.size})`)
     this.maybeTriggerRoomDone()
