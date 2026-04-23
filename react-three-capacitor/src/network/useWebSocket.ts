@@ -8,9 +8,10 @@ import {
   clearRemotePlayer,
   updateServerTime,
   estimatedServerTime,
+  resetBuffers,
 } from './positionBuffer'
 import type { ServerMessage } from './types'
-import { CURRENT_MAP } from '../../../content/client/maps'
+import { CURRENT_MAP } from '../../../content/maps'
 import { localWorld } from '../game/localWorld'
 
 function getWsUrl(): string {
@@ -108,11 +109,10 @@ export function useWebSocket(): void {
 
         case 'instruction':
           if (!isObserver) {
-            store.showRule({
-              type: 'show_rule',
-              eventId: `instruction-${Date.now()}`,
-              rules: msg.lines,
-            })
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const raw = msg as any
+            const rules = msg.lines ?? (raw.text ? [{ label: raw.label, text: raw.text }] : [])
+            store.showRule({ type: 'show_rule', eventId: `instruction-${Date.now()}`, rules })
           }
           break
 
@@ -162,6 +162,16 @@ export function useWebSocket(): void {
           break
         }
 
+        case 'room_visibility_state': {
+          const localId = useGameStore.getState().playerId
+          if (msg.perPlayer && localId) {
+            store.applyPlayerRoomVisibilityOverride(msg.updates)
+          } else {
+            store.applyRoomVisibilityUpdates(msg.updates)
+          }
+          break
+        }
+
         case 'button_init':
           store.initButtons(msg.buttons)
           break
@@ -197,4 +207,12 @@ export function useWsSend() {
     sendChoiceAction: (eventId: string, optionId: string) =>
       client.send({ type: 'choice_action', eventId, optionId }),
   }
+}
+
+export function reconnectWs(): void {
+  resetBuffers()
+  useGameStore.getState().reset()
+  const client = getClient()
+  client.disconnect()
+  client.connect()
 }

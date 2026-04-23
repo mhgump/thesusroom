@@ -24,6 +24,9 @@ export class GameScriptManager {
   private readonly removePlayer: (playerId: string, eliminated?: boolean) => void
   private readonly onCloseScenario: () => void
   private readonly sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>, perPlayer?: boolean) => void
+  private readonly sendRoomVisibilityState: (playerId: string, updates: Array<{ roomId: string; visible: boolean }>, perPlayer?: boolean) => void
+  private readonly globalRoomVisible: Map<string, boolean>
+  private readonly playerRoomVisible: Map<string, Map<string, boolean>> = new Map()
   private readonly walkableVariants: Array<{ triggerIds: Set<string>; walkable: WalkableArea }>
   private readonly onWalkableUpdate: (area: WalkableArea) => void
   private readonly toggleVariants: Array<{ triggerIds: Set<string>; toggleIds: string[] }>
@@ -54,6 +57,8 @@ export class GameScriptManager {
     removePlayer: (playerId: string, eliminated?: boolean) => void,
     onCloseScenario: () => void,
     sendGeometryState: (playerId: string, updates: Array<{ id: string; visible: boolean }>, perPlayer?: boolean) => void,
+    initialRoomVisibility: Record<string, boolean> = {},
+    sendRoomVisibilityState: (playerId: string, updates: Array<{ roomId: string; visible: boolean }>, perPlayer?: boolean) => void = () => {},
     walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [],
     onWalkableUpdate: (area: WalkableArea) => void = () => {},
     toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = [],
@@ -78,6 +83,8 @@ export class GameScriptManager {
     this.removePlayer = removePlayer
     this.onCloseScenario = onCloseScenario
     this.sendGeometryState = sendGeometryState
+    this.sendRoomVisibilityState = sendRoomVisibilityState
+    this.globalRoomVisible = new Map(Object.entries(initialRoomVisibility))
     this.onWalkableUpdate = onWalkableUpdate
     this.walkableVariants = walkableVariants.map(v => ({ triggerIds: new Set(v.triggerIds), walkable: v.walkable }))
     this.toggleVariants = toggleVariants.map(v => ({ triggerIds: new Set(v.triggerIds), toggleIds: v.toggleIds }))
@@ -139,6 +146,12 @@ export class GameScriptManager {
       this.sendGeometryState(playerId, this.geometrySpecs.map(g => ({ id: g.id, visible: geomState[g.id] })))
     }
 
+    const roomVisState = new Map(this.globalRoomVisible)
+    this.playerRoomVisible.set(playerId, roomVisState)
+    if (roomVisState.size > 0) {
+      this.sendRoomVisibilityState(playerId, [...roomVisState].map(([roomId, visible]) => ({ roomId, visible })))
+    }
+
     const buttonData = this.buttonManager?.getInitData() ?? []
     if (buttonData.length > 0) {
       this.sendButtonInit(playerId, buttonData)
@@ -153,6 +166,7 @@ export class GameScriptManager {
     this.playerRegions.delete(playerId)
     this.playerCurrentRoom.delete(playerId)
     this.playerGeometry.delete(playerId)
+    this.playerRoomVisible.delete(playerId)
     if (this.buttonManager) {
       const changes = this.buttonManager.removePlayer(playerId)
       for (const { buttonId } of changes) this.evaluateButton(buttonId)
@@ -366,6 +380,20 @@ export class GameScriptManager {
       unlockPlayerFromRoom(playerId) {
         self.world.unlockPlayerFromRoom(playerId)
       },
+      setRoomVisible(roomIds, visible, playerIds) {
+        const perPlayer = !!(playerIds && playerIds.length > 0)
+        const targets = perPlayer ? playerIds! : [...self.playerRoomVisible.keys()]
+        const updates = roomIds.map(roomId => ({ roomId, visible }))
+        for (const pid of targets) {
+          const state = self.playerRoomVisible.get(pid)
+          if (!state) continue
+          for (const roomId of roomIds) state.set(roomId, visible)
+          self.sendRoomVisibilityState(pid, updates, perPlayer)
+        }
+        if (!perPlayer) {
+          for (const roomId of roomIds) self.globalRoomVisible.set(roomId, visible)
+        }
+      },
     }
   }
 
@@ -373,6 +401,7 @@ export class GameScriptManager {
   // Used to send a snapshot to an observer joining mid-game.
   getPlayerSnapshotData(observedPlayerId: string): {
     geometryUpdates: Array<{ id: string; visible: boolean }> | null
+    roomVisibilityUpdates: Array<{ roomId: string; visible: boolean }> | null
     buttonData: Array<ButtonSpec & { state: ButtonState; occupancy: number }>
     voteAssignments: Record<string, string[]> | null
   } {
@@ -383,6 +412,14 @@ export class GameScriptManager {
         id: g.id,
         visible: geomState ? (geomState[g.id] ?? true) : (this.globalGeomVisible.get(g.id) ?? true),
       }))
+    }
+
+    let roomVisibilityUpdates: Array<{ roomId: string; visible: boolean }> | null = null
+    const roomState = this.playerRoomVisible.get(observedPlayerId)
+    if (roomState && roomState.size > 0) {
+      roomVisibilityUpdates = [...roomState].map(([roomId, visible]) => ({ roomId, visible }))
+    } else if (this.globalRoomVisible.size > 0) {
+      roomVisibilityUpdates = [...this.globalRoomVisible].map(([roomId, visible]) => ({ roomId, visible }))
     }
 
     const buttonData = this.buttonManager?.getInitData() ?? []
@@ -397,6 +434,6 @@ export class GameScriptManager {
       voteAssignments = assignments
     }
 
-    return { geometryUpdates, buttonData, voteAssignments }
+    return { geometryUpdates, roomVisibilityUpdates, buttonData, voteAssignments }
   }
 }

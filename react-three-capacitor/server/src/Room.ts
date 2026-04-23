@@ -5,7 +5,7 @@ import type { WalkableArea, PhysicsSpec, TouchedEvent } from './World.js'
 import { NpcManager } from './npc/NpcManager.js'
 import type { NpcSpec } from './npc/NpcSpec.js'
 import { GameScriptManager } from './GameScriptManager.js'
-import type { GameSpec, FloorGeometrySpec } from './GameSpec.js'
+import type { GameSpec, FloorGeometrySpec, InstructionEventSpec } from './GameSpec.js'
 import type { GameScript, ActiveVoteRegionChangeEvent } from './GameScript.js'
 import type { BotSpec } from './bot/BotTypes.js'
 
@@ -54,7 +54,7 @@ export class Room {
   private readonly geometrySpecs: FloorGeometrySpec[]
   private readonly voteRegionChangeCallbacks: Array<(event: ActiveVoteRegionChangeEvent) => void> = []
 
-  constructor(roomId: string, instanceIndex: number, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, gameScript?: GameScript, onCloseScenario?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [], getRoomAtPosition?: (x: number, z: number) => string | null, spawnBotFn?: (spec: BotSpec) => void, physics?: PhysicsSpec, toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = []) {
+  constructor(roomId: string, instanceIndex: number, walkable: WalkableArea, npcs: NpcSpec[] = [], gameSpec?: GameSpec, initialVisibility: Record<string, boolean> = {}, initialRoomVisibility: Record<string, boolean> = {}, gameScript?: GameScript, onCloseScenario?: () => void, walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }> = [], getRoomAtPosition?: (x: number, z: number) => string | null, spawnBotFn?: (spec: BotSpec) => void, physics?: PhysicsSpec, toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }> = []) {
     this.instanceIndex = instanceIndex
     this.roomId = roomId
     this.world = physics ? World.withPhysics(walkable, physics) : new World(walkable)
@@ -70,16 +70,18 @@ export class Room {
         gameSpec.voteRegions,
         gameSpec.instructionSpecs,
         gameSpec.geometry,
-        gameSpec.initialVisibility,
+        initialVisibility,
         (playerId, lines) => this.sendToPlayer(playerId, { type: 'instruction', lines }),
         (playerId, eliminated) => this.removePlayer(playerId, eliminated),
         onCloseScenario ?? (() => {}),
         (playerId, updates, perPlayer) => this.sendToPlayer(playerId, { type: 'geometry_state', updates, perPlayer }),
+        initialRoomVisibility,
+        (playerId, updates, perPlayer) => this.sendToPlayer(playerId, { type: 'room_visibility_state', updates, perPlayer }),
         walkableVariants,
         (area) => { this.world.setWalkable(area); this.world.snapAllPlayers() },
         toggleVariants,
         (toggleIds) => { for (const id of toggleIds) this.world.toggleGeometryOff(id) },
-        gameSpec.buttons,
+        gameSpec.buttons ?? [],
         (id, state, occupancy) => this.broadcast({ type: 'button_state', id, state, occupancy }),
         (id, changes) => this.broadcast({ type: 'button_config', id, changes }),
         (playerId, buttons) => this.sendToPlayer(playerId, { type: 'button_init', buttons }),
@@ -287,8 +289,9 @@ export class Room {
     }
 
     if (this.gameScriptManager) {
-      const { geometryUpdates, buttonData, voteAssignments } = this.gameScriptManager.getPlayerSnapshotData(playerId)
+      const { geometryUpdates, roomVisibilityUpdates, buttonData, voteAssignments } = this.gameScriptManager.getPlayerSnapshotData(playerId)
       if (geometryUpdates) msgs.push({ type: 'geometry_state', updates: geometryUpdates })
+      if (roomVisibilityUpdates) msgs.push({ type: 'room_visibility_state', updates: roomVisibilityUpdates })
       if (buttonData.length > 0) msgs.push({ type: 'button_init', buttons: buttonData })
       if (voteAssignments) msgs.push({ type: 'vote_assignment_change', assignments: voteAssignments })
     }

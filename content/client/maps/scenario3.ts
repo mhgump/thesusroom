@@ -48,9 +48,9 @@ export const S3_GAME_SPEC: GameSpec = {
       x: BTN_LEFT_X,
       z: BTN_Z,
       triggerRadius: BTN_TRIGGER_R,
-      ringOuterRadius: 0.1128,
-      ringInnerRadius: 0.0725,
       platformRadius: 0.0483,
+      ringOuterRadius: 0.0531,  // platformRadius * 1.1
+      ringInnerRadius: 0.0483,
       raisedHeight: 0.0145,
       color: '#c0392b',
       ringColor: '#e74c3c',
@@ -64,9 +64,9 @@ export const S3_GAME_SPEC: GameSpec = {
       x: BTN_RIGHT_X,
       z: BTN_Z,
       triggerRadius: BTN_TRIGGER_R,
-      ringOuterRadius: 0.1128,
-      ringInnerRadius: 0.0725,
       platformRadius: 0.0483,
+      ringOuterRadius: 0.0531,  // platformRadius * 1.1
+      ringInnerRadius: 0.0483,
       raisedHeight: 0.0145,
       color: '#1a5276',
       ringColor: '#2980b9',

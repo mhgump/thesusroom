@@ -10,7 +10,7 @@ import { PlayerHudUpdater } from './PlayerHudUpdater';
 import { VoteRegions } from './VoteRegions';
 import { GeometryLayer } from './GeometryLayer';
 import { ButtonLayer } from './ButtonLayer';
-import { CURRENT_MAP } from '../../../content/client/maps';
+import { CURRENT_MAP } from '../../../content/maps';
 import { getRoomWallOpenings } from '../game/WorldSpec';
 import { localPlayerPos } from '../game/localPlayerPos';
 import { useGameStore } from '../store/gameStore';
@@ -29,6 +29,8 @@ const DAMPING_Z = 0.1
 export function GameScene() {
   const { camera, size, set } = useThree();
   const currentRoomId = useGameStore((s) => s.currentRoomId);
+  const roomVisibility = useGameStore((s) => s.roomVisibility);
+  const playerRoomVisibilityOverride = useGameStore((s) => s.playerRoomVisibilityOverride);
   const camTargetRef = useRef<Vec2 | null>(null);
 
   useEffect(() => {
@@ -76,7 +78,14 @@ export function GameScene() {
     );
   }, -2);
 
-  const visibleIds = new Set([currentRoomId, ...(CURRENT_MAP.worldSpec.visibility[currentRoomId] ?? [])]);
+  const isRoomVisible = (id: string) => {
+    const override = playerRoomVisibilityOverride[id]
+    if (override !== undefined) return override
+    return roomVisibility[id] !== false
+  }
+  const visibleIds = new Set(
+    [currentRoomId, ...(CURRENT_MAP.worldSpec.visibility[currentRoomId] ?? [])].filter(isRoomVisible)
+  );
   const roomsToRender = CURRENT_MAP.worldSpec.rooms.filter(r => visibleIds.has(r.id));
 
   return (

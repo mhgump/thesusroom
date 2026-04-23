@@ -7,7 +7,7 @@ export function VoteRegions({ visibleIds }: Props) {
   return (
     <>
       {CURRENT_MAP.gameSpec.voteRegions.filter(region =>
-        visibleIds.has(CURRENT_MAP.getRoomAtPosition(region.x, region.z))
+        visibleIds.has(CURRENT_MAP.getRoomAtPosition(region.x, region.z) ?? '')
       ).map(region => (
         <group key={region.id} position={[region.x, 0, region.z]}>
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}>

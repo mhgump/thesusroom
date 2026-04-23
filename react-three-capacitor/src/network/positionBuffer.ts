@@ -158,3 +158,10 @@ export function consumeMoveAck(): MoveAck | null {
   pendingMoveAck = null
   return a
 }
+
+export function resetBuffers(): void {
+  posBuffers.clear()
+  eventQueues.clear()
+  pendingMoveAck = null
+  serverTimeAnchor = { serverTime: 0, clientTime: 0 }
+}

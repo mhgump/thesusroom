@@ -16,5 +16,5 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "../content/client"]
+  "include": ["src", "../content/maps"]
 }

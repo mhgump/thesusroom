@@ -64,6 +64,8 @@ export interface GameScriptContext {
   // call unlockPlayerFromRoom after the toggle completes.
   lockPlayerToRoom(playerId: string): void
   unlockPlayerFromRoom(playerId: string): void
+  // Show or hide an entire room for the specified players (all players if playerIds is omitted).
+  setRoomVisible(roomIds: string[], visible: boolean, playerIds?: string[]): void
 }
 
 // Interface that a game script must implement.

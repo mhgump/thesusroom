@@ -54,7 +54,7 @@ export function Player() {
         groupRef.current.position.z = ack.z
         localPlayerPos.x = ack.x
         localPlayerPos.z = ack.z
-        const newRoomId = CURRENT_MAP.getRoomAtPosition(ack.x, ack.z)
+        const newRoomId = CURRENT_MAP.getRoomAtPosition(ack.x, ack.z) ?? localPlayerPos.roomId
         if (newRoomId !== localPlayerPos.roomId) {
           localPlayerPos.roomId = newRoomId
           store.setCurrentRoomId(newRoomId)
@@ -202,7 +202,7 @@ export function Player() {
       }
     }
 
-    const newRoomId = CURRENT_MAP.getRoomAtPosition(player.x, player.z)
+    const newRoomId = CURRENT_MAP.getRoomAtPosition(player.x, player.z) ?? localPlayerPos.roomId
     if (newRoomId !== localPlayerPos.roomId) {
       localPlayerPos.roomId = newRoomId
       store.setCurrentRoomId(newRoomId)

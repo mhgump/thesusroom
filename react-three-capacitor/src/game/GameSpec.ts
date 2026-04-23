@@ -1,12 +1,12 @@
-import type { RuleLabel } from '../network/types'
+export type RuleLabel = 'RULE' | 'COMMAND' | 'FACT'
 
 export type ButtonState = 'idle' | 'pressed' | 'cooldown' | 'disabled'
 
 // Default visual dimensions — spread into a ButtonSpec, then override per-scenario as needed.
 export const DEFAULT_BUTTON_DIMENSIONS = {
   platformRadius: 1.2,
-  ringOuterRadius: 1.32,  // ~10% wider than platformRadius
-  ringInnerRadius: 1.2,   // = platformRadius (no gap)
+  ringOuterRadius: 1.32,  // exactly 10% wider than platformRadius
+  ringInnerRadius: 1.2,   // = platformRadius (flush with inner cylinder)
   raisedHeight: 0.36,
   triggerRadius: 1.5,
 }

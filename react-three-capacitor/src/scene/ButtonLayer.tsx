@@ -7,22 +7,16 @@ import { playButtonPress } from '../sounds'
 import type { ButtonSpec, ButtonState } from '../game/GameSpec'
 
 const PRESS_LERP_SPEED = 14
-const CAP_ABOVE_RING = 0.06   // cap top above ring top when idle
-const CAP_BELOW_RING = 0.04   // cap top below ring top when pressed
-
-function capTargetY(ringHeight: number, raisedHeight: number, isDown: boolean): number {
-  const capHalf = raisedHeight / 2
-  return isDown
-    ? ringHeight - CAP_BELOW_RING - capHalf
-    : ringHeight + CAP_ABOVE_RING - capHalf
-}
 
 function SingleButton({ spec }: { spec: ButtonSpec }) {
-  const platformRef = useRef<THREE.Mesh>(null)
-  const platformMatRef = useRef<THREE.MeshLambertMaterial>(null)
+  const pivotRef = useRef<THREE.Group>(null)
+  const capMatRef = useRef<THREE.MeshLambertMaterial>(null)
   const prevStateRef = useRef<ButtonState>('idle')
   const localPressRef = useRef(false)
-  const ringHeight = (spec.raisedHeight * 2) / 3
+
+  const rimHeight = (spec.raisedHeight * 2) / 3
+  // Scale at which inner cylinder top is flush with rim top
+  const pressedScale = rimHeight / spec.raisedHeight
 
   useFrame((_, delta) => {
     const store = useGameStore.getState()
@@ -50,38 +44,41 @@ function SingleButton({ spec }: { spec: ButtonSpec }) {
     }
     prevStateRef.current = state
 
-    if (platformRef.current) {
+    if (pivotRef.current) {
       const localPressing = store.localButtonPressing[spec.id] ?? false
       const isDown = state === 'pressed' || state === 'cooldown' || localPressing
-      const targetY = capTargetY(ringHeight, spec.raisedHeight, isDown)
-      const curr = platformRef.current.position.y
-      platformRef.current.position.y = curr + (targetY - curr) * Math.min(1, delta * PRESS_LERP_SPEED)
+      const targetScale = isDown ? pressedScale : 1
+      const curr = pivotRef.current.scale.y
+      pivotRef.current.scale.y = curr + (targetScale - curr) * Math.min(1, delta * PRESS_LERP_SPEED)
     }
 
-    if (platformMatRef.current) {
-      platformMatRef.current.color.set(state === 'disabled' ? '#555555' : spec.color)
+    if (capMatRef.current) {
+      capMatRef.current.color.set(state === 'disabled' ? '#555555' : spec.color)
     }
   })
 
   const initialDown = spec.initialState === 'pressed' || spec.initialState === 'cooldown'
+  const initialScale = initialDown ? pressedScale : 1
 
   return (
     <group position={[spec.x, 0, spec.z]}>
-      {/* Outer ring wall — open-ended cylinder, no top/bottom faces */}
-      <mesh position={[0, ringHeight / 2, 0]}>
-        <cylinderGeometry args={[spec.ringOuterRadius, spec.ringOuterRadius, ringHeight, 32, 1, true]} />
+      {/* Outer rim wall — open-ended cylinder, bottom at y=0 */}
+      <mesh position={[0, rimHeight / 2, 0]}>
+        <cylinderGeometry args={[spec.ringOuterRadius, spec.ringOuterRadius, rimHeight, 32, 1, true]} />
         <meshLambertMaterial color={spec.ringColor} />
       </mesh>
-      {/* Top annular face — seals the ring top, inner edge flush with cap */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, ringHeight, 0]}>
+      {/* Rim top annular face */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, rimHeight, 0]}>
         <ringGeometry args={[spec.platformRadius, spec.ringOuterRadius, 32]} />
         <meshLambertMaterial color={spec.ringColor} />
       </mesh>
-      {/* Button cap — slides up through ring when idle, slightly below ring top when pressed */}
-      <mesh ref={platformRef} position={[0, capTargetY(ringHeight, spec.raisedHeight, initialDown), 0]}>
-        <cylinderGeometry args={[spec.platformRadius, spec.platformRadius, spec.raisedHeight, 32]} />
-        <meshLambertMaterial ref={platformMatRef} color={spec.color} />
-      </mesh>
+      {/* Inner cylinder — pivot at y=0 so scaling keeps the bottom fixed on the ground */}
+      <group ref={pivotRef} scale={[1, initialScale, 1]}>
+        <mesh position={[0, spec.raisedHeight / 2, 0]}>
+          <cylinderGeometry args={[spec.platformRadius, spec.platformRadius, spec.raisedHeight, 32]} />
+          <meshLambertMaterial ref={capMatRef} color={spec.color} />
+        </mesh>
+      </group>
     </group>
   )
 }

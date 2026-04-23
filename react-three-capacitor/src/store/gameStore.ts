@@ -38,6 +38,8 @@ interface GameState {
   geometryObjects: FloorGeometrySpec[]
   geometryVisibility: Record<string, boolean>
   localGeometryOverride: Record<string, boolean>
+  roomVisibility: Record<string, boolean>
+  playerRoomVisibilityOverride: Record<string, boolean>
   activeWalkable: WalkableArea | null
   buttonSpecs: Record<string, ButtonSpec>
   buttonStates: Record<string, { state: ButtonState; occupancy: number }>
@@ -63,11 +65,14 @@ interface GameState {
   setGeometryObjects: (objects: FloorGeometrySpec[]) => void
   applyGeometryUpdates: (updates: Array<{ id: string; visible: boolean }>) => void
   applyLocalGeometryOverride: (updates: Array<{ id: string; visible: boolean }>) => void
+  applyRoomVisibilityUpdates: (updates: Array<{ roomId: string; visible: boolean }>) => void
+  applyPlayerRoomVisibilityOverride: (updates: Array<{ roomId: string; visible: boolean }>) => void
   setActiveWalkable: (area: WalkableArea | null) => void
   initButtons: (buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }>) => void
   applyButtonStateUpdate: (id: string, state: ButtonState, occupancy: number) => void
   applyButtonConfigUpdate: (id: string, changes: Partial<ButtonConfig>) => void
   setLocalButtonPressing: (id: string, pressing: boolean) => void
+  reset: () => void
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -88,6 +93,8 @@ export const useGameStore = create<GameState>((set) => ({
   geometryObjects: [],
   geometryVisibility: {},
   localGeometryOverride: {},
+  roomVisibility: {},
+  playerRoomVisibilityOverride: {},
   activeWalkable: null,
   buttonSpecs: {},
   buttonStates: {},
@@ -157,6 +164,20 @@ export const useGameStore = create<GameState>((set) => ({
       return { localGeometryOverride }
     }),
 
+  applyRoomVisibilityUpdates: (updates) =>
+    set((s) => {
+      const roomVisibility = { ...s.roomVisibility }
+      for (const { roomId, visible } of updates) roomVisibility[roomId] = visible
+      return { roomVisibility }
+    }),
+
+  applyPlayerRoomVisibilityOverride: (updates) =>
+    set((s) => {
+      const playerRoomVisibilityOverride = { ...s.playerRoomVisibilityOverride }
+      for (const { roomId, visible } of updates) playerRoomVisibilityOverride[roomId] = visible
+      return { playerRoomVisibilityOverride }
+    }),
+
   initButtons: (buttons) =>
     set(() => {
       const buttonSpecs: Record<string, ButtonSpec> = {}
@@ -181,4 +202,29 @@ export const useGameStore = create<GameState>((set) => ({
 
   setLocalButtonPressing: (id, pressing) =>
     set((s) => ({ localButtonPressing: { ...s.localButtonPressing, [id]: pressing } })),
+
+  reset: () => set({
+    connected: false,
+    observerEndReason: 'none',
+    playerId: null,
+    localColor: '#cccccc',
+    initialPosition: { x: 0, z: 0 },
+    currentRoomId: 'room1',
+    joystickInput: { x: 0, y: 0 },
+    remotePlayers: {},
+    notifications: [],
+    playerHp: {},
+    eliminated: false,
+    activeChoiceEvent: null,
+    activeRuleEvent: null,
+    geometryObjects: [],
+    geometryVisibility: {},
+    localGeometryOverride: {},
+    roomVisibility: {},
+    playerRoomVisibilityOverride: {},
+    activeWalkable: null,
+    buttonSpecs: {},
+    buttonStates: {},
+    localButtonPressing: {},
+  }),
 }))

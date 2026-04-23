@@ -13,6 +13,7 @@ export type ServerMessage =
   | { type: 'vote_assignment_change'; assignments: Record<string, string[]> }
   | { type: 'map_init'; geometry: FloorGeometrySpec[] }
   | { type: 'geometry_state'; updates: Array<{ id: string; visible: boolean }>; perPlayer?: boolean }
+  | { type: 'room_visibility_state'; updates: Array<{ roomId: string; visible: boolean }>; perPlayer?: boolean }
   | { type: 'button_init'; buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }> }
   | { type: 'button_state'; id: string; state: ButtonState; occupancy: number }
   | { type: 'button_config'; id: string; changes: Partial<ButtonConfig> }

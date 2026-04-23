@@ -20,7 +20,7 @@ export function RulePopup() {
     return () => window.removeEventListener('keydown', handler)
   }, [event, dismissRule])
 
-  if (!event) return null
+  if (!event?.rules) return null
 
   return (
     <>

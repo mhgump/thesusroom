@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "esModuleInterop": true
   },
-  "include": ["src", "../../content/server"]
+  "include": ["src", "../../content/maps", "../../content/scenarios", "../../content/bots"]
 }

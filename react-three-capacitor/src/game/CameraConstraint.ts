@@ -1,4 +1,4 @@
-import type { WorldSpec, RoomWorldPos } from './WorldSpec'
+import type { WorldSpec, RoomWorldPos } from './WorldSpec.js'
 
 export interface Vec2 { x: number; z: number }
 

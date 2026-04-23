@@ -1,7 +1,9 @@
 export type { AnimationState, WorldEvent, UpdateAnimationStateEvent, TouchedEvent, DamageEvent } from '../game/World'
 
 import type { AnimationState, WorldEvent } from '../game/World'
-import type { FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState } from '../game/GameSpec'
+import type { FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState, RuleLabel } from '../game/GameSpec'
+
+export type { RuleLabel }
 
 export type ChoiceOption = {
   id: string
@@ -15,8 +17,6 @@ export type ShowChoiceEvent = {
   eventId: string
   options: ChoiceOption[]
 }
-
-export type RuleLabel = 'RULE' | 'COMMAND' | 'FACT'
 
 export type ShowRuleEvent = {
   type: 'show_rule'
@@ -40,6 +40,7 @@ export type ServerMessage =
   | { type: 'button_state'; id: string; state: ButtonState; occupancy: number }
   | { type: 'button_config'; id: string; changes: Partial<ButtonConfig> }
   | { type: 'notification'; text: string }
+  | { type: 'room_visibility_state'; updates: Array<{ roomId: string; visible: boolean }>; perPlayer?: boolean }
   | { type: 'error'; message: string }
   | { type: 'observer_player_left'; eliminated: boolean }
 
