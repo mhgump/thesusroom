@@ -19,7 +19,7 @@ export class BotClient {
   private playerId: string | null = null
   private position = { x: 0, z: 0 }
   private state: BotState
-  private seq = 0
+  private tick = 0
   private tickInterval: ReturnType<typeof setInterval> | null = null
   private lastTickTime = Date.now()
   private running = false
@@ -71,7 +71,7 @@ export class BotClient {
 
     ws.on('open', () => {
       this.log('info', 'connected')
-      this.seq = 0
+      this.tick = 0
       this.lastTickTime = Date.now()
       this.startTick()
     })
@@ -218,8 +218,8 @@ export class BotClient {
       const jx = this.currentAction.type === 'move' ? this.currentAction.jx : 0
       const jz = this.currentAction.type === 'move' ? this.currentAction.jz : 0
 
-      this.ws.send(JSON.stringify({ type: 'move', seq: this.seq, jx, jz, dt }))
-      this.seq++
+      this.ws.send(JSON.stringify({ type: 'move', tick: this.tick, inputs: [{ jx, jz, dt }] }))
+      this.tick++
     }, TICK_MS)
   }
 

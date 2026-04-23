@@ -3,17 +3,16 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useGameStore } from '../store/gameStore'
 import type { RemotePlayerInfo } from '../store/gameStore'
-import { getInterpolatedPos, consumeRemoteEvents } from '../network/positionBuffer'
+import { getInterpolatedPos, consumeRemoteEvents, getAdaptiveDelayMs } from '../network/positionBuffer'
 import { CapsuleFallback } from './animation/CapsuleFallback'
 import type { AnimationState } from '../game/World'
 import { CURRENT_MAP } from '../../../content/client/maps'
 
 const CAPSULE_CENTER_Y = 0.0282 + 0.0806 / 2
 
-// Positions are interpolated at (estimatedServerTime − DELAY_MS).
-// Events are consumed once max(receiptTime, serverStartTime + DELAY_MS) is reached,
+// Positions are interpolated at (estimatedServerTime − adaptiveDelayMs).
+// Events are consumed once max(receiptTime, serverStartTime + adaptiveDelayMs) is reached,
 // keeping both streams temporally aligned to server time.
-const DELAY_MS = 250
 
 function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
   const { id, color, initialAnimState } = info
@@ -25,7 +24,7 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
     const g = groupRef.current
     if (!g) return
 
-    const pos = getInterpolatedPos(id, DELAY_MS)
+    const pos = getInterpolatedPos(id, getAdaptiveDelayMs())
     if (pos !== null) {
       g.position.set(pos.x, CAPSULE_CENTER_Y, pos.z)
       // Hide remote players who are inside a room not visible from the local player's room.
@@ -49,7 +48,7 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
       g.visible = false
     }
 
-    const events = consumeRemoteEvents(id, DELAY_MS)
+    const events = consumeRemoteEvents(id, getAdaptiveDelayMs())
     for (const { event } of events) {
       if (event.type === 'update_animation_state' && event.animState !== animStateRef.current) {
         animStateRef.current = event.animState

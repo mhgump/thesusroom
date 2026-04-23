@@ -9,6 +9,7 @@ import {
   updateServerTime,
   estimatedServerTime,
   resetBuffers,
+  updateAdaptiveDelay,
 } from './positionBuffer'
 import type { ServerMessage } from './types'
 import { CURRENT_MAP } from '../../../content/maps'
@@ -76,10 +77,12 @@ export function useWebSocket(): void {
           break
 
         case 'move_ack':
-          setMoveAck(msg.seq, msg.x, msg.z, msg.events, msg.endTime)
+          updateAdaptiveDelay(msg.endTime)
+          setMoveAck(msg.tick, msg.x, msg.z, msg.events, msg.endTime)
           break
 
         case 'player_update':
+          updateAdaptiveDelay(msg.endTime)
           updateServerTime(msg.endTime)
           pushRemotePosition(msg.playerId, msg.x, msg.z, msg.endTime)
           pushRemoteEvents(msg.playerId, msg.events, msg.startTime, msg.endTime)
@@ -206,8 +209,8 @@ export function useWebSocket(): void {
 export function useWsSend() {
   const client = getClient()
   return {
-    sendMove: (seq: number, jx: number, jz: number, dt: number) =>
-      client.send({ type: 'move', seq, jx, jz, dt }),
+    sendMove: (tick: number, inputs: import('./types').MoveInput[]) =>
+      client.send({ type: 'move', tick, inputs }),
     sendChoiceAction: (eventId: string, optionId: string) =>
       client.send({ type: 'choice_action', eventId, optionId }),
   }

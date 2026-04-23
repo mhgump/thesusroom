@@ -3,6 +3,13 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { initPhysics } from './game/World';
 
+// THREE.Clock deprecation warning comes from @react-three/fiber internals; suppress until r3f updates.
+const _warn = console.warn.bind(console);
+console.warn = (...args: unknown[]) => {
+  if (typeof args[0] === 'string' && args[0].includes('THREE.Clock')) return;
+  _warn(...args);
+};
+
 initPhysics().then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

@@ -1,14 +1,14 @@
-export type { AnimationState, WorldEvent, UpdateAnimationStateEvent, TouchedEvent, DamageEvent } from './World.js'
+export type { AnimationState, WorldEvent, UpdateAnimationStateEvent, TouchedEvent, DamageEvent, MoveInput } from './World.js'
 
-import type { AnimationState, WorldEvent } from './World.js'
+import type { AnimationState, WorldEvent, MoveInput } from './World.js'
 import type { FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState, RuleLabel } from './GameSpec.js'
 
 export type ServerMessage =
   | { type: 'welcome'; playerId: string; color: string; x: number; z: number; hp: 0 | 1 | 2 }
   | { type: 'player_joined'; playerId: string; color: string; x: number; z: number; animState: AnimationState; hp: 0 | 1 | 2; isNpc?: boolean; hasHealth?: boolean }
   | { type: 'player_left'; playerId: string }
-  | { type: 'move_ack'; seq: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
-  | { type: 'player_update'; playerId: string; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
+  | { type: 'move_ack'; tick: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
+  | { type: 'player_update'; playerId: string; tick: number; x: number; z: number; events: WorldEvent[]; startTime: number; endTime: number }
   | { type: 'instruction'; lines: Array<{ text: string; label: RuleLabel; specId: string }> }
   | { type: 'vote_assignment_change'; assignments: Record<string, string[]> }
   | { type: 'map_init'; geometry: FloorGeometrySpec[] }
@@ -23,4 +23,5 @@ export type ServerMessage =
   | { type: 'observer_player_left'; eliminated: boolean }
 
 export type ClientMessage =
-  | { type: 'move'; seq: number; jx: number; jz: number; dt: number }
+  | { type: 'move'; tick: number; inputs: MoveInput[] }
+  | { type: 'choice_action'; eventId: string; optionId: string }

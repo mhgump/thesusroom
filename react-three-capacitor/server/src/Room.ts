@@ -1,6 +1,6 @@
 import WebSocket from 'ws'
-import type { ServerMessage } from './types.js'
-import { World } from './World.js'
+import type { ServerMessage, MoveInput } from './types.js'
+import { World, TICK_RATE_HZ } from './World.js'
 import type { WalkableArea, PhysicsSpec, TouchedEvent } from './World.js'
 import { NpcManager } from './npc/NpcManager.js'
 import type { NpcSpec } from './npc/NpcSpec.js'
@@ -8,6 +8,8 @@ import { GameScriptManager } from './GameScriptManager.js'
 import type { GameSpec, FloorGeometrySpec, InstructionEventSpec } from './GameSpec.js'
 import type { GameScript, ActiveVoteRegionChangeEvent } from './GameScript.js'
 import type { BotSpec } from './bot/BotTypes.js'
+
+const TICK_INTERVAL_MS = 1000 / TICK_RATE_HZ
 
 const NPC_COLOR = '#888888'
 
@@ -40,6 +42,8 @@ function rgbDist(a: [number, number, number], b: [number, number, number]): numb
 
 interface PlayerState { id: string; ws: WebSocket; color: string; index: number }
 
+interface QueuedMove { clientTick: number; inputs: MoveInput[] }
+
 export class Room {
   protected readonly roomId: string
   readonly instanceIndex: number
@@ -48,7 +52,9 @@ export class Room {
 
   private nextPlayerIndex = 0
   private readonly observers: Map<string, Set<WebSocket>> = new Map()
-  private expectedSeq: Map<string, number> = new Map()
+  private expectedTick: Map<string, number> = new Map()
+  private moveQueue: Map<string, QueuedMove> = new Map()
+  private tickInterval: ReturnType<typeof setInterval>
   private npcManager: NpcManager
   private gameScriptManager: GameScriptManager | null = null
   private readonly geometrySpecs: FloorGeometrySpec[]
@@ -64,7 +70,7 @@ export class Room {
     this.world = physics ? World.withPhysics(walkable, physics) : new World(walkable)
     this.geometrySpecs = gameSpec?.geometry ?? []
     this.npcManager = new NpcManager(this.world, (npcId, x, z, events, time) => {
-      this.broadcast({ type: 'player_update', playerId: npcId, x, z, events, startTime: time, endTime: time })
+      this.broadcast({ type: 'player_update', playerId: npcId, tick: -1, x, z, events, startTime: time, endTime: time })
     })
     this.npcManager.spawnAll(npcs)
     if (gameSpec) {
@@ -96,7 +102,7 @@ export class Room {
         (playerId, buttons) => this.sendToPlayer(playerId, { type: 'button_init', buttons }),
         (playerId, text) => this.sendToPlayer(playerId, { type: 'notification', text }),
         (targetId, x, z, event, time) => {
-          this.broadcast({ type: 'player_update', playerId: targetId, x, z, events: [event], startTime: time, endTime: time })
+          this.broadcast({ type: 'player_update', playerId: targetId, tick: -1, x, z, events: [event], startTime: time, endTime: time })
         },
         getRoomAtPosition,
         spawnBotFn,
@@ -105,6 +111,7 @@ export class Room {
         (playerId, text) => this.sendToPlayer(playerId, { type: 'add_rule', text }),
       )
     }
+    this.tickInterval = setInterval(() => this.runTick(), TICK_INTERVAL_MS)
   }
 
   setCallbackOnVoteRegionsChange(callback: (event: ActiveVoteRegionChangeEvent) => void): void {
@@ -115,43 +122,79 @@ export class Room {
     this.voteRegionChangeCallbacks.length = 0
   }
 
-  processMove(playerId: string, seq: number, jx: number, jz: number, dt: number): void {
+  handleMove(playerId: string, clientTick: number, inputs: MoveInput[]): void {
     if (!this.players.has(playerId)) return
 
-    const expected = this.expectedSeq.get(playerId) ?? 0
-    if (seq !== expected) {
-      this.sendToPlayer(playerId, { type: 'error', message: `Expected seq ${expected}, got ${seq}` })
+    const expected = this.expectedTick.get(playerId) ?? 0
+    if (clientTick !== expected) {
+      this.sendToPlayer(playerId, { type: 'error', message: `Expected tick ${expected}, got ${clientTick}` })
       return
     }
-    this.expectedSeq.set(playerId, expected + 1)
+    this.expectedTick.set(playerId, expected + 1)
+    this.moveQueue.set(playerId, { clientTick, inputs })
+  }
 
-    const startTime = Date.now()
-    const moveEvents = this.world.processMove(playerId, jx, jz, dt)
-    const npcEvents = this.npcManager.onActionCompleted(moveEvents)
-    const endTime = Date.now()
-
-    const allEvents = npcEvents.length > 0 ? [...moveEvents, ...npcEvents] : moveEvents
-    const wp = this.world.getPlayer(playerId)!
-    this.sendToPlayer(playerId, { type: 'move_ack', seq, x: wp.x, z: wp.z, events: allEvents, startTime, endTime })
-
-    const touchEvents = allEvents.filter((e): e is TouchedEvent => e.type === 'touched')
-    const nonTouchEvents = touchEvents.length > 0 ? allEvents.filter(e => e.type !== 'touched') : allEvents
-    for (const [id] of this.players) {
-      if (id === playerId) continue
-      const playerTouchEvents = touchEvents.filter(e => e.playerIdA === id || e.playerIdB === id)
-      const events = playerTouchEvents.length > 0 ? [...nonTouchEvents, ...playerTouchEvents] : nonTouchEvents
-      this.sendToPlayer(id, { type: 'player_update', playerId, x: wp.x, z: wp.z, events, startTime, endTime })
+  private runTick(): void {
+    if (this.closed && this.players.size === 0) {
+      clearInterval(this.tickInterval)
+      return
     }
 
-    for (const event of allEvents) {
-      if (event.type === 'damage' && event.newHp === 0 && this.players.has(event.targetId)) {
-        this.removePlayer(event.targetId, true)
+    // Queue all pending player moves into the world
+    for (const [playerId, queued] of this.moveQueue) {
+      this.world.queueMove(playerId, queued.inputs)
+    }
+
+    const tickStart = Date.now()
+    const eventsPerPlayer = this.world.processTick()
+    const tickEnd = Date.now()
+
+    for (const [playerId, queued] of this.moveQueue) {
+      const playerEvents = eventsPerPlayer.get(playerId) ?? []
+      const npcEvents = this.npcManager.onActionCompleted(playerEvents)
+      const allEvents = npcEvents.length > 0 ? [...playerEvents, ...npcEvents] : playerEvents
+      const wp = this.world.getPlayer(playerId)!
+
+      this.sendToPlayer(playerId, {
+        type: 'move_ack',
+        tick: queued.clientTick,
+        x: wp.x,
+        z: wp.z,
+        events: allEvents,
+        startTime: tickStart,
+        endTime: tickEnd,
+      })
+
+      const touchEvents = allEvents.filter((e): e is TouchedEvent => e.type === 'touched')
+      const nonTouchEvents = touchEvents.length > 0 ? allEvents.filter(e => e.type !== 'touched') : allEvents
+      for (const [id] of this.players) {
+        if (id === playerId) continue
+        const playerTouchEvents = touchEvents.filter(e => e.playerIdA === id || e.playerIdB === id)
+        const events = playerTouchEvents.length > 0 ? [...nonTouchEvents, ...playerTouchEvents] : nonTouchEvents
+        this.sendToPlayer(id, {
+          type: 'player_update',
+          playerId,
+          tick: queued.clientTick,
+          x: wp.x,
+          z: wp.z,
+          events,
+          startTime: tickStart,
+          endTime: tickEnd,
+        })
+      }
+
+      for (const event of allEvents) {
+        if (event.type === 'damage' && event.newHp === 0 && this.players.has(event.targetId)) {
+          this.removePlayer(event.targetId, true)
+        }
+      }
+
+      if (this.gameScriptManager && this.players.has(playerId)) {
+        this.gameScriptManager.onPlayerMoved(playerId)
       }
     }
 
-    if (this.gameScriptManager && this.players.has(playerId)) {
-      this.gameScriptManager.onPlayerMoved(playerId)
-    }
+    this.moveQueue.clear()
   }
 
   addPlayer(playerId: string, ws: WebSocket): void {
@@ -159,7 +202,7 @@ export class Room {
     const index = this.nextPlayerIndex++
     this.players.set(playerId, { id: playerId, ws, color, index })
     this.world.addPlayer(playerId)
-    this.expectedSeq.set(playerId, 0)
+    this.expectedTick.set(playerId, 0)
 
     const wp = this.world.getPlayer(playerId)!
     this.sendToPlayer(playerId, { type: 'welcome', playerId, color, x: wp.x, z: wp.z, hp: wp.hp })
@@ -214,7 +257,8 @@ export class Room {
     this.sendToPlayer(playerId, { type: 'player_left', playerId })
     this.players.delete(playerId)
     this.world.removePlayer(playerId)
-    this.expectedSeq.delete(playerId)
+    this.expectedTick.delete(playerId)
+    this.moveQueue.delete(playerId)
     this.broadcast({ type: 'player_left', playerId })
     console.log(`[Room:${this.roomId}] -player ${playerId} (total:${this.players.size})`)
     this.maybeTriggerRoomDone()

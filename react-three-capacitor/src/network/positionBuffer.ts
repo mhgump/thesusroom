@@ -26,6 +26,60 @@ import type { WorldEvent } from '../game/World'
 
 const BUFFER_MAX_AGE_MS = 2000
 
+// ── Adaptive buffer delay ─────────────────────────────────────────────────────
+// Tracks per-message network latency (Date.now() - serverEndTime) and maintains
+// a rolling EMA of latency and jitter (mean absolute deviation from avg latency).
+// targetDelayMs = clamp(avgLatency + 2 * jitter, MIN_DELAY_MS, MAX_DELAY_MS)
+// The current delay ratchets up immediately but decays slowly (≤10ms/s) downward.
+
+const MIN_DELAY_MS = 50
+const MAX_DELAY_MS = 1000
+const INITIAL_DELAY_MS = 250
+
+// EMA smoothing factor: α ≈ 0.1 gives a window of ~10 samples
+const EMA_ALPHA = 0.1
+// Max decrease per second when ratcheting down
+const RATCHET_DOWN_RATE_MS_PER_SEC = 10
+
+let adaptiveDelayMs = INITIAL_DELAY_MS
+let avgLatency = INITIAL_DELAY_MS / 2  // seed with a reasonable guess
+let avgJitter = 0
+let lastAdaptiveUpdateTime = 0  // performance.now() of last updateAdaptiveDelay call
+
+export function getAdaptiveDelayMs(): number {
+  return adaptiveDelayMs
+}
+
+export function updateAdaptiveDelay(serverEndTime: number): void {
+  const now = Date.now()
+  const latency = now - serverEndTime
+
+  // Ignore clearly bogus values (clock skew, future-dated server timestamps, etc.)
+  if (latency < 0 || latency > 5000) return
+
+  // Update EMA of latency and jitter (MAD around avgLatency)
+  avgLatency = EMA_ALPHA * latency + (1 - EMA_ALPHA) * avgLatency
+  const mad = Math.abs(latency - avgLatency)
+  avgJitter = EMA_ALPHA * mad + (1 - EMA_ALPHA) * avgJitter
+
+  const targetDelayMs = Math.min(Math.max(avgLatency + 2 * avgJitter, MIN_DELAY_MS), MAX_DELAY_MS)
+
+  const perfNow = performance.now()
+  const elapsedSec = lastAdaptiveUpdateTime === 0
+    ? 0
+    : (perfNow - lastAdaptiveUpdateTime) / 1000
+  lastAdaptiveUpdateTime = perfNow
+
+  if (targetDelayMs >= adaptiveDelayMs) {
+    // Fast ratchet up: snap immediately
+    adaptiveDelayMs = targetDelayMs
+  } else {
+    // Slow ratchet down: decay at most RATCHET_DOWN_RATE_MS_PER_SEC per second
+    const maxDrop = RATCHET_DOWN_RATE_MS_PER_SEC * elapsedSec
+    adaptiveDelayMs = Math.max(targetDelayMs, adaptiveDelayMs - maxDrop)
+  }
+}
+
 // ── Server time tracking ──────────────────────────────────────────────────────
 // Anchors estimated server time to the most recently received update event.
 // estimatedServerTime() advances with the client wall clock from that anchor.
@@ -133,7 +187,7 @@ export function clearRemotePlayer(id: string): void {
 // ── move_ack for local player reconciliation (immediate, not buffered) ─────────
 
 interface MoveAck {
-  seq: number
+  tick: number
   x: number
   z: number
   events: WorldEvent[]
@@ -142,15 +196,15 @@ interface MoveAck {
 let pendingMoveAck: MoveAck | null = null
 
 export function setMoveAck(
-  seq: number,
+  tick: number,
   x: number,
   z: number,
   events: WorldEvent[],
   serverEndTime: number,
 ): void {
-  if (pendingMoveAck && seq <= pendingMoveAck.seq) return
+  if (pendingMoveAck && tick <= pendingMoveAck.tick) return
   updateServerTime(serverEndTime)
-  pendingMoveAck = { seq, x, z, events }
+  pendingMoveAck = { tick, x, z, events }
 }
 
 export function consumeMoveAck(): MoveAck | null {
@@ -164,4 +218,8 @@ export function resetBuffers(): void {
   eventQueues.clear()
   pendingMoveAck = null
   serverTimeAnchor = { serverTime: 0, clientTime: 0 }
+  adaptiveDelayMs = INITIAL_DELAY_MS
+  avgLatency = INITIAL_DELAY_MS / 2
+  avgJitter = 0
+  lastAdaptiveUpdateTime = 0
 }

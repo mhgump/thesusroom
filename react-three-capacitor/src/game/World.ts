@@ -41,6 +41,8 @@ export interface PhysicsWall { cx: number; cz: number; hw: number; hd: number }
 export interface PhysicsGeometry { id: string; cx: number; cz: number; hw: number; hd: number }
 export interface PhysicsSpec { walls: PhysicsWall[]; geometry: PhysicsGeometry[] }
 
+export const TICK_RATE_HZ = 20
+
 const MOVE_SPEED = 0.645
 const CAPSULE_RADIUS = 0.0282
 const ANIM_THRESHOLD = 0.05
@@ -65,12 +67,15 @@ interface CharBody {
   collider: RAPIER_TYPE.Collider
 }
 
+export interface MoveInput { jx: number; jz: number; dt: number }
+
 export class World {
   readonly players: Map<string, WorldPlayerState> = new Map()
   private readonly playerRules: Map<string, string[]> = new Map()
   private readonly disabledEvents: Set<WorldEventType>
   private readonly touchingPairs: Set<string> = new Set()
   private walkable: WalkableArea
+  private moveQueue: Map<string, MoveInput[]> = new Map()
 
   // Rapier state (null = AABB mode)
   private rapier: RapierModule | null = null
@@ -373,6 +378,23 @@ export class World {
     }
 
     return events
+  }
+
+  queueMove(playerId: string, inputs: MoveInput[]): void {
+    this.moveQueue.set(playerId, inputs)
+  }
+
+  processTick(): Map<string, WorldEvent[]> {
+    const result = new Map<string, WorldEvent[]>()
+    for (const [playerId, inputs] of this.moveQueue) {
+      const events: WorldEvent[] = []
+      for (const { jx, jz, dt } of inputs) {
+        events.push(...this.processMove(playerId, jx, jz, dt))
+      }
+      result.set(playerId, events)
+    }
+    this.moveQueue.clear()
+    return result
   }
 
   applyDamage(targetId: string, amount: number): DamageEvent | null {
