@@ -99,6 +99,25 @@ export interface GameScriptContext {
   // down an auxiliary map (e.g. the exit-hallway script removing the source
   // map once everyone has entered the hallway).
   removeMap(mapInstanceId: string): void
+  // Grant a usable ability to a single player. The client renders a button
+  // for each currently-granted ability in a fixed HUD slot (bottom-right,
+  // max 2 per player). Pressing the button sends `ability_use` back to the
+  // server, which is dispatched to any handler registered via
+  // `onAbilityUse(abilityId, handlerId)`. Granting an ability that is
+  // already granted is a no-op (the existing spec stays in place).
+  grantAbility(
+    playerId: string,
+    abilityId: string,
+    spec: { label: string; color?: string },
+  ): void
+  // Remove an ability from a player. Client drops the corresponding HUD
+  // button. No-op if the ability wasn't granted.
+  revokeAbility(playerId: string, abilityId: string): void
+  // Register a named handler to fire whenever any player uses the given
+  // ability. Handler receives `{ playerId, abilityId }` as payload. Returns
+  // a listener id usable with `off()`. Multiple handlers for the same
+  // ability fire in registration order.
+  onAbilityUse(abilityId: string, handlerId: string): string
 }
 
 // Signature for every named handler and for top-level `onPlayerConnect` /
@@ -152,4 +171,9 @@ export interface PlayerEnterRoomPayload {
 
 export interface ButtonPressPayload {
   occupants: string[]
+}
+
+export interface AbilityUsePayload {
+  playerId: string
+  abilityId: string
 }

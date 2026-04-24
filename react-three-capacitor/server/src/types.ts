@@ -23,6 +23,8 @@ export type ServerMessage =
   | { type: 'button_config'; id: string; changes: Partial<ButtonConfig> }
   | { type: 'add_rule'; text: string }
   | { type: 'notification'; text: string }
+  | { type: 'ability_grant'; abilityId: string; label: string; color?: string }
+  | { type: 'ability_revoke'; abilityId: string }
   | { type: 'error'; message: string }
   | { type: 'observer_player_left'; eliminated: boolean }
   | { type: 'replay_ended' }
@@ -32,3 +34,4 @@ export type ClientMessage =
   | { type: 'choice'; eventId: string; optionId: string }
   | { type: 'ready' }
   | { type: 'world_reset_ack' }
+  | { type: 'ability_use'; abilityId: string }

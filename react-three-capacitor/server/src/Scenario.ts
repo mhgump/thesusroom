@@ -6,6 +6,7 @@ import type {
   VoteChangedPayload,
   PlayerEnterRoomPayload,
   ButtonPressPayload,
+  AbilityUsePayload,
 } from './GameScript.js'
 import type {
   VoteRegionSpec,
@@ -90,6 +91,14 @@ interface ButtonListenerRecord {
   buttonId: string
   handlerId: string
 }
+interface AbilityUseListenerRecord {
+  abilityId: string
+  handlerId: string
+}
+interface AbilityGrantRecord {
+  label: string
+  color?: string
+}
 
 // Dumpable snapshot of everything the script controls: the script's own
 // `state` object plus the pending-registrations table keyed by synthesized
@@ -104,6 +113,8 @@ export interface ScenarioDump {
     roomEnterListeners: Record<string, RoomEnterListenerRecord>
     buttonPressListeners: Record<string, ButtonListenerRecord>
     buttonReleaseListeners: Record<string, ButtonListenerRecord>
+    abilityUseListeners: Record<string, AbilityUseListenerRecord>
+    playerAbilities: Record<string, Record<string, AbilityGrantRecord>>
   }
 }
 
@@ -136,6 +147,9 @@ export class Scenario {
   private readonly roomEnterListeners: Map<string, RoomEnterListenerRecord> = new Map()
   private readonly buttonPressListeners: Map<string, ButtonListenerRecord> = new Map()
   private readonly buttonReleaseListeners: Map<string, ButtonListenerRecord> = new Map()
+  private readonly abilityUseListeners: Map<string, AbilityUseListenerRecord> = new Map()
+  // Per-player granted abilities. Outer map: playerId → (abilityId → spec).
+  private readonly playerAbilities: Map<string, Map<string, AbilityGrantRecord>> = new Map()
   // Monotonic counter used to mint registration ids. Dumped/restored so
   // post-restore registrations continue the same sequence.
   private nextId = 1
@@ -638,6 +652,44 @@ export class Scenario {
       removeMap(mapInstanceId) {
         self.deps.removeMap(mapInstanceId)
       },
+      grantAbility(playerId, abilityId, spec) {
+        if (!self.alive) return
+        let abilities = self.playerAbilities.get(playerId)
+        if (!abilities) { abilities = new Map(); self.playerAbilities.set(playerId, abilities) }
+        if (abilities.has(abilityId)) return
+        abilities.set(abilityId, { label: spec.label, color: spec.color })
+        self.deps.sendToPlayer(playerId, {
+          type: 'ability_grant',
+          abilityId,
+          label: spec.label,
+          color: spec.color,
+        })
+      },
+      revokeAbility(playerId, abilityId) {
+        const abilities = self.playerAbilities.get(playerId)
+        if (!abilities || !abilities.delete(abilityId)) return
+        if (abilities.size === 0) self.playerAbilities.delete(playerId)
+        self.deps.sendToPlayer(playerId, { type: 'ability_revoke', abilityId })
+      },
+      onAbilityUse(abilityId, handlerId) {
+        const id = self.mintId('abil_')
+        self.abilityUseListeners.set(id, { abilityId, handlerId })
+        return id
+      },
+    }
+  }
+
+  // Called by the Room when a client's `ability_use` message arrives. Silently
+  // ignored if the player isn't attached, doesn't have the ability granted,
+  // or the scenario has already torn down.
+  handleAbilityUse(playerId: string, abilityId: string): void {
+    if (!this.alive) return
+    if (!this.attachedPlayerIds.has(playerId)) return
+    const abilities = this.playerAbilities.get(playerId)
+    if (!abilities || !abilities.has(abilityId)) return
+    const payload: AbilityUsePayload = { playerId, abilityId }
+    for (const rec of [...this.abilityUseListeners.values()]) {
+      if (rec.abilityId === abilityId) this.invokeHandler(rec.handlerId, payload)
     }
   }
 }
