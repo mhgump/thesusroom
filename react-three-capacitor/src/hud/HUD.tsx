@@ -17,10 +17,12 @@ export function HUD() {
   const inputMode = useGameStore((s) => s.inputMode)
   const settingsOpen = useGameStore((s) => s.settingsOpen)
   const setSettingsOpen = useGameStore((s) => s.setSettingsOpen)
+  const remotePlayers = useGameStore((s) => s.remotePlayers)
   const world = useClientWorld()
 
   const roomView = world?.getRoomByScopedId(currentRoomId)
   const roomName = roomView?.room.name ?? currentRoomId
+  const connectedCount = Object.keys(remotePlayers).length + (observerMode ? 0 : 1)
 
   return (
     <div
@@ -54,7 +56,7 @@ export function HUD() {
             }}
           />
           <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'clamp(10px, 1.5vw, 13px)' }}>
-            {roomName}
+            {roomName} {connectedCount} connected
           </span>
         </div>
 

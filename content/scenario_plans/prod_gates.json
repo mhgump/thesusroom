@@ -1,0 +1,52 @@
+{
+  "plan_id": "prod_gates",
+  "concept_description": "A 30-second vertical dash through three gated walls to reach a victory room, where opening each gate carries a 50% chance of self-damage.",
+  "scenario_sketch": "Map: a narrow vertical corridor roughly 0.5 squares wide and taller than the default map (extend height to fit four stacked bands plus the victory room). Three horizontal internal walls divide the corridor into four bands (band1 bottom → band4 top). Each internal wall has a single-tile door/gap in the horizontal center, initially closed/blocking. Past the topmost wall sits a small 'victory room' (band4 / above band3 wall). Players spawn in band1 at the bottom edge, opposite end from the victory room.\n\nMechanics:\n- Proximity trigger: when a player stands within ~1 tile of any closed gate wall, they are granted an ability 'open' targeted at that gate.\n- Activating 'open' resolves two effects: (a) 50% chance to deal 1 damage to the activating player; (b) unconditionally toggles that wall off (the wall tile is removed/disabled) so the corridor is now passable at that gate for everyone.\n- Once a wall is opened it stays open for the remainder of the run.\n\nTiming:\n- A 30-second countdown starts at scenario begin (or first-player-ready).\n- When the timer expires, every player not currently inside the victory room is eliminated.\n- If all players are eliminated (0 survivors branch), the scenario must call ctx.terminate() so the harness reports complete:true. Likewise terminate cleanly when all surviving players are in the victory room and timer ends (or early-end once all live players have entered).\n\nWin/loss:\n- Survivor = player inside victory room when timer expires (and still alive — not killed by accumulated 'open' damage, though 1 damage from at most 3 opens is unlikely to kill a default-HP player).\n- Eliminated = anyone else when timer expires.",
+  "possible_outcomes_description": "For each player independently, they either (a) traverse all three gates in time and enter the victory room → survive, or (b) fail to reach the victory room before 30s → eliminated. Behavior is per-player and non-interacting except that a gate opened by one player stays open for others (a follower could in principle survive without opening anything if a rusher cleared the path first, but the test set does not need to demonstrate this since it is a trivial composition of the rusher behavior). Survivor counts therefore range from 0 to N depending on how many players act like rushers vs idlers.",
+  "outcomes_test_plan": "Two behavioral classes exist: 'reaches victory room in time' and 'does not'. Three outcomes pin this down decisively: (1) solo rusher proves the happy path is achievable within 30s including gate-opening; (2) solo idler proves the timer actually eliminates non-finishers; (3) mixed rusher+idler proves per-player resolution — survivors and eliminations coexist in one run. Larger groups or all-rusher / all-idler scaling would be linear combinations of these and add no new behavioral coverage.",
+  "min_player_count": 1,
+  "max_player_count": 4,
+  "bot_personas": [
+    {
+      "name": "rusher",
+      "description": "Moves directly toward the nearest closed gate along the corridor, activates 'open' as soon as the ability is granted, then continues to the next gate; repeats until inside the victory room, then idles."
+    },
+    {
+      "name": "idler",
+      "description": "Stays at or near the spawn point in band1, never moves toward a gate, never activates 'open'."
+    }
+  ],
+  "outcomes": [
+    {
+      "expected_survivors": 1,
+      "personas": [
+        {
+          "name": "rusher",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "expected_survivors": 0,
+      "personas": [
+        {
+          "name": "idler",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "expected_survivors": 1,
+      "personas": [
+        {
+          "name": "rusher",
+          "count": 1
+        },
+        {
+          "name": "idler",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

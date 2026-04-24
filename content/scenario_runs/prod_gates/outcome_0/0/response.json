@@ -1,0 +1,29 @@
+{
+  "run_id": "prod_gates/outcome_0/0",
+  "output_dir": "/Users/michaelgump/thesusrooms/content/scenario_runs/prod_gates/outcome_0/0",
+  "config": {
+    "scenario_id": "prod_gates",
+    "test_spec_name": "outcome_0",
+    "index": 0,
+    "bot_count": 1,
+    "record_bot_index": null,
+    "log_bot_indices": null,
+    "effective_timeout_ms": 3750
+  },
+  "logs": "[20:18:09.299] [cli-bot#0] INFO starting — server: ws://localhost:8080/scenariorun/c6f8e88a114e\n[20:18:09.302] [cli-bot#0] INFO connected\n[20:18:09.303] [cli-bot#0] INFO welcome as 295c8013-d2cc-47ee-8a9b-051bf7fa96e0 at (0.00, 0.00)",
+  "termination_metadata": {
+    "terminated_by": "scenario",
+    "exit_code": 0,
+    "video_path": null,
+    "screenshot_path": null,
+    "screenshot_has_content": null,
+    "observer_ready_fired": false,
+    "final_state": {
+      "survivor_count": 1,
+      "survivor_player_ids": [
+        "295c8013-d2cc-47ee-8a9b-051bf7fa96e0"
+      ]
+    }
+  },
+  "server_logs": "[20:18:09.303] [server] INFO [prod_gates] scenario_start players=1\n[20:18:09.303] [server] INFO [MultiplayerRoom:prod_gates] +player 295c8013-d2cc-47ee-8a9b-051bf7fa96e0 (total:1)\n[20:18:09.318] [server] INFO [prod_gates] open_damage player=\"295c8013-d2cc-47ee-8a9b-051bf7fa96e0\" gate=\"gate3\"\n[20:18:09.318] [server] INFO [prod_gates] gate_opened gate=\"gate3\" player=\"295c8013-d2cc-47ee-8a9b-051bf7fa96e0\"\n[20:18:09.368] [server] INFO [prod_gates] player_entered_victory player=\"295c8013-d2cc-47ee-8a9b-051bf7fa96e0\" z=-0.48374997451901436\n[20:18:09.369] [server] INFO [prod_gates] scenario_end reason=\"early_all_in_victory\" survivors=1"
+}

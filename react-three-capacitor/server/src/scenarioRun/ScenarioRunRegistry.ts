@@ -109,11 +109,14 @@ export class ScenarioRunRegistry {
     // players have already been removed from `room.players`.
     const survivorIds = run.room?.getLivingPlayerIds() ?? []
 
-    const scenarioBotLogs: LogEntry[] = this.botManager.collectLogsForKey(run.routingKey).map(e => ({
+    // Scenario-spawned bots now run in-process in the room itself (no
+    // WebSocket routing, no BotManager). Pull their accumulated logs from
+    // the room so the test artifact still surfaces scenario-bot output.
+    const scenarioBotLogs: LogEntry[] = (run.room?.collectBotLogs() ?? []).map(e => ({
       time: e.log.time,
       level: e.log.level,
       source: 'scenario-bot' as const,
-      bot_index: e.clientIndex,
+      bot_index: e.botIndex,
       message: e.log.message,
     }))
     const serverLogs = sliceByRange(run.serverLogsStartSeq, currentSeq())

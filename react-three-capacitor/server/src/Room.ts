@@ -11,9 +11,11 @@ import type { ScenarioConfig, ScenarioDeps } from './Scenario.js'
 import type { GameMap } from '../../src/game/GameMap.js'
 import { serializeGameMap } from '../../src/game/GameMap.js'
 import type { BotSpec } from './bot/BotTypes.js'
+import { BotRunner, type BotRunnerOptions } from './bot/BotRunner.js'
+import type { BotLogEntry } from './bot/BotClient.js'
 import type { PlayerRecordingManager } from './PlayerRecordingManager.js'
 import type { ScenarioSpec } from './ContentRegistry.js'
-import { computeHubAttachment, shiftMapToOrigin, type HubAttachment } from './orchestration/hubAttachment.js'
+import { computeHubAttachment, shiftMapToOrigin, type HubAttachment, type ExitAttachment } from './orchestration/hubAttachment.js'
 
 const NPC_COLOR = '#888888'
 const SIM_MS_PER_TICK = 1000 / TICK_RATE_HZ
@@ -45,7 +47,14 @@ function rgbDist(a: [number, number, number], b: [number, number, number]): numb
   return Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db)
 }
 
-interface PlayerState { id: string; ws: WebSocket; color: string; index: number; browserUuid: string | null }
+// Output channel for a seated player. Humans connect over a WebSocket; bots
+// spawned via `spawnBotInRoom` run in-process and receive messages as typed
+// objects (no JSON round-trip).
+type PlayerChannel =
+  | { kind: 'ws'; ws: WebSocket }
+  | { kind: 'bot'; runner: BotRunner }
+
+interface PlayerState { id: string; channel: PlayerChannel; color: string; index: number; browserUuid: string | null }
 interface PendingMove { clientTick: number; inputs: MoveInput[] }
 
 // A point-in-time snapshot of a MultiplayerRoom, combining its World's dump
@@ -71,9 +80,10 @@ export interface MultiplayerRoomOptions {
   // Fires once when the closed room has lost its last player. The router uses
   // this to free the room's slot in the per-key all-rooms index.
   onRoomDone?: () => void
-  // Called when a scenario-script invokes `ctx.spawnBot`. The callback is
-  // scoped to the room's routing key so scenario-spawned bots reconnect
-  // through the same orchestration.
+  // Deprecated; scenarios now spawn bots directly via `spawnBotInRoom`, which
+  // drives a `BotRunner` bound to this MR's world and bypasses WebSocket
+  // routing. The field is kept so existing callers that still pass it don't
+  // break type-checking during the migration; the value is ignored.
   spawnBotFn?: (spec: BotSpec) => void
   // World-space position used to seed every human player on connect. When
   // omitted, players spawn at (0, 0). Orchestrations set this from the
@@ -99,6 +109,15 @@ export interface MultiplayerRoomOptions {
   // reaches zero (used by solo hallway MRs, which are per-connection).
   // Default false: rooms normally linger while their scenario runs.
   autoDestroyOnEmpty?: boolean
+  // Fires when a scenario running in this room invokes `ctx.exitScenario()`.
+  // The server wires this to `executeExitTransfer`, which sweeps every
+  // seated player into a fresh initial-hallway MR. Only meaningful for
+  // scenarios whose spec carries `exitConnection`.
+  onExitScenario?: (scenarioId: string) => void
+  // Pre-computed attachment for an exit-hallway MR. When set, `acceptExitTransfer`
+  // uses it to arm the per-player reveal (drop both exit walls + enable the
+  // cross-instance edge once). Not used outside the exit-transfer target MR.
+  exitAttachment?: ExitAttachment
 }
 
 // A MultiplayerRoom owns one World, one ScenarioManager, the tick loop, and
@@ -127,7 +146,16 @@ export class MultiplayerRoom {
   private readonly onRoomDone?: () => void
   private readonly onScenarioTerminate?: (scenarioId: string) => void
   private readonly recordingManager?: PlayerRecordingManager
-  private readonly spawnBotFn: (spec: BotSpec) => void
+  // Running bot drivers keyed by the bot's seated player id. Scenario bots
+  // are spawned in-process via `spawnBotInRoom` and live here until the bot's
+  // player is removed from the room (elimination, room destroy, etc.). The
+  // `botIndex` fixes a stable spawn order so log consumers can number bots.
+  private readonly bots: Map<string, { runner: BotRunner; botIndex: number }> = new Map()
+  // Accumulated log entries from bots that have already stopped, tagged with
+  // the bot's seating-order index. Live-runner logs are still held by the
+  // runner itself and merged in on `collectBotLogs`.
+  private readonly botLogs: Array<{ botIndex: number; log: BotLogEntry }> = []
+  private nextBotIndex = 0
   private readonly spawnPosition: { x: number; z: number }
   readonly maxPlayers: number
   // Every map attached via `addMap()`, in attach order. Kept for flattening
@@ -163,9 +191,17 @@ export class MultiplayerRoom {
   // Timer that reopens the slot if the ack never arrives.
   private hubTransferTimeoutCancel: (() => void) | null = null
   private readonly autoDestroyOnEmpty: boolean
+  // Exit-transfer state (target MR side). When set, the room was built by
+  // `executeExitTransfer` and carries a pre-computed attachment that
+  // `acceptExitTransfer` uses to arm per-player reveals.
+  private readonly exitAttachment: ExitAttachment | null
+  // Tracks whether the shared cross-instance adjacency edge has already been
+  // enabled for this exit-transfer room (idempotent across per-player reveals).
+  private exitEdgeEnabled = false
+  private readonly onExitScenario?: (scenarioId: string) => void
 
   constructor(opts: MultiplayerRoomOptions) {
-    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn, spawnPosition, onScenarioTerminate, recordingManager, hubConnection, maxPlayers, autoDestroyOnEmpty } = opts
+    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnPosition, onScenarioTerminate, recordingManager, hubConnection, maxPlayers, autoDestroyOnEmpty, onExitScenario, exitAttachment } = opts
     if (!Number.isInteger(maxPlayers) || maxPlayers < 1) {
       throw new Error(`[MultiplayerRoom:${roomId}] maxPlayers must be a positive integer, got ${maxPlayers}`)
     }
@@ -175,12 +211,13 @@ export class MultiplayerRoom {
     this.onRoomDone = onRoomDone
     this.onScenarioTerminate = onScenarioTerminate
     this.recordingManager = recordingManager
-    this.spawnBotFn = spawnBotFn ?? (() => {})
     this.spawnPosition = spawnPosition ?? { x: 0, z: 0 }
     this.hubConnection = hubConnection
     this.hubSlotOpen = hubConnection !== undefined
     this.maxPlayers = maxPlayers
     this.autoDestroyOnEmpty = autoDestroyOnEmpty ?? false
+    this.onExitScenario = onExitScenario
+    this.exitAttachment = exitAttachment ?? null
     this.tickRateHz = tickRateHz ?? TICK_RATE_HZ
     this.world = new World([], {
       scheduleSimMs: (ms, cb) => this.scheduleSimMs(ms, cb),
@@ -284,7 +321,17 @@ export class MultiplayerRoom {
       removePlayer: (pid, eliminated) => this.removePlayer(pid, eliminated),
       onClose: () => this.handleScenarioClose(config.id),
       onTerminate: () => this.onScenarioTerminate?.(config.id),
-      spawnBot: (spec) => this.spawnBotFn(spec),
+      // Attach the bot to THIS scenario specifically (not `attachPlayerToDefault`)
+      // — scenarios that have already called `ctx.closeScenario()` no longer
+      // have a default-open designation, but they may still want to spawn
+      // bots into their own script (this is exactly the scenario1–4
+      // close-then-fill pattern).
+      spawnBot: (spec) => { this.spawnBotInRoom(spec, { attachToScenarioId: config.id }) },
+      onExitScenario: this.onExitScenario ? (scenarioId) => this.onExitScenario!(scenarioId) : undefined,
+      removeMap: (mapInstanceId) => {
+        this.removeMap(mapInstanceId)
+        this.broadcastMapRemove(mapInstanceId)
+      },
       scheduleSimMs: (ms, cb) => this.scheduleSimMs(ms, cb),
       getServerTick: () => this.serverTick,
       getSimMsPerTick: () => SIM_MS_PER_TICK,
@@ -565,9 +612,20 @@ export class MultiplayerRoom {
   // hub transfers can skip the attach until after reveal if needed.
   private seatPlayer(ws: WebSocket, browserUuid: string | null, routingKey: string, spawn: { x: number; z: number }): string {
     const playerId = crypto.randomUUID()
+    this.seatPlayerCore(playerId, { kind: 'ws', ws }, browserUuid, routingKey, spawn)
+    return playerId
+  }
+
+  // Shared seating used by both WS-backed and in-process (bot) players. The
+  // caller mints `playerId` so hook closures (e.g. BotRunner's sendMove /
+  // sendReady) can reference the final id before the welcome message —
+  // emitted inline below — dispatches back into the channel. The `channel`
+  // selects how outgoing messages leave this MR; everything else (color,
+  // spawn, world_reset / welcome / player_joined fanout) is identical.
+  private seatPlayerCore(playerId: string, channel: PlayerChannel, browserUuid: string | null, routingKey: string, spawn: { x: number; z: number }): void {
     const color = this.pickColor()
     const index = this.nextPlayerIndex++
-    this.players.set(playerId, { id: playerId, ws, color, index, browserUuid })
+    this.players.set(playerId, { id: playerId, channel, color, index, browserUuid })
     this.world.addPlayer(playerId, spawn.x, spawn.z)
 
     if (browserUuid && this.recordingManager) {
@@ -633,8 +691,6 @@ export class MultiplayerRoom {
         serverTick: this.serverTick,
       })
     }
-
-    return playerId
   }
 
   // Whether this room can accept an incoming hub transfer. Used by the hub
@@ -773,6 +829,107 @@ export class MultiplayerRoom {
     if (this.hubConnection !== undefined && !this.closed) this.hubSlotOpen = true
   }
 
+  // Bulk snapshot of every seated player's ws / browserUuid / current world
+  // position. Used by the exit-transfer orchestrator to collect connections
+  // before releasing them. The returned list is a detached array — mutating
+  // the room afterwards doesn't touch it.
+  getPlayerHandles(): Array<{
+    playerId: string
+    ws: WebSocket
+    browserUuid: string | null
+    x: number
+    z: number
+  }> {
+    // Bots have no WebSocket and cannot be transferred across MRs; exclude
+    // them so exit-transfer callers don't try to hand off a non-existent
+    // connection. The bots are torn down implicitly when their source MR
+    // closes.
+    const out: Array<{ playerId: string; ws: WebSocket; browserUuid: string | null; x: number; z: number }> = []
+    for (const [pid, p] of this.players) {
+      if (p.channel.kind !== 'ws') continue
+      const wp = this.world.getPlayer(pid)
+      if (!wp) continue
+      out.push({ playerId: pid, ws: p.channel.ws, browserUuid: p.browserUuid, x: wp.x, z: wp.z })
+    }
+    return out
+  }
+
+  // Seat a player transferred in from an exit-source MR at a caller-supplied
+  // world position. Mirrors `acceptHubTransfer` but doesn't attach a hallway
+  // map (the hallway is already the target MR's primary map) and uses the
+  // room's pre-computed `exitAttachment` to arm a per-player reveal: on
+  // `world_reset_ack`, drop both exit-dock walls for the player and enable
+  // the cross-instance adjacency edge once for the whole room.
+  acceptExitTransfer(
+    ws: WebSocket,
+    browserUuid: string | null,
+    routingKey: string,
+    worldPos: { x: number; z: number },
+  ): string {
+    if (this.closed) {
+      throw new Error(`[MultiplayerRoom:${this.roomId}] acceptExitTransfer called on a closed room`)
+    }
+    const attachment = this.exitAttachment
+    if (!attachment) {
+      throw new Error(`[MultiplayerRoom:${this.roomId}] acceptExitTransfer called without exitAttachment`)
+    }
+
+    const playerId = this.seatPlayer(ws, browserUuid, routingKey, worldPos)
+    this.scenarios.attachPlayerToDefault(playerId)
+
+    this.onceWorldResetAcked(playerId, () => {
+      this.revealExitForPlayer(playerId, attachment)
+    })
+
+    console.log(`[MultiplayerRoom:${this.roomId}] exit transfer in: player=${playerId} at (${worldPos.x.toFixed(3)},${worldPos.z.toFixed(3)})`)
+    return playerId
+  }
+
+  // Drop both exit-dock walls and enable the cross-instance adjacency edge
+  // for the transferred player. The edge enable is global and idempotent —
+  // only the first reveal writes it. Wall drops are also sent per-player so
+  // the client's wire view matches its world state; the world itself drops
+  // the walls globally on the first reveal (same as the hub path), so other
+  // transferred players coming through later see them already dropped.
+  private revealExitForPlayer(playerId: string, attachment: ExitAttachment): void {
+    if (!this.exitEdgeEnabled) {
+      this.world.toggleGeometryOff(attachment.initialWallIdToDrop)
+      this.world.toggleGeometryOff(attachment.sourceWallIdToDrop)
+      this.world.setConnectionEnabled(attachment.crossInstanceEdge.a, attachment.crossInstanceEdge.b, true)
+      this.exitEdgeEnabled = true
+    }
+    this.sendToPlayer(playerId, {
+      type: 'geometry_state',
+      updates: [
+        { id: attachment.initialWallIdToDrop, visible: false },
+        { id: attachment.sourceWallIdToDrop, visible: false },
+      ],
+    })
+    this.sendToPlayer(playerId, {
+      type: 'connections_state',
+      connections: this.world.getConnectionsSnapshot(),
+    })
+  }
+
+  // Terminal cleanup after an exit transfer: all players have already been
+  // released; fire the registry lifecycle callbacks (onCloseScenario then
+  // onRoomDone) exactly once and stop the tick loop. Idempotent.
+  closeAndDestroy(): void {
+    if (!this.closed) {
+      this.closed = true
+      this.onCloseScenario?.()
+    }
+    this.scenarios.destroyAll()
+    if (!this.roomDoneFired) {
+      this.roomDoneFired = true
+      this.onRoomDone?.()
+    }
+    if (this.tickTimer) {
+      clearTimeout(this.tickTimer)
+      this.tickTimer = null
+    }
+  }
+
   // Detach a player from this room without broadcasting a `player_left` and
   // without closing the WebSocket. Used by the hub flow to move a player
   // off their private solo-hallway MR before seating them on the target MR.
@@ -781,6 +938,12 @@ export class MultiplayerRoom {
   releasePlayer(playerId: string): void {
     const player = this.players.get(playerId)
     if (!player) return
+    // Bots have no WebSocket to hand off. If a caller tries to release a
+    // bot, treat it as a full removal so the runner is torn down cleanly.
+    if (player.channel.kind === 'bot') {
+      this.removePlayer(playerId, false)
+      return
+    }
     this.scenarios.detachPlayer(playerId)
     this.players.delete(playerId)
     this.world.removePlayer(playerId)
@@ -802,11 +965,81 @@ export class MultiplayerRoom {
   // players.
   destroy(): void {
     this.closed = true
+    // Stop every bot runner so they don't keep ticking after the room's
+    // tick loop has been torn down. Snapshot logs so `collectBotLogs` still
+    // returns their output after destroy.
+    for (const { runner, botIndex } of this.bots.values()) {
+      runner.stop()
+      for (const entry of runner.logs) this.botLogs.push({ botIndex, log: entry })
+    }
+    this.bots.clear()
     this.scenarios.destroyAll()
     if (this.tickTimer) {
       clearTimeout(this.tickTimer)
       this.tickTimer = null
     }
+  }
+
+  // Spawn a bot driven in-process by this MR's own world — no WebSocket, no
+  // routing, no BotManager. Called from `ctx.spawnBot` inside a scenario
+  // script (see `buildScenario`). The bot is seated at the room's default
+  // `spawnPosition` and immediately starts its tick loop; removing the bot
+  // player from the room also stops and drops its runner. Returns the
+  // allocated player id.
+  //
+  // When `attachToScenarioId` is set, the bot is attached to that specific
+  // scenario (needed when the caller has already cleared the default-open
+  // designation via `closeScenario`); otherwise it attaches to whatever
+  // scenario is currently the default-open one.
+  spawnBotInRoom(
+    spec: BotSpec,
+    options?: BotRunnerOptions & { attachToScenarioId?: string },
+  ): string {
+    const botIndex = this.nextBotIndex++
+    const label = `${this.roomId}#${botIndex}`
+    // Mint the player id first so the runner's hooks (sendMove, sendReady)
+    // can reference it by closure before seatPlayerCore dispatches the
+    // welcome message back into the runner.
+    const playerId = crypto.randomUUID()
+    const runner = new BotRunner(label, spec, {
+      sendMove: (tick, inputs) => this.handleMove(playerId, tick, inputs),
+      sendReady: () => this.handlePlayerReady(playerId),
+      // Bots don't currently react to game_event choices, but wire the hook
+      // symmetrically so a future BotSpec.onChoice path doesn't need a
+      // separate plumbing change.
+      sendChoice: () => { /* no-op: no game_event flow wired to bots today */ },
+    }, options)
+    // Start the runner before seating so the welcome message dispatched from
+    // `seatPlayerCore` → `sendToPlayer` → `runner.deliverMessage` isn't
+    // dropped by the runner's `!running` guard.
+    runner.start()
+    this.seatPlayerCore(playerId, { kind: 'bot', runner }, null, this.roomId, this.spawnPosition)
+    this.bots.set(playerId, { runner, botIndex })
+    // When the runner stops, snapshot its accumulated logs into the room's
+    // collection so `collectBotLogs` keeps working after the bot has torn
+    // itself down (e.g. elimination, room destroy).
+    runner.onStopped(() => {
+      for (const entry of runner.logs) this.botLogs.push({ botIndex, log: entry })
+    })
+    if (options?.attachToScenarioId) {
+      this.scenarios.attachPlayerTo(playerId, options.attachToScenarioId)
+    } else {
+      this.scenarios.attachPlayerToDefault(playerId)
+    }
+    return playerId
+  }
+
+  // Readable snapshot of every bot log this room has ever collected. Used by
+  // `ScenarioRunRegistry.finalize` to fold scenario-bot output into the run
+  // artifact (where `BotManager.collectLogsForKey` used to live).
+  collectBotLogs(): Array<{ botIndex: number; log: BotLogEntry }> {
+    // Live runners still hold their logs; merge them with already-drained
+    // entries for a stopped-aware snapshot.
+    const out = [...this.botLogs]
+    for (const { runner, botIndex } of this.bots.values()) {
+      for (const entry of runner.logs) out.push({ botIndex, log: entry })
+    }
+    return out.sort((a, b) => a.log.time - b.log.time)
   }
 
   getLivingPlayerIds(): string[] {
@@ -832,6 +1065,13 @@ export class MultiplayerRoom {
     this.pendingMoves.delete(playerId)
     this.readyPlayerIds.delete(playerId)
     this.worldResetAckWaiters.delete(playerId)
+    // Stop any BotRunner bound to this player so its tick loop doesn't keep
+    // ticking against a world that no longer has the player.
+    const bot = this.bots.get(playerId)
+    if (bot) {
+      this.bots.delete(playerId)
+      bot.runner.notifyRemoved()
+    }
     this.broadcast({ type: 'player_left', playerId })
     // Finalize the player's recording now (if any) — captures partial
     // sessions shorter than the configured duration. The manager's own
@@ -915,9 +1155,14 @@ export class MultiplayerRoom {
     if (this.recordingManager) {
       for (const pid of this.players.keys()) this.recordingManager.onMessageToPlayer(pid, msg, this.serverTick)
     }
-    const data = JSON.stringify(msg)
+    let data: string | null = null
     for (const p of this.players.values()) {
-      if (p.ws.readyState === WebSocket.OPEN) p.ws.send(data)
+      if (p.channel.kind === 'bot') {
+        p.channel.runner.deliverMessage(msg)
+      } else {
+        if (data === null) data = JSON.stringify(msg)
+        if (p.channel.ws.readyState === WebSocket.OPEN) p.channel.ws.send(data)
+      }
     }
   }
 
@@ -926,11 +1171,16 @@ export class MultiplayerRoom {
     const p = this.players.get(playerId)
     const obs = this.observers.get(playerId)
     if (!p && !obs?.size) return
-    const data = JSON.stringify(msg)
-    if (p?.ws.readyState === WebSocket.OPEN) p.ws.send(data)
-    if (obs?.size) {
-      for (const ws of obs) {
-        if (ws.readyState === WebSocket.OPEN) ws.send(data)
+    if (p?.channel.kind === 'bot') {
+      p.channel.runner.deliverMessage(msg)
+    }
+    if (p?.channel.kind === 'ws' || obs?.size) {
+      const data = JSON.stringify(msg)
+      if (p?.channel.kind === 'ws' && p.channel.ws.readyState === WebSocket.OPEN) p.channel.ws.send(data)
+      if (obs?.size) {
+        for (const ws of obs) {
+          if (ws.readyState === WebSocket.OPEN) ws.send(data)
+        }
       }
     }
   }

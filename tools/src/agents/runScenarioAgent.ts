@@ -9,6 +9,7 @@ import { LIST_CONTENT_TOOL } from '../listContent/index.js'
 import { GET_SCENARIO_LOGS_TOOL } from '../getScenarioLogs/index.js'
 import { GET_BOT_LOGS_TOOL } from '../getBotLogs/index.js'
 import { loadSkill } from './_loadPrompt.js'
+import { loadReferenceScenarios } from './_loadReferenceScenarios.js'
 
 export interface RunScenarioAgentResponse {
   scenario_id: string
@@ -49,7 +50,8 @@ export async function runRunScenarioAgent(
 ): Promise<AgentRunResult<RunScenarioAgentResponse>> {
   return withRunLog('run-scenario-agent', { prompt: userPrompt }, () =>
     runAgent<RunScenarioAgentResponse>({
-      systemPrompt: loadSkill('run-scenario-agent'),
+      systemPrompt:
+        loadSkill('run-scenario-agent') + '\n\n---\n\n' + loadReferenceScenarios(),
       userPrompt,
       tools: [
         INSERT_RUN_SCENARIO_SPEC_TOOL as Tool,

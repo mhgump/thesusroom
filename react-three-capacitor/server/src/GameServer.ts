@@ -5,6 +5,7 @@ import { ContentRegistry } from './ContentRegistry.js'
 import { MultiplayerRoomRegistry } from './MultiplayerRoomRegistry.js'
 import { createDefaultScenarioResolver } from './orchestration/index.js'
 import { BotManager } from './bot/BotManager.js'
+import type { BotSpec } from './bot/BotTypes.js'
 import { MultiplayerRoom } from './Room.js'
 import { ScenarioRunRegistry } from './scenarioRun/ScenarioRunRegistry.js'
 import type { ClientMessage } from './types.js'
@@ -18,6 +19,10 @@ import { ConnectionDispatcher } from './connections/ConnectionDispatcher.js'
 import { ObserveHandler } from './connections/ObserveHandler.js'
 import { ReplayHandler } from './connections/ReplayHandler.js'
 import type { ConnectionContext } from './connections/types.js'
+import { executeExitTransfer } from './orchestration/exitTransfer.js'
+import { LoopOrchestration } from './orchestration/LoopOrchestration.js'
+import type { GameMap } from '../../src/game/GameMap.js'
+import type { ScenarioSpec } from './ContentRegistry.js'
 
 export class GameServer {
   private readonly wss: WebSocketServer
@@ -71,9 +76,32 @@ export class GameServer {
 
     this.scenarioRunRegistry = new ScenarioRunRegistry(this.content, this.botManager)
 
-    const resolver = createDefaultScenarioResolver(this.content, (routingKey, spec) => {
-      this.botManager.spawnBot(routingKey, spec)
-    }, this.scenarioRunRegistry, options)
+    const onExitScenario = (sourceRoom: MultiplayerRoom, sourceMap: GameMap, sourceScenario: ScenarioSpec) => {
+      try {
+        executeExitTransfer({
+          sourceRoom,
+          sourceMap,
+          sourceScenario,
+          rebindWs: (ws, room, playerId) => this.rebindWs(ws, room, playerId),
+          recordingManager: this.recordingManager,
+          // Scenario-spawned bots now run in-process in the MR that owns
+          // them; the routing-key spawn path is retained here only for
+          // any future exit-hallway scripts that legitimately need a bot
+          // reached over the public WebSocket routing.
+          spawnBotFn: (routingKey, spec) => this.botManager.spawnBot(routingKey, spec),
+        })
+      } catch (err) {
+        console.error('[GameServer] exit transfer failed:', err)
+      }
+    }
+    const loopOrchestration = new LoopOrchestration(
+      {
+        spawnBotFn: (routingKey, spec) => this.botManager.spawnBot(routingKey, spec),
+        recordingManager: this.recordingManager,
+      },
+      (ws, room, playerId) => this.rebindWs(ws, room, playerId),
+    )
+    const resolver = createDefaultScenarioResolver(this.content, this.scenarioRunRegistry, options, onExitScenario, loopOrchestration)
     this.roomRegistry = new MultiplayerRoomRegistry(this.recordingManager)
     this.dispatcher = new ConnectionDispatcher(
       resolver,

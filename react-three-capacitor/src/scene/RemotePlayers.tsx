@@ -31,22 +31,33 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
       g.position.set(pos.x, CAPSULE_CENTER_Y, pos.z)
       const cp = state.camera.position
       g.renderOrder = 1000 - Math.hypot(cp.x - pos.x, cp.y - CAPSULE_CENTER_Y, cp.z - pos.z)
-      // Hide remote players who are inside a room not visible from the local player's room.
-      // Players in corridors (not inside any room floor) are always shown.
-      const { currentRoomId } = useGameStore.getState()
+      // Hide remote players whose containing room is not visible from the
+      // local player's perspective. Mirrors the room-visibility predicate in
+      // GeometryLayer / GameScene. Players in corridors (no room contains
+      // their position) are always shown.
+      const { currentRoomId, roomVisibility, playerRoomVisibilityOverride } = useGameStore.getState()
       const world = getClientWorld()
       let visible = true
       if (world) {
-        const visibleRooms = new Set([currentRoomId, ...world.getAdjacentRoomIds(currentRoomId)])
+        const isRoomVisible = (scopedId: string) => {
+          const override = playerRoomVisibilityOverride[scopedId]
+          if (override !== undefined) return override
+          if (world.isRoomOverlapping(scopedId) && scopedId !== currentRoomId) return false
+          return roomVisibility[scopedId] !== false
+        }
+        const adjacent = world.getAdjacentRoomIds(currentRoomId)
+        const visibleRoomIds = new Set([currentRoomId, ...adjacent].filter(isRoomVisible))
+        let anyContains = false
+        let anyVisible = false
         for (const view of world.getAllRooms()) {
-          if (visibleRooms.has(view.scopedId)) continue
           const hw = view.room.floorWidth / 2
           const hd = view.room.floorDepth / 2
           if (Math.abs(pos.x - view.worldPos.x) <= hw && Math.abs(pos.z - view.worldPos.z) <= hd) {
-            visible = false
-            break
+            anyContains = true
+            if (visibleRoomIds.has(view.scopedId)) { anyVisible = true; break }
           }
         }
+        visible = !anyContains || anyVisible
       }
       g.visible = visible
     } else {

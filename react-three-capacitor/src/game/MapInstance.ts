@@ -10,9 +10,12 @@ import {
 import type { RoomBounds } from './World.js'
 
 // Flat global-coord XZ projection of a single geometry piece, as needed by
-// Rapier when constructing a fixed-body cuboid collider.
+// Rapier when constructing a fixed-body cuboid collider. `roomId` is the
+// scoped id of the owning room — the World uses it to gate collisions per
+// player when a room is toggled off.
 export interface FlattenedGeometry {
   id: string
+  roomId: string
   cx: number
   cz: number
   hw: number
@@ -64,9 +67,11 @@ export function buildMapInstanceArtifacts(
   for (const room of spec.rooms) {
     const p = localPositions.get(room.id)
     if (!p) continue
+    const scopedId = scopedRoomId(mapInstanceId, room.id)
     for (const g of room.geometry ?? []) {
       geometry.push({
         id: g.id,
+        roomId: scopedId,
         cx: p.x + g.cx,
         cz: p.z + g.cz,
         hw: g.width  / 2,

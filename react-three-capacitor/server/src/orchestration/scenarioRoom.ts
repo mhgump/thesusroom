@@ -1,6 +1,5 @@
 import type { GameMap } from '../../../src/game/GameMap.js'
 import type { ScenarioSpec } from '../ContentRegistry.js'
-import type { BotSpec } from '../bot/BotTypes.js'
 import { MultiplayerRoom } from '../Room.js'
 import type { RoomCreationContext } from './RoomOrchestration.js'
 
@@ -14,7 +13,6 @@ export interface BuildScenarioRoomOptions {
   ctx: RoomCreationContext
   map: GameMap
   scenario: ScenarioSpec
-  spawnBotFn: (routingKey: string, spec: BotSpec) => void
   // When false, the scenario is added as default-open but not started — ready
   // signals and connects buffer inside the Scenario until `startScenario` is
   // called. Defaults to true. The run-scenario flow sets this to false when
@@ -23,10 +21,20 @@ export interface BuildScenarioRoomOptions {
   autoStart?: boolean
   tickRateHz?: number
   onScenarioTerminate?: (scenarioId: string) => void
+  // Fires when a scenario running in the created room invokes
+  // `ctx.exitScenario()`. Receives the source room along with its map/spec
+  // so the caller can build a target exit-hallway MR and transfer players.
+  // Only meaningful for scenarios whose spec carries `exitConnection`.
+  onExitScenario?: (sourceRoom: MultiplayerRoom, sourceMap: GameMap, sourceScenario: ScenarioSpec) => void
 }
 
 export function createScenarioRoom(opts: BuildScenarioRoomOptions): MultiplayerRoom {
-  const { ctx, map, scenario, spawnBotFn, autoStart = true, tickRateHz, onScenarioTerminate } = opts
+  const { ctx, map, scenario, autoStart = true, tickRateHz, onScenarioTerminate, onExitScenario } = opts
+
+  // Holder captured by the MR's onExitScenario callback below. Assigned on
+  // the line after `new MultiplayerRoom(...)` so the callback (which only
+  // fires after the tick loop starts) always sees a non-null reference.
+  let self: MultiplayerRoom | null = null
 
   const room = new MultiplayerRoom({
     roomId: scenario.id,
@@ -34,13 +42,19 @@ export function createScenarioRoom(opts: BuildScenarioRoomOptions): MultiplayerR
     tickRateHz,
     onCloseScenario: ctx.onClose,
     onRoomDone: ctx.onDestroy,
-    spawnBotFn: (spec) => spawnBotFn(ctx.routingKey, spec),
     spawnPosition: scenario.spawn,
     onScenarioTerminate,
+    onExitScenario: (scenario.exitConnection && onExitScenario)
+      ? () => {
+          if (!self) return
+          onExitScenario(self, map, scenario)
+        }
+      : undefined,
     recordingManager: ctx.recordingManager,
     hubConnection: scenario.hubConnection,
     maxPlayers: scenario.maxPlayers,
   })
+  self = room
 
   const attachedRoomIds = room.addMap(map)
   const scenarioInstance = room.buildScenario(attachedRoomIds, {

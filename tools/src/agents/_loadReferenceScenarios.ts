@@ -101,3 +101,28 @@ export function loadReferenceScenarios(
   const blocks = scenarioIds.map(scenarioBlock)
   return [header, ...blocks].join('\n\n---\n\n')
 }
+
+function mapBlock(scenarioId: string): string | null {
+  const mapPath = path.join(CONTENT_DIR, 'maps', scenarioId, 'map.ts')
+  const source = readIfExists(mapPath)
+  if (source === null) return null
+  return [
+    `## Reference map: \`${scenarioId}\``,
+    `### Map (\`content/maps/${scenarioId}/map.ts\`)`,
+    fence(source, 'ts'),
+  ].join('\n\n')
+}
+
+export function loadReferenceMaps(
+  scenarioIds: string[] = DEFAULT_REFERENCE_SCENARIOS,
+): string {
+  const header = [
+    '# Reference maps',
+    '',
+    'The following canonical maps are provided verbatim so you can ' +
+    'match their file layout, import style, and API usage. Copy their ' +
+    'shape — do NOT probe alternate APIs with `any` or try/catch.',
+  ].join('\n')
+  const blocks = scenarioIds.map(mapBlock).filter((b): b is string => b !== null)
+  return [header, ...blocks].join('\n\n---\n\n')
+}

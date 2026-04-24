@@ -32,6 +32,8 @@ function getWsPath(): string {
   // Empty path (root URL) resolves to `hub` — the combined hub world fronting
   // the default target scenario with a solo initial hallway.
   if (path.length === 0) return 'hub'
+  // `/loop` resolves to the infinite-hallway singleton orchestration.
+  if (path === 'loop') return 'loop'
   return path
 }
 

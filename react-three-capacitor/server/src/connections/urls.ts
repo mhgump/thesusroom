@@ -15,15 +15,17 @@ export function parseObserverParams(url: string | undefined): { routingKey: stri
   return { routingKey: match[1], i: parseInt(match[2], 10), j: parseInt(match[3], 10) }
 }
 
-// The non-observer URL path is either `/` (→ `hub`), `/scenarios/{id}` (→
-// `scenarios/{id}`), or `/scenariorun/{id}` (→ `scenariorun/{id}`). The
-// returned routing key doubles as the path suffix bots connect under, so it
-// is preserved verbatim rather than flattened into a single segment.
+// The non-observer URL path is either `/` (→ `hub`), `/loop` (→ `loop`),
+// `/scenarios/{id}` (→ `scenarios/{id}`), or `/scenariorun/{id}`
+// (→ `scenariorun/{id}`). The returned routing key doubles as the path
+// suffix bots connect under, so it is preserved verbatim rather than
+// flattened into a single segment.
 export function parseRoutingKey(url: string | undefined): string | null {
   if (!url) return 'hub'
   const path = url.split('?')[0]
   const stripped = path.replace(/^\/+/, '').replace(/\/+$/, '')
   if (stripped.length === 0 || stripped === 'hub') return 'hub'
+  if (stripped === 'loop') return 'loop'
   const m = stripped.match(/^(scenarios|scenariorun)\/([^/]+)$/)
   if (m) return `${m[1]}/${m[2]}`
   return null

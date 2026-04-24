@@ -1,5 +1,6 @@
-import type { ContentRegistry } from '../ContentRegistry.js'
-import type { BotSpec } from '../bot/BotTypes.js'
+import type { ContentRegistry, ScenarioSpec } from '../ContentRegistry.js'
+import type { GameMap } from '../../../src/game/GameMap.js'
+import type { MultiplayerRoom } from '../Room.js'
 import type { ScenarioRunRegistry } from '../scenarioRun/ScenarioRunRegistry.js'
 import type { ConnectionHandler } from '../connections/types.js'
 import {
@@ -8,6 +9,7 @@ import {
 } from './DefaultScenarioOrchestration.js'
 import { ScenarioRunOrchestration } from './ScenarioRunOrchestration.js'
 import { DefaultGameOrchestration } from './DefaultGameOrchestration.js'
+import type { LoopOrchestration } from './LoopOrchestration.js'
 import type { RoutingResolver } from './RoomOrchestration.js'
 import {
   chooseMostPopulatedOpenRoom,
@@ -44,10 +46,19 @@ const SCENARIO_RUN_PREFIX = 'scenariorun/'
 // resolve to null; the dispatcher rejects those connections with 4004.
 export function createDefaultScenarioResolver(
   content: ContentRegistry,
-  spawnBotFn: (routingKey: string, spec: BotSpec) => void,
   scenarioRunRegistry: ScenarioRunRegistry,
-  options?: DefaultScenarioOrchestrationOptions,
+  options: DefaultScenarioOrchestrationOptions | undefined,
+  onExitScenario: (sourceRoom: MultiplayerRoom, sourceMap: GameMap, sourceScenario: ScenarioSpec) => void,
+  loopOrchestration: LoopOrchestration,
 ): RoutingResolver {
+  // Fold the exit-transfer trigger into the per-scenario orchestration
+  // options. Every DefaultScenarioOrchestration instance below inherits it;
+  // only scenarios whose spec carries `exitConnection` will actually invoke
+  // it (the MR wires the callback out only in that case).
+  const scenarioOptions: DefaultScenarioOrchestrationOptions = {
+    ...(options ?? {}),
+    onExitScenario,
+  }
   // Singleton: one instance per server, kept across all `/` connections so
   // the solo-hallway counter and round-robin cursor stay monotonic. The
   // scenario chooser is stateful (closure cursor), so it must be
@@ -64,20 +75,23 @@ export function createDefaultScenarioResolver(
     if (routingKey === 'hub') {
       return defaultGame
     }
+    if (routingKey === 'loop') {
+      return loopOrchestration
+    }
     if (routingKey.startsWith(SCENARIO_RUN_PREFIX)) {
       const run = scenarioRunRegistry.getByRoutingKey(routingKey)
       if (!run) return null
-      return new ScenarioRunOrchestration(run, scenarioRunRegistry, spawnBotFn)
+      return new ScenarioRunOrchestration(run, scenarioRunRegistry)
     }
     if (routingKey === 'scenarios/initial') {
-      return new DefaultScenarioOrchestration(INITIAL_MAP, INITIAL_SCENARIO, spawnBotFn, options)
+      return new DefaultScenarioOrchestration(INITIAL_MAP, INITIAL_SCENARIO, scenarioOptions)
     }
     if (!routingKey.startsWith(SCENARIOS_PREFIX)) return null
     const scenarioId = routingKey.slice(SCENARIOS_PREFIX.length)
     if (scenarioId.length === 0) return null
     const entry = await content.get(scenarioId)
     if (!entry) return null
-    return new DefaultScenarioOrchestration(entry.map, entry.scenario, spawnBotFn, options)
+    return new DefaultScenarioOrchestration(entry.map, entry.scenario, scenarioOptions)
   }
 }
 

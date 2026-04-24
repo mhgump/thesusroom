@@ -3,6 +3,7 @@ import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/age
 import { withRunLog } from '../_shared/logContext.js'
 import { INSERT_MAP_TOOL } from '../insertMap/index.js'
 import { loadSkill } from './_loadPrompt.js'
+import { loadReferenceMaps } from './_loadReferenceScenarios.js'
 
 export interface MapAgentResponse {
   map_name: string
@@ -43,7 +44,8 @@ export async function runMapAgent(
 ): Promise<AgentRunResult<MapAgentResponse>> {
   return withRunLog('map-agent', { prompt: userPrompt }, () =>
     runAgent<MapAgentResponse>({
-      systemPrompt: loadSkill('map-agent'),
+      systemPrompt:
+        loadSkill('map-agent') + '\n\n---\n\n' + loadReferenceMaps(),
       userPrompt,
       tools: [INSERT_MAP_TOOL as Tool],
       responseSpec: MAP_RESPONSE_SPEC,

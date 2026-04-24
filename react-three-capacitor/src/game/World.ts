@@ -307,6 +307,10 @@ export class World {
   private readonly geometries: Map<string, GeometryCollider> = new Map()
   private readonly geometryState: Map<string, boolean> = new Map()  // true=solid (default)
   private readonly playerGeomOverride: Map<string, Map<string, boolean>> = new Map()
+  // Scoped roomId that each geometry belongs to. Populated by addMap; used
+  // by processMove to mark colliders passable when their owning room is
+  // toggled off for the moving player.
+  private readonly geometryRoomId: Map<string, string> = new Map()
 
   // ── Map-authored overlays ────────────────────────────────────────────────
   // Button authoring lives on the GameMap (`map.buttons`). World owns the
@@ -378,6 +382,7 @@ export class World {
       const collider = this.rapierWorld.createCollider(desc, body)
       this.geometries.set(g.id, { cx: g.cx, cz: g.cz, hw: g.hw, hd: g.hd, collider })
       this.geometryState.set(g.id, true)
+      this.geometryRoomId.set(g.id, g.roomId)
       geometryIds.push(g.id)
     }
 
@@ -478,6 +483,7 @@ export class World {
         this.geometries.delete(geomId)
       }
       this.geometryState.delete(geomId)
+      this.geometryRoomId.delete(geomId)
     }
 
     for (const sid of scoped) {
@@ -845,10 +851,17 @@ export class World {
     const desired = { x: jx * MOVE_SPEED * safeDt, y: jz * MOVE_SPEED * safeDt }
     const playerOverride = this.playerGeomOverride.get(playerId)
     const passableHandles = new Set<number>()
+    // Collision precedence: a geometry is solid for a player iff its effective
+    // per-player geometry state is `solid` AND its owning room is ON for that
+    // player. Either layer saying "off/passable" makes the collider passable —
+    // mirrors the render side, where a piece is hidden if either the per-piece
+    // visibility OR the owning room's visibility is off.
     for (const [id, geom] of this.geometries) {
       const globalOn = this.geometryState.get(id) ?? true
       const effectiveOn = playerOverride?.has(id) ? playerOverride.get(id)! : globalOn
-      if (!effectiveOn) passableHandles.add(geom.collider.handle)
+      if (!effectiveOn) { passableHandles.add(geom.collider.handle); continue }
+      const rid = this.geometryRoomId.get(id)
+      if (rid && this.isRoomOffForPlayer(playerId, rid)) passableHandles.add(geom.collider.handle)
     }
     for (const [id, other] of this.charBodies) {
       if (id !== playerId) passableHandles.add(other.collider.handle)
@@ -1380,6 +1393,23 @@ export class World {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  // Whether a room should be treated as "off" (invisible + non-collidable)
+  // for the given player. Precedence, highest first:
+  //   1. explicit per-player room visibility override
+  //   2. auto-hide for overlapping rooms that aren't the player's current room
+  //      (matches the client render gate — relies on the invariant "every
+  //      room that overlaps the player's current room is toggled off")
+  //   3. global room visibility (default: on)
+  isRoomOffForPlayer(playerId: string, scopedRoomId: string): boolean {
+    const pOverride = this.playerRoomVisible.get(playerId)?.get(scopedRoomId)
+    if (pOverride !== undefined) return !pOverride
+    if (this.overlappingRoomIds.has(scopedRoomId)) {
+      const current = this.resolveCurrentRoom(playerId)
+      if (scopedRoomId !== current) return true
+    }
+    return this.globalRoomVisible.get(scopedRoomId) === false
+  }
 
   private resolveCurrentRoom(playerId: string): string | null {
     const stored = this.playerRoom.get(playerId)

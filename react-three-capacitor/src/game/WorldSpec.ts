@@ -157,9 +157,11 @@ export function roomsOverlap(
 // Enforces:
 //   - every connection joins opposing walls (N↔S or E↔W)
 //   - door opening fits within the wall span
-//   - no two rooms overlap in world space
 //   - every room is reachable from rooms[0] via connections
 //   - every geometry entry fits inside its room's bounding cube
+// Note: rooms may overlap — `buildMapInstanceArtifacts` tracks overlaps in
+// `overlapSet` and the client renderer hides overlapping rooms that aren't
+// the viewer's current room, so per-player sub-rooms can coexist safely.
 export function validateWorldSpec(spec: WorldSpec, positions: Map<string, RoomWorldPos>): void {
   const byId = new Map(spec.rooms.map(r => [r.id, r]))
 
@@ -188,20 +190,11 @@ export function validateWorldSpec(spec: WorldSpec, positions: Map<string, RoomWo
     }
   }
 
-  for (let i = 0; i < spec.rooms.length; i++) {
-    for (let j = i + 1; j < spec.rooms.length; j++) {
-      const a = spec.rooms[i], b = spec.rooms[j]
-      const pa = positions.get(a.id), pb = positions.get(b.id)
-      if (!pa || !pb) continue
-      const gapX = Math.abs(pa.x - pb.x) - (a.floorWidth  + b.floorWidth)  / 2
-      const gapZ = Math.abs(pa.z - pb.z) - (a.floorDepth + b.floorDepth) / 2
-      if (gapX < 0 && gapZ < 0) {
-        throw new Error(
-          `Rooms ${a.id} and ${b.id} overlap (gapX=${gapX.toFixed(3)}, gapZ=${gapZ.toFixed(3)})`
-        )
-      }
-    }
-  }
+  // Overlapping rooms are allowed: `buildMapInstanceArtifacts` records each
+  // overlap pair in `overlapSet`, and the client renderer hides overlapping
+  // rooms that are not the player's current room. Scenarios use this to
+  // spawn per-player rooms that geometrically overlap but are only visible
+  // to their respective occupant.
 
   for (const room of spec.rooms) {
     if (!positions.has(room.id)) {

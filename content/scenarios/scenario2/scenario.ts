@@ -6,19 +6,21 @@ import type {
 } from '../../../react-three-capacitor/server/src/GameScript.js'
 import { MOVER_BOT } from '../../bots/scenario2/mover/bot.js'
 
-// Sim-time delays (ms). ctx.after is tick-driven, so these scale with server
-// tick rate — 50ms of sim time = 1 tick at the canonical 20Hz.
-// Bots don't spawn on connect anymore — they wait 5s after the first player
-// reaches room1, which skips bot-fill for hub transfers where the player
-// lingers in the hallway (and for direct `scenarios/scenario2` joins where the
-// player spawns inside room1 and the timer starts immediately).
-const BOT_FILL_DELAY_MS  = 5_000   // 100 ticks
+// Designed around 4-player rooms (see content/scenario_plans/scenario2.json).
+// MIN_PLAYERS is both `maxPlayers` and the bot-fill target.
+const MIN_PLAYERS = 4
+const BOT_FILL_DELAY_MS  = 10_000  // 200 ticks
 const MOVE_WARN_DELAY_MS = 2_000   // 40 ticks
-const ELIM_DELAY_MS      = 4_000   // 80 ticks
+// Extended from 4s to 8s so fill bots (which start ticking later than any
+// initially-provided bots) have enough bot-tick cycles between receiving
+// `rule_move` and `eliminateStragglers` firing to actually walk into room2.
+// With the shorter 4s delay the first-only-bot close-and-fill test saw
+// fill bots eliminated mid-walk while the cli bot survived.
+const ELIM_DELAY_MS      = 8_000   // 160 ticks
 const FACT_DELAY_MS      = 1_000   // 20 ticks
 
 interface S2State {
-  room1EntryTriggered: boolean
+  fillScheduled: boolean
   doorOpened: boolean
   inRoom2: Record<string, true>
   allInRoom2Triggered: boolean
@@ -28,7 +30,7 @@ interface S2State {
 
 const script: GameScript<S2State> = {
   initialState: () => ({
-    room1EntryTriggered: false,
+    fillScheduled: false,
     doorOpened: false,
     inRoom2: {},
     allInRoom2Triggered: false,
@@ -37,9 +39,20 @@ const script: GameScript<S2State> = {
   }),
 
   onPlayerConnect(state, ctx) {
-    // Register the room-entry listener exactly once, on the very first
-    // connect. It drives both the bot-fill timer (on first room1 entry) and
-    // the room2 tracking (after the scenario door opens).
+    // Schedule the bot-fill on the very first connect so the scenario fills
+    // up even if no additional humans arrive. The actual ctx.closeScenario()
+    // call happens inside `onPlayerReady` once all MIN_PLAYERS have readied:
+    // closing earlier would race the WebSocket handshake of bots produced by
+    // the fill, since ctx.spawnBot creates fresh WS clients that the
+    // dispatcher rejects once the room is closed. Once close fires, no code
+    // path re-opens it.
+    if (!state.fillScheduled) {
+      state.fillScheduled = true
+      ctx.after(BOT_FILL_DELAY_MS, 'fillBots')
+    }
+
+    // Register the room-entry listener exactly once for room2 tracking after
+    // the scenario door opens.
     if (state.roomListenerRegistered) return
     state.roomListenerRegistered = true
     ctx.onPlayerEnterRoom('onEnterRoom')
@@ -50,7 +63,7 @@ const script: GameScript<S2State> = {
     state.readyPlayers[playerId] = true
 
     const playerIds = ctx.getPlayerIds()
-    if (playerIds.length < 4) return
+    if (playerIds.length < MIN_PLAYERS) return
     if (!playerIds.every(pid => state.readyPlayers[pid])) return
 
     state.doorOpened = true
@@ -66,20 +79,12 @@ const script: GameScript<S2State> = {
   handlers: {
     fillBots(state, ctx) {
       if (state.doorOpened) return
-      const needed = 4 - ctx.getPlayerIds().length
+      const needed = MIN_PLAYERS - ctx.getPlayerIds().length
       for (let i = 0; i < needed; i++) ctx.spawnBot(MOVER_BOT)
     },
 
     onEnterRoom(state, ctx, payload: PlayerEnterRoomPayload) {
       const { roomId, playerId } = payload
-      // First-time any player enters room1: start the bot-fill countdown.
-      // Hub-transferred players spawn in the hallway and only trip this on
-      // crossing into room1; direct `scenarios/scenario2` joins spawn in room1 and
-      // trip it immediately.
-      if (roomId === 'scenario2_room1' && !state.room1EntryTriggered) {
-        state.room1EntryTriggered = true
-        ctx.after(BOT_FILL_DELAY_MS, 'fillBots')
-      }
       // Room2 tracking applies only after the scenario door has opened —
       // before that, entering room2 is impossible (north_door plug is solid).
       if (roomId === 'scenario2_room2' && state.doorOpened) {

@@ -1,7 +1,7 @@
 import type { GameMap } from '../../src/game/GameMap.js'
 import type { GameScript } from './GameScript.js'
 import { getBackends } from '../../../tools/src/_shared/backends/index.js'
-import { validateHubConnection } from './orchestration/hubAttachment.js'
+import { validateHubConnection, validateExitConnection } from './orchestration/hubAttachment.js'
 import { MAP as INITIAL_MAP } from '../../../assets/initial/map.js'
 
 export type { GameMap }
@@ -53,6 +53,15 @@ export interface ScenarioSpec {
     mainRoomId: string
     dockGeometryId: string
   }
+  // Optional exit-attach declaration. When present, the scenario can hand its
+  // active player population off into a fresh initial-hallway MR via
+  // `ctx.exitScenario()`. The dock segment must exist on `roomId`, sit on
+  // that room's NORTH edge, match the hallway's floorWidth, and lie within
+  // the north wall span. Asserted at content-load time.
+  exitConnection?: {
+    roomId: string
+    dockGeometryId: string
+  }
 }
 
 export type ContentEntry = { map: GameMap; scenario: ScenarioSpec }
@@ -82,6 +91,7 @@ export class ContentRegistry {
     const [s, m] = await Promise.all([scenario.load(scenarioId), map.load(scenarioId)])
     if (!s || !m) return undefined
     if (s.hubConnection) validateHubConnection(m, s.hubConnection, INITIAL_MAP)
+    if (s.exitConnection) validateExitConnection(m, s.exitConnection, INITIAL_MAP)
     return { map: m, scenario: s }
   }
 }

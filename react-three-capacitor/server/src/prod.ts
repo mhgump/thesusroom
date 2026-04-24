@@ -34,6 +34,7 @@ const sendSpa = (res: express.Response): void => {
 }
 
 app.get('/', (_req, res) => sendSpa(res))
+app.get('/loop', (_req, res) => sendSpa(res))
 attachValidationRoutes(app, gameServer, sendSpa)
 
 // Any path that didn't match above — static assets, unknown routing keys,

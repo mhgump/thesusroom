@@ -35,6 +35,7 @@
   ],
   "last_run_artifact_ids": [
     "scenario2/all-movers/0",
-    "scenario2/all-movers/1"
+    "scenario2/all-movers/1",
+    "scenario2/all-movers/0"
   ]
 }

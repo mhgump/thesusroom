@@ -87,6 +87,18 @@ export interface GameScriptContext {
   setRoomVisible(roomIds: string[], visible: boolean, playerIds?: string[]): void
   // Add a persistent cosmetic rule for a player. Rules accumulate and are shown in the rules panel.
   addRule(playerId: string, text: string): void
+  // Hand this scenario's entire active player population off into a fresh
+  // initial-hallway MR (the "exit transfer"). The scenario's spec must carry
+  // `exitConnection`; the server builds the target MR, attaches this
+  // scenario's map below the hallway, and re-seats every player at their
+  // translated world position. Fires at most once; subsequent calls are no-ops.
+  exitScenario(): void
+  // Remove a previously-attached map instance from the enclosing room. The
+  // room broadcasts `map_remove` to every seated player so each client drops
+  // the corresponding geometry. Intended for scenarios that need to tear
+  // down an auxiliary map (e.g. the exit-hallway script removing the source
+  // map once everyone has entered the hallway).
+  removeMap(mapInstanceId: string): void
 }
 
 // Signature for every named handler and for top-level `onPlayerConnect` /
@@ -115,6 +127,12 @@ export interface GameScript<S = unknown> {
   onPlayerConnect?: GameScriptHandler<S, string>
   // Called when a connected player signals client-side readiness.
   onPlayerReady?: GameScriptHandler<S, string>
+  // Called once the first time a player crosses from outside the scenario's
+  // attached rooms into one of them. Scenarios whose hubConnection drops
+  // players into a hub hallway and transfers them via walk-in should use
+  // this for initial instruction events so the player isn't spammed while
+  // still in the hallway.
+  onPlayerEnterScenario?: GameScriptHandler<S, string>
   // Catalog of named handlers. Keys are handler ids; values receive the
   // scenario state, the ctx, and whatever payload was passed at registration
   // time (`undefined` for `onButtonRelease`, etc.).

@@ -15,20 +15,45 @@ const bh = 0.025
 const BY = bh / 2
 const ROOM_H = 0.5
 
+// Center is the scenario's entry room — a 0.75 × 0.75 square with a 3-way
+// split on its south wall (flanking segments + hub dock), mirroring the
+// scenario1/2/3 dock pattern. A narrow corridor (north_hall) runs north
+// off center.
+//
+// Previously the scenario's hub docked onto a 0.25-wide south_hall
+// directly — a room whose full south wall was the dock. Arriving players
+// got stuck at the south-hall/center boundary because the narrow hallway
+// gave resolveOverlap no usable clearance when maybeReleaseHubTransfer
+// restored the dock geometry right as the player crossed in. Replacing
+// the entry room with the wider center room (same pattern as the other
+// scenarios) eliminates that pinch point.
 const CTR_W  = 0.75
 const CTR_D  = 0.75
 const HALL_W = 0.25
 const HALL_D = 0.75
 
-const HD        = CTR_D / 2
+const C_HD      = CTR_D / 2
 const C_HW      = CTR_W / 2
 const H_HW      = HALL_W / 2
-const WALL_C    = HD - bt / 2
-const EW_DEPTH  = 2 * (HD - bt)
-const D_HALF    = (HALL_W - 2 * bt) / 2
-const D_SEG_CX  = (C_HW + D_HALF) / 2
-const D_SEG_W   = C_HW - D_HALF
-const H_CX      = H_HW - bt / 2
+const C_WALL_C  = C_HD - bt / 2
+const H_WALL_C  = HALL_D / 2 - bt / 2
+const C_EW_DEPTH = 2 * (C_HD - bt)
+const H_EW_DEPTH = 2 * (HALL_D / 2 - bt)
+
+// Center's south wall split — middle 0.25 segment is the hub dock.
+const HUB_DOCK_W = HALL_W
+const S_SIDE_W   = (CTR_W - HUB_DOCK_W) / 2
+const S_SIDE_CX  = (CTR_W + HUB_DOCK_W) / 4
+
+// Center's north wall split — middle 0.25 segment opens into north_hall.
+// Flanking segments sit either side of the doorway so the north corners
+// stay walled.
+const N_OPEN_W  = HALL_W
+const N_SIDE_W  = (CTR_W - N_OPEN_W) / 2
+const N_SIDE_CX = (CTR_W + N_OPEN_W) / 4
+
+// North hallway — thin corridor running off center's north wall.
+const H_CX = H_HW - bt / 2
 
 const ROOMS: RoomSpec[] = [
   {
@@ -37,12 +62,17 @@ const ROOMS: RoomSpec[] = [
     height: ROOM_H,
     cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
     geometry: [
-      { id: 's4_c_nl', cx: -D_SEG_CX, cy: BY, cz: -WALL_C, width: D_SEG_W, height: bh, depth: bt },
-      { id: 's4_c_nr', cx:  D_SEG_CX, cy: BY, cz: -WALL_C, width: D_SEG_W, height: bh, depth: bt },
-      { id: 's4_c_sl', cx: -D_SEG_CX, cy: BY, cz:  WALL_C, width: D_SEG_W, height: bh, depth: bt },
-      { id: 's4_c_sr', cx:  D_SEG_CX, cy: BY, cz:  WALL_C, width: D_SEG_W, height: bh, depth: bt },
-      { id: 's4_c_e',  cx:  WALL_C,   cy: BY, cz: 0,       width: bt,      height: bh, depth: EW_DEPTH },
-      { id: 's4_c_w',  cx: -WALL_C,   cy: BY, cz: 0,       width: bt,      height: bh, depth: EW_DEPTH },
+      // North wall — flanking solid segments; the 0.25 doorway in the
+      // middle is intentionally absent (the connection to north_hall fills
+      // that span).
+      { id: 's4_c_nl', cx: -N_SIDE_CX, cy: BY, cz: -C_WALL_C, width: N_SIDE_W,  height: bh, depth: bt },
+      { id: 's4_c_nr', cx:  N_SIDE_CX, cy: BY, cz: -C_WALL_C, width: N_SIDE_W,  height: bh, depth: bt },
+      // South wall — flanking solid segments + hub dock in the middle.
+      { id: 's4_c_sl', cx: -S_SIDE_CX, cy: BY, cz:  C_WALL_C, width: S_SIDE_W,  height: bh, depth: bt },
+      { id: 's4_c_s',  cx: 0,          cy: BY, cz:  C_WALL_C, width: HUB_DOCK_W, height: bh, depth: bt },
+      { id: 's4_c_sr', cx:  S_SIDE_CX, cy: BY, cz:  C_WALL_C, width: S_SIDE_W,  height: bh, depth: bt },
+      { id: 's4_c_e',  cx:  C_WALL_C,  cy: BY, cz: 0,         width: bt,        height: bh, depth: C_EW_DEPTH },
+      { id: 's4_c_w',  cx: -C_WALL_C,  cy: BY, cz: 0,         width: bt,        height: bh, depth: C_EW_DEPTH },
     ],
   },
   {
@@ -51,24 +81,11 @@ const ROOMS: RoomSpec[] = [
     height: ROOM_H,
     cameraRect: { xMin: -HALL_W / 2, xMax: HALL_W / 2, zMin: -HALL_D / 2 + 0.5, zMax: HALL_D / 2 },
     geometry: [
-      { id: 's4_n_n',  cx: 0,      cy: BY, cz: -WALL_C, width: HALL_W, height: bh, depth: bt },
-      { id: 's4_n_sl', cx: -H_CX,  cy: BY, cz:  WALL_C, width: bt,     height: bh, depth: bt },
-      { id: 's4_n_sr', cx:  H_CX,  cy: BY, cz:  WALL_C, width: bt,     height: bh, depth: bt },
-      { id: 's4_n_e',  cx:  H_CX,  cy: BY, cz: 0,       width: bt,     height: bh, depth: EW_DEPTH },
-      { id: 's4_n_w',  cx: -H_CX,  cy: BY, cz: 0,       width: bt,     height: bh, depth: EW_DEPTH },
-    ],
-  },
-  {
-    id: 'south_hall', name: 'South Hallway',
-    floorWidth: HALL_W, floorDepth: HALL_D,
-    height: ROOM_H,
-    cameraRect: { xMin: -HALL_W / 2, xMax: HALL_W / 2, zMin: -HALL_D / 2, zMax: HALL_D / 2 - 0.5 },
-    geometry: [
-      { id: 's4_s_nl', cx: -H_CX,  cy: BY, cz: -WALL_C, width: bt,     height: bh, depth: bt },
-      { id: 's4_s_nr', cx:  H_CX,  cy: BY, cz: -WALL_C, width: bt,     height: bh, depth: bt },
-      { id: 's4_s_s',  cx: 0,      cy: BY, cz:  WALL_C, width: HALL_W, height: bh, depth: bt },
-      { id: 's4_s_e',  cx:  H_CX,  cy: BY, cz: 0,       width: bt,     height: bh, depth: EW_DEPTH },
-      { id: 's4_s_w',  cx: -H_CX,  cy: BY, cz: 0,       width: bt,     height: bh, depth: EW_DEPTH },
+      { id: 's4_n_n',  cx: 0,      cy: BY, cz: -H_WALL_C, width: HALL_W, height: bh, depth: bt },
+      { id: 's4_n_sl', cx: -H_CX,  cy: BY, cz:  H_WALL_C, width: bt,     height: bh, depth: bt },
+      { id: 's4_n_sr', cx:  H_CX,  cy: BY, cz:  H_WALL_C, width: bt,     height: bh, depth: bt },
+      { id: 's4_n_e',  cx:  H_CX,  cy: BY, cz: 0,         width: bt,     height: bh, depth: H_EW_DEPTH },
+      { id: 's4_n_w',  cx: -H_CX,  cy: BY, cz: 0,         width: bt,     height: bh, depth: H_EW_DEPTH },
     ],
   },
 ]
@@ -80,21 +97,9 @@ const CONNECTIONS: RoomConnection[] = [
     width: HALL_W,
     cameraTransition: {
       corners: [
-        { x:  0,          z:  0          },
+        { x:  0,          z:  0         },
         { x:  HALL_W / 2, z: -CTR_D / 2 },
         { x: -HALL_W / 2, z: -CTR_D / 2 },
-      ],
-    },
-  },
-  {
-    roomIdA: 'center', wallA: 'south', positionA: 0.5,
-    roomIdB: 'south_hall', wallB: 'north', positionB: 0.5,
-    width: HALL_W,
-    cameraTransition: {
-      corners: [
-        { x:  0,          z:  0         },
-        { x:  HALL_W / 2, z: CTR_D / 2 },
-        { x: -HALL_W / 2, z: CTR_D / 2 },
       ],
     },
   },

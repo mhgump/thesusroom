@@ -29,6 +29,12 @@ const VALIDATION_PATH_REGEXES: RegExp[] = [
   /^\/scenariorun\/[^/]+$/,
 ];
 
+// Paths that always serve the SPA without backend validation. `/loop` is the
+// infinite-hallway singleton: there is no "is this valid?" check to do
+// (the LoopOrchestration always accepts), so skip the backend ping and let
+// Vite serve index.html directly.
+const UNVALIDATED_SPA_PATHS = new Set(['/loop']);
+
 // Dev uses Vite's server (not Express) to serve HTML, so the sr_uid cookie
 // that prod.ts sets must also be set here — otherwise the player recording
 // system sees no browser identity and skips recording in dev.
@@ -85,6 +91,8 @@ function validate404Plugin() {
         // Number-display paths are proxied to the backend (see
         // `numberDisplayProxy`); let them through so the proxy handles them.
         if (NUMBER_DISPLAY_PATHS.some(p => path === p || path.startsWith(`${p}/`))) { next(); return; }
+        // Always-allowed SPA paths (no backend validation needed).
+        if (UNVALIDATED_SPA_PATHS.has(path)) { next(); return; }
 
         const needsBackendValidation = VALIDATION_PATH_REGEXES.some(re => re.test(path));
         if (needsBackendValidation) {

@@ -35,6 +35,14 @@ export interface ScenarioDeps {
   // close signals "no more joiners".
   onTerminate?: () => void
   spawnBot: (spec: BotSpec) => void
+  // Invoked by `ctx.exitScenario()`. Optional — only set when the enclosing
+  // scenario's spec carries an `exitConnection` AND the server is wired for
+  // exit transfers. Receives the scenario id so the server can look up the
+  // source map/spec pair.
+  onExitScenario?: (scenarioId: string) => void
+  // Invoked by `ctx.removeMap(id)`. Removes the named map instance from the
+  // enclosing room and broadcasts `map_remove`.
+  removeMap: (mapInstanceId: string) => void
   scheduleSimMs: (ms: number, cb: () => void) => () => void
   // Resolves a world position to a scoped room id (from the attached map).
   getRoomAtPosition?: (x: number, z: number) => string | null
@@ -117,6 +125,10 @@ export class Scenario {
   // on every move tick.
   private readonly playerCurrentRoom: Map<string, string | null> = new Map()
 
+  // Players that have crossed into one of this scenario's attached rooms at
+  // least once. Used to fire `onPlayerEnterScenario` exactly once per player.
+  private readonly playersEntered: Set<string> = new Set()
+
   // Pending-registrations tables. All registrations go in by id; dispatchers
   // iterate the entries rather than traversing a closure list.
   private readonly timers: Map<string, TimerRecord & { cancel: () => void }> = new Map()
@@ -175,8 +187,9 @@ export class Scenario {
   isAlive(): boolean { return this.alive }
 
   // One-way transition. Replays onPlayerConnect for every attached player in
-  // attach order, then onPlayerReady for every ready player in ready order.
-  // Subsequent attach / ready events flow through normally.
+  // attach order, then onPlayerReady for every ready player in ready order,
+  // then onPlayerEnterScenario for every already-entered player.
+  // Subsequent attach / ready / enter events flow through normally.
   start(): void {
     if (!this.alive || this.started) return
     this.started = true
@@ -187,6 +200,11 @@ export class Scenario {
     if (this.script.onPlayerReady) {
       for (const pid of this.readyPlayerIds) {
         this.script.onPlayerReady(this.scriptState, this.ctx, pid)
+      }
+    }
+    if (this.script.onPlayerEnterScenario) {
+      for (const pid of this.playersEntered) {
+        this.script.onPlayerEnterScenario(this.scriptState, this.ctx, pid)
       }
     }
   }
@@ -235,6 +253,26 @@ export class Scenario {
     if (this.script && this.started) {
       this.script.onPlayerConnect?.(this.scriptState, this.ctx, playerId)
     }
+
+    // Direct-scenario joins spawn the player straight into one of the
+    // scenario's attached rooms — there's no walk-in move, so the enter hook
+    // would never fire from onPlayerMoved alone. Resolve the spawn position
+    // here and mark the player as entered if they start inside the scenario.
+    const getRoomAtPosition = this.deps.getRoomAtPosition
+    if (getRoomAtPosition) {
+      const p = this.deps.world.getPlayer(playerId)
+      if (p) {
+        const scopedId = getRoomAtPosition(p.x, p.z)
+        if (scopedId && this.attachedRoomIds.has(scopedId)) {
+          this.playerCurrentRoom.set(playerId, scopedId)
+          this.deps.world.setPlayerRoom(playerId, scopedId)
+          this.playersEntered.add(playerId)
+          if (this.script && this.started && this.script.onPlayerEnterScenario) {
+            this.script.onPlayerEnterScenario(this.scriptState, this.ctx, playerId)
+          }
+        }
+      }
+    }
   }
 
   onPlayerReady(playerId: string): void {
@@ -252,6 +290,7 @@ export class Scenario {
     this.attachedPlayerIds.delete(playerId)
     this.readyPlayerIds.delete(playerId)
     this.playerCurrentRoom.delete(playerId)
+    this.playersEntered.delete(playerId)
     // World's removePlayer (called by the Room after us) handles clearing
     // vote assignments and button occupancy, emitting the relevant events.
   }
@@ -271,6 +310,12 @@ export class Scenario {
         this.playerCurrentRoom.set(playerId, newRoom)
         this.deps.world.setPlayerRoom(playerId, newRoom)
         this.dispatchRoomEnter(playerId, newRoom)
+        if (!this.playersEntered.has(playerId) && this.attachedRoomIds.has(newRoom)) {
+          this.playersEntered.add(playerId)
+          if (this.script?.onPlayerEnterScenario) {
+            this.script.onPlayerEnterScenario(this.scriptState, this.ctx, playerId)
+          }
+        }
       }
     }
   }
@@ -588,6 +633,12 @@ export class Scenario {
       addRule(playerId, text) {
         world.addPlayerRule(playerId, text)
         self.deps.sendToPlayer(playerId, { type: 'add_rule', text })
+      },
+      exitScenario() {
+        self.deps.onExitScenario?.(self.id)
+      },
+      removeMap(mapInstanceId) {
+        self.deps.removeMap(mapInstanceId)
       },
     }
   }

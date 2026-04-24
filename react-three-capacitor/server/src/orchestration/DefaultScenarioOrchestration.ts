@@ -2,7 +2,6 @@ import type WebSocket from 'ws'
 import type { IncomingMessage } from 'http'
 import type { GameMap } from '../../../src/game/GameMap.js'
 import type { ScenarioSpec } from '../ContentRegistry.js'
-import type { BotSpec } from '../bot/BotTypes.js'
 import type { MultiplayerRoom } from '../Room.js'
 import type { RoomCreationContext, RoomOrchestration } from './RoomOrchestration.js'
 import type { ConnectionContext } from '../connections/types.js'
@@ -24,13 +23,16 @@ export interface DefaultScenarioOrchestrationOptions {
   // Forwarded to every room built by this orchestration. Fired when a
   // scenario invokes `ctx.terminate()`.
   onScenarioTerminate?: (scenarioId: string) => void
+  // Forwarded to every room built by this orchestration. Fired when a
+  // scenario invokes `ctx.exitScenario()`. Set by the resolver to trigger
+  // the exit-transfer flow in GameServer.
+  onExitScenario?: (sourceRoom: MultiplayerRoom, sourceMap: GameMap, sourceScenario: ScenarioSpec) => void
 }
 
 export class DefaultScenarioOrchestration implements RoomOrchestration {
   constructor(
     private readonly map: GameMap,
     private readonly scenario: ScenarioSpec,
-    private readonly spawnBotFn: (routingKey: string, spec: BotSpec) => void,
     private readonly options?: DefaultScenarioOrchestrationOptions,
   ) {}
 
@@ -51,10 +53,10 @@ export class DefaultScenarioOrchestration implements RoomOrchestration {
       ctx,
       map: this.map,
       scenario: this.scenario,
-      spawnBotFn: this.spawnBotFn,
       autoStart: this.options?.autoStartScenario ?? true,
       tickRateHz: this.options?.tickRateHz,
       onScenarioTerminate: this.options?.onScenarioTerminate,
+      onExitScenario: this.options?.onExitScenario,
     })
   }
 

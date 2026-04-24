@@ -3,6 +3,7 @@ import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/age
 import { withRunLog } from '../_shared/logContext.js'
 import { INSERT_BOT_TOOL } from '../insertBot/index.js'
 import { loadSkill } from './_loadPrompt.js'
+import { loadReferenceScenarios } from './_loadReferenceScenarios.js'
 
 export interface BotAgentResponse {
   bot_name: string
@@ -43,7 +44,8 @@ export async function runBotAgent(
 ): Promise<AgentRunResult<BotAgentResponse>> {
   return withRunLog('bot-agent', { prompt: userPrompt }, () =>
     runAgent<BotAgentResponse>({
-      systemPrompt: loadSkill('bot-agent'),
+      systemPrompt:
+        loadSkill('bot-agent') + '\n\n---\n\n' + loadReferenceScenarios(),
       userPrompt,
       tools: [INSERT_BOT_TOOL as Tool],
       responseSpec: BOT_RESPONSE_SPEC,

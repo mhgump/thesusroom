@@ -1,6 +1,5 @@
 import type WebSocket from 'ws'
 import type { IncomingMessage } from 'http'
-import type { BotSpec } from '../bot/BotTypes.js'
 import type { MultiplayerRoom } from '../Room.js'
 import type { RegisteredRun, ScenarioRunRegistry } from '../scenarioRun/ScenarioRunRegistry.js'
 import type { RoomCreationContext, RoomOrchestration } from './RoomOrchestration.js'
@@ -20,7 +19,6 @@ export class ScenarioRunOrchestration implements RoomOrchestration {
   constructor(
     private readonly run: RegisteredRun,
     private readonly registry: ScenarioRunRegistry,
-    private readonly spawnBotFn: (routingKey: string, spec: BotSpec) => void,
   ) {}
 
   async handle(ws: WebSocket, request: IncomingMessage, ctx: ConnectionContext): Promise<void> {
@@ -48,7 +46,6 @@ export class ScenarioRunOrchestration implements RoomOrchestration {
       ctx,
       map: entry.map,
       scenario: entry.scenario,
-      spawnBotFn: this.spawnBotFn,
       autoStart: !recording,
       tickRateHz: request.tick_rate_hz,
       onScenarioTerminate: () => {
