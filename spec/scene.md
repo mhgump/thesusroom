@@ -5,7 +5,7 @@
 - A connection defines a doorway between two rooms: the wall of each room the doorway opens on, its position along those walls, and its width.
 - A world defines which adjacent rooms are visible from each room.
 - A room defines a rectangular floor area with surrounding low barriers and optional floor and exterior textures.
-- Barrier geometry wraps the room perimeter with openings cut for each doorway; corner blocks are suppressed at walls with connections so barrier geometry does not extend into adjacent rooms.
+- Barrier geometry wraps the room perimeter with openings for each doorway and does not extend into adjacent rooms.
 - The floor shows a tiled texture; if no texture is specified a fallback texture is used.
 - Exterior planes render beyond room walls.
 - An orthographic camera follows the local player.

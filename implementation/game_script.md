@@ -27,7 +27,7 @@ content/client/
   maps/scenario2.ts      — Scenario 2 client map: WorldSpec, GameSpec with vote regions
   maps/index.ts          — Exports CURRENT_MAP resolved by CURRENT_SCENARIO_ID
 react-three-capacitor/src/network/
-  useWebSocket.ts        — instruction message → store.showRule({ rules: [{ label: 'COMMAND', text }] })
+  useWebSocket.ts        — instruction message → store.showRule with the rule lines supplied by the server
 ```
 
 ## Architecture

@@ -16,8 +16,8 @@
 - The room contains four labeled, color-coded vote circles arranged in a 2×2 grid.
 - When a player joins, all four circles become active and the player receives a "Find your partner" command instruction.
 - The room accepts at most 8 players; once 8 are connected, no new players may join.
-- When the room fills, a countdown begins. After 20 seconds, all players receive a "10 seconds to vote!" command instruction.
-- Ten seconds after that warning, vote assignments are resolved.
+- When the room fills, a countdown begins. After the initial delay, all players receive a "10 seconds to vote!" command instruction.
+- After a further warning delay, vote assignments are resolved.
 - Players are paired in the order they joined: the first to join is paired with the second, the third with the fourth, and so on.
 - A pair survives if both players are standing inside the same vote circle at resolution time.
 - A pair is eliminated — both players removed simultaneously — if the two players are in different circles, or if either player is in no circle at resolution time.
@@ -30,3 +30,9 @@
 - Both buttons reset immediately once the required occupants step off; neither button holds its pressed state or enforces a cooldown.
 - When exactly one player stands on the blue button's trigger area, the button platform visually depresses as client-side tactile feedback, even though the server has not yet registered a press.
 - When zero or two or more players stand on the blue button's trigger area, that solo tactile feedback is suppressed.
+
+## Scenario 4: Hallway
+
+- The world is three connected rooms: a centre room with a north hall and a south hall.
+- Players can walk freely between all three rooms through doorways at the centre room's north and south walls.
+- No vote regions, no instructions, no elimination — the scenario is a free-movement sandbox.

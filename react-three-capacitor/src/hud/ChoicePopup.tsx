@@ -15,12 +15,12 @@ const CHOICE_COLORS = [
 export function ChoicePopup() {
   const event = useGameStore((s) => s.activeChoiceEvent)
   const dismissChoice = useGameStore((s) => s.dismissChoice)
-  const { sendChoiceAction } = useWsSend()
+  const { sendChoice } = useWsSend()
 
   if (!event) return null
 
   const handleSelect = (optionId: string) => {
-    sendChoiceAction(event.eventId, optionId)
+    sendChoice(event.eventId, optionId)
     dismissChoice()
   }
 

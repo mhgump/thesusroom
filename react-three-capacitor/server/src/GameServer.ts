@@ -92,7 +92,7 @@ export class GameServer {
         const msg = JSON.parse(data.toString()) as ClientMessage
         if (msg.type === 'move') {
           room.handleMove(playerId, msg.tick, msg.inputs)
-        } else if (msg.type === 'choice_action') {
+        } else if (msg.type === 'choice') {
           // handled by game script manager via room if needed
         }
       } catch {

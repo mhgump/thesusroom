@@ -24,4 +24,4 @@ export type ServerMessage =
 
 export type ClientMessage =
   | { type: 'move'; tick: number; inputs: MoveInput[] }
-  | { type: 'choice_action'; eventId: string; optionId: string }
+  | { type: 'choice'; eventId: string; optionId: string }

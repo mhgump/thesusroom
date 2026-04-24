@@ -33,7 +33,7 @@ export interface BotCallbackContext {
   getOtherPlayers(): Map<string, { x: number; z: number }>
 }
 
-export type BotAction =
+export type BotCommand =
   | { type: 'move'; jx: number; jz: number }
   | { type: 'idle' }
 
@@ -46,8 +46,8 @@ export interface BotSpec {
   onOtherPlayerMove: Record<string, (ctx: BotCallbackContext, playerId: string, from: { x: number; z: number }, to: { x: number; z: number }) => void>
   // One handler per phase; called whenever active vote region assignments change.
   onActiveVoteAssignmentChange: Record<string, (ctx: BotCallbackContext, assignments: Map<string, string[]>) => void>
-  // One handler per phase; called every 250ms or immediately when previous action completes.
-  nextAction: Record<string, (ctx: BotCallbackContext, position: { x: number; z: number }) => BotAction>
+  // One handler per phase; called every 250ms or immediately when the previous command completes.
+  nextCommand: Record<string, (ctx: BotCallbackContext, position: { x: number; z: number }) => BotCommand>
   onChoice?(ctx: BotCallbackContext, eventId: string, options: string[]): string | null
 }
 
@@ -64,7 +64,7 @@ export function isAtTarget(position: { x: number; z: number }, target: BotTarget
   )
 }
 
-export function moveToward(position: { x: number; z: number }, target: BotTarget): BotAction {
+export function moveToward(position: { x: number; z: number }, target: BotTarget): BotCommand {
   if (!target || isAtTarget(position, target)) return { type: 'idle' }
   const dx = target.x - position.x
   const dz = target.z - position.z

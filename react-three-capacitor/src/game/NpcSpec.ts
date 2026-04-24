@@ -1,4 +1,4 @@
-export type NpcTrigger = 'each-action' | { period: number }
+export type NpcTrigger = 'on-player-move' | { period: number }
 
 export interface NpcUxFlags {
   has_health: boolean
@@ -10,7 +10,7 @@ export interface NpcSpec {
   spawnX: number
   spawnZ: number
   trigger: NpcTrigger
-  allowedActions: readonly string[]
+  allowedAbilities: readonly string[]
   allowedHelpers: readonly string[]
   ux: NpcUxFlags
   config?: unknown

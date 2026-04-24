@@ -1,6 +1,6 @@
 # Bot
 
-- Bot tick rate: 50 ms (20 Hz). The bot sends one `move` message per tick even when idle (jx=0, jz=0), keeping the server sequence counter in sync.
+- Bot tick rate: 50 ms (20 Hz) — matches the server simulation tick. The bot sends one `move` message per tick even when idle (jx=0, jz=0) so its `clientPredictiveTick` stream is contiguous and never lets the server tick's pending-move buffer run empty for this player.
 - Reconnect delay after unexpected disconnect: 2000 ms.
 - Player-move callback threshold: 0.5 m displacement from the last-reported position.
 - Player-move callback throttle: at most once per 500 ms per player.
@@ -10,5 +10,5 @@
 - The `onOtherPlayerMove` callback tracks last-reported position per player; this resets when a new `player_joined` message arrives for that player.
 - NPC `player_joined` messages (those with `isNpc: true`) do not populate the other-players map; the callback is never fired for NPCs.
 - Bot server URL is derived at `GameServer` construction time: `ws://localhost:PORT` for a numeric-port constructor, `ws://localhost:${process.env.PORT ?? '8080'}` for an HTTP-server constructor.
-- The demo scenario starts a bot-fill timer on the first human player connection. After 10 s, if the door has not yet opened (fewer than 4 players connected), it spawns `max(0, 4 − currentPlayerCount)` bots using `DEMO_BOT`.
-- Demo bot has a single phase (`walk`): it targets Room 2 centre (x=0, z=−12.5, radius=2) from the moment it connects. The server-authoritative walkable area prevents crossing the door while it is closed; once the door opens the bot walks through naturally.
+- The demo scenario starts a bot-fill timer on the first human player connection. After `BOT_FILL_DELAY_MS = 2_000` ms, if the door has not yet opened (fewer than 4 players connected), it spawns `max(0, 4 − currentPlayerCount)` bots using `DEMO_BOT`.
+- Demo bot starts with `target: null` and walks nowhere. Only once the scenario sends the `rule_move` instruction does its `onInstructMap.rule_move` handler set the target to Room 2 centre (`x=0, z=-12.5, radius=2`). Before then the bot is idle at its spawn position.

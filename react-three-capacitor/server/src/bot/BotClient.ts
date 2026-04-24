@@ -1,12 +1,12 @@
 import WebSocket from 'ws'
-import type { BotSpec, BotState, BotCallbackContext, BotAction } from './BotTypes.js'
+import type { BotSpec, BotState, BotCallbackContext, BotCommand } from './BotTypes.js'
 import { isAtTarget } from './BotTypes.js'
 
 const TICK_MS = 50
 const RECONNECT_MS = 2000
 const MOVE_REPORT_DISTANCE = 0.5
 const MOVE_REPORT_INTERVAL_MS = 500
-const NEXT_ACTION_INTERVAL_MS = 250
+const NEXT_COMMAND_INTERVAL_MS = 250
 
 export interface BotLogEntry {
   time: number
@@ -28,8 +28,8 @@ export class BotClient {
   private readonly otherPlayers = new Map<string, { x: number; z: number }>()
   private readonly lastReportedPos = new Map<string, { x: number; z: number }>()
   private readonly lastReportedTime = new Map<string, number>()
-  private lastNextActionMs = 0
-  private currentAction: BotAction = { type: 'idle' }
+  private lastNextCommandMs = 0
+  private currentCommand: BotCommand = { type: 'idle' }
 
   private readonly serverUrl: string
   private readonly scenarioId: string
@@ -183,7 +183,7 @@ export class BotClient {
           const options = (msg.options as string[]) ?? []
           const choice = this.spec.onChoice(this.makeContext(), eventId, options)
           if (choice !== null && this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ type: 'choice_action', eventId, optionId: choice }))
+            this.ws.send(JSON.stringify({ type: 'choice', eventId, optionId: choice }))
           }
         }
         break
@@ -199,24 +199,24 @@ export class BotClient {
       const dt = Math.min((now - this.lastTickTime) / 1000, 0.1)
       this.lastTickTime = now
 
-      const actionCompleted =
-        this.currentAction.type === 'move' &&
+      const commandCompleted =
+        this.currentCommand.type === 'move' &&
         isAtTarget(this.position, this.state.target)
 
-      if (actionCompleted || now - this.lastNextActionMs >= NEXT_ACTION_INTERVAL_MS) {
+      if (commandCompleted || now - this.lastNextCommandMs >= NEXT_COMMAND_INTERVAL_MS) {
         const phase = this.state.phase
-        const fn = this.spec.nextAction[phase]
+        const fn = this.spec.nextCommand[phase]
         try {
-          this.currentAction = fn ? fn(this.makeContext(), { ...this.position }) : { type: 'idle' }
+          this.currentCommand = fn ? fn(this.makeContext(), { ...this.position }) : { type: 'idle' }
         } catch (err) {
-          this.log('error', `nextAction[${phase}] threw: ${err}`)
-          this.currentAction = { type: 'idle' }
+          this.log('error', `nextCommand[${phase}] threw: ${err}`)
+          this.currentCommand = { type: 'idle' }
         }
-        this.lastNextActionMs = now
+        this.lastNextCommandMs = now
       }
 
-      const jx = this.currentAction.type === 'move' ? this.currentAction.jx : 0
-      const jz = this.currentAction.type === 'move' ? this.currentAction.jz : 0
+      const jx = this.currentCommand.type === 'move' ? this.currentCommand.jx : 0
+      const jz = this.currentCommand.type === 'move' ? this.currentCommand.jz : 0
 
       this.ws.send(JSON.stringify({ type: 'move', tick: this.clientPredictiveTick, inputs: [{ jx, jz, dt }] }))
       this.clientPredictiveTick++

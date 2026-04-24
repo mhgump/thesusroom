@@ -1,30 +1,29 @@
 # Server–Client Protocol — Spec
 
 - The client and server run the exact same world simulation code; physics constants and event logic are shared.
-- Every client move is sent with a monotonically increasing sequence number, joystick direction, and frame delta time.
-- The server refuses moves whose sequence number is not exactly the next expected value; out-of-order moves receive an error and are dropped without advancing the expected sequence.
-- For each accepted move the server sends the originator a move acknowledgement: echoed sequence number, authoritative position, triggered events, and server timestamps bracketing the move.
-- The server forwards the same result to every other connected client as a position broadcast: moving player id, authoritative position, events, and the same timestamps.
-- There is no periodic broadcast loop; all position and event updates are sent strictly in response to client moves.
+- The server runs a fixed-rate simulation tick; each tick increments a monotonic `serverTick` counter, processes every client's buffered moves, and emits outgoing messages. The tick runs on a periodic loop independent of client messages, but only emits `move_ack` / `player_update` messages for players that had moves to process.
+- The client predicts locally every frame by running the same physics on its own world instance; the local player's visual position follows this predicted state each frame.
+- The client batches its per-frame predicted inputs and sends them to the server at the tick rate. Each `move` message carries a monotonically increasing `clientTick` and the ordered array of per-frame `{jx, jz, dt}` inputs accumulated since the last send.
+- The server never drops or rejects client moves. Moves received between ticks are buffered and, on the next tick, applied per player in ascending `clientTick` order — re-establishing the client's intended input order even when messages arrive reordered.
+- For each client move processed in a tick, the server sends the originating client a `move_ack` carrying the echoed `clientTick`, the authoritative position at end-of-tick, the current `serverTick`, and the triggered events. When several of a player's moves are processed in the same tick, all of that player's acks share the same `(x, z)` and events attach only to the final ack, so each event is delivered to the sender exactly once.
+- Once per server tick per moving player, the server sends every other connected client a `player_update` carrying the moving player's id, end-of-tick authoritative position, events, and the `serverTick`. `touched` events are delivered only to the participating players.
+- No server message carries a wall-clock timestamp; all client-side synchronisation is keyed on the integer `serverTick`.
 - World instances can disable individual event types; disabled types are still simulated but not included in the returned event list. Client world instances disable the `touched` event type.
-- The client applies every move through its own local world instance immediately (client-side prediction); the local player's visual position follows this predicted state each frame.
-- The client maintains an input history of up to 180 frames (≈3 s at 60 fps).
-- On move acknowledgement: the client teleports the local world to the authoritative position, replays all inputs after the acknowledged sequence, and snaps the visual position if the corrected position differs by more than 2 cm. Events in the acknowledgement are processed immediately.
-- The client maintains a running estimate of current server time, anchored to the `endTime` of the most recently received update event and advanced by the local wall clock.
-- Remote player positions are stored as snapshots keyed by server timestamp and rendered at estimated server time minus 250 ms via linear interpolation between the two bracketing snapshots.
-- Remote events are held in a per-player queue and delivered exactly once when `max(receiptTime, serverStartTime + 250 ms)` has elapsed; late-arriving events are delivered immediately.
-- Each delivered event carries how much of its server-time window remained at delivery (`remainingMs`).
-- The 250 ms delay applies to both the position and event streams, keeping them temporally aligned.
-- `touched` events in a move acknowledgement are processed immediately with no delay; `touched` events in a remote position broadcast are subject to the 250 ms buffer.
+- When a client consumes a batch of `move_ack` messages it prunes its input history by `clientTick` (one tick per ack) and applies any `damage` events immediately. Acks whose `serverTick` is not strictly greater than the most recently reconciled `serverTick` are stale and do not adjust position; among the remaining, reconciliation is driven by the ack with the newest `(serverTick, clientTick)`.
+- When reconciliation runs, the client compares the driving ack's `(x, z)` against its recorded end-of-tick predicted position for that `clientTick`. If the corrected position differs meaningfully, the client teleports the local world to the acked position, replays all still-unacked inputs in order, and snaps the rendered visual only if the post-replay world position differs meaningfully from the currently rendered position.
+- The client tracks `server_world_tick`, the highest `serverTick` observed in any incoming message.
+- Remote player positions are stored as snapshots keyed by `serverTick`. Each frame the client advances a fractional `render_tick` pointer and samples it via linear interpolation between the two snapshots bracketing `render_tick`.
+- `render_tick` is initialised to `server_world_tick` minus a fixed buffer of ticks and normally advances in real-time at 1×. When the gap between `server_world_tick` and `render_tick` grows past a configured ratio of the buffer, playback accelerates — ramping linearly toward 2× as the gap grows further, then clamping at 2× — to absorb message bunching. `render_tick` is never advanced past `server_world_tick` minus the buffer.
+- Remote events are held in a per-player queue keyed by `serverTick` and delivered exactly once when `render_tick` reaches that tick. The render buffer therefore applies uniformly to remote positions and events, keeping them temporally aligned.
+- Events in a `move_ack` are processed immediately by the sender; events in a `player_update` are subject to the render-tick buffer.
 - The server maintains a registry mapping scenario names to open room instances; a room instance is open when it accepts new connections.
 - The demo scenario room is pre-warmed at server startup and is always open for new connections.
 - A player connecting to `/{scenario_name}` is routed to the open instance for that scenario; if no open instance exists, a new one is created. If the scenario name is unknown, the connection is rejected.
 - Connecting to `/` or any unrecognised path defaults to the `demo` scenario.
 - When the game script calls `closeScenario`, the room is removed from the open registry; new players are routed to a fresh instance or rejected. The closed room continues running for its current players and is destroyed when the last player disconnects.
-- On connection the server sends: (1) `welcome` with the player's assigned id, colour, spawn position, and initial HP; (2) `player_actions` with the player's initial set of available actions; (3) `player_joined` for each already-connected player with their current position, animation state, and HP.
-- When a player's available action set changes, the server sends a `player_actions` message to that client containing the complete updated action list.
-- On connection the server sends `player_joined` to every already-connected player describing the new player. `player_joined` carries no server timestamps.
+- On connection the server sends: (1) `welcome` with the player's assigned id, colour, spawn position, initial HP, and current `serverTick`; (2) `player_joined` for each already-connected player (human or NPC) with their current position, animation state, HP, and the current `serverTick`.
+- On connection the server sends `player_joined` to every already-connected player describing the new player.
 - On disconnection the server removes the player from the world and broadcasts `player_left` to all remaining players.
 - On elimination (HP reaches zero) the server removes the player from the world and broadcasts `player_left` to all remaining players.
-- The server can send an `instruction` message to a specific player at any time; the message carries a text string to display. Instruction messages are targeted (not broadcast) and are delivered immediately without the 250 ms delay.
+- The server can send an `instruction` message to a specific player at any time; the message carries text to display. Instruction messages are targeted (not broadcast) and are not subject to the render-tick buffer.
 - All messages are JSON-encoded WebSocket frames.

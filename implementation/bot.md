@@ -4,7 +4,7 @@
 
 ```
 react-three-capacitor/server/src/bot/
-  BotTypes.ts    — types: MovementIntent, BotTarget, BotState, BotCallbackContext, BotAction, BotSpec
+  BotTypes.ts    — types: MovementIntent, BotTarget, BotState, BotCallbackContext, BotCommand, BotSpec
                    helpers: isAtTarget(), moveToward()
   BotClient.ts   — manages one bot: WebSocket connection, tick loop, callback dispatch
   BotManager.ts  — spawns and tracks BotClient instances; holds the server URL
@@ -25,8 +25,8 @@ Node.js is single-threaded. Each bot is managed by a `setInterval` tick and WebS
 ## BotClient lifecycle
 
 1. `start()` → `connect()` opens `ws://<serverUrl>/<scenarioId>`.
-2. On `open`: reset seq counter, start the 50 ms tick interval.
-3. Every tick: call `spec.nextAction(ctx, position)` → send `{ type: 'move', seq, jx, jz, dt }`.
+2. On `open`: reset `clientPredictiveTick` to 0, start the 50 ms tick interval.
+3. Every tick: call `spec.nextCommand(ctx, position)` → send `{ type: 'move', tick: clientPredictiveTick, inputs: [{ jx, jz, dt }] }`, then increment `clientPredictiveTick`.
 4. On `move_ack`: update `this.position` from the server-authoritative values.
 5. On `player_update` for a known player: update position map; conditionally fire `onOtherPlayerMove`.
 6. On `player_left` for the bot's own id: call `stop()` (eliminates without reconnect).
@@ -52,16 +52,16 @@ GameScriptManager.spawnBotFn
 
 ## Demo bot
 
-The demo bot has a single phase (`walk`). Its `initialState` sets the target to Room 2 centre (x=0, z=−12.5, radius=2) immediately. `nextAction` calls `moveToward(position, target)` each tick until `isAtTarget` returns true.
+The demo bot has a single phase (`walk`). Its `initialState.target` is `null` — the bot walks nowhere after connecting. When the scenario script sends the `rule_move` instruction, `onInstructMap.rule_move` fires and calls `ctx.updateBotState({ target: R2_TARGET })`, setting the target to Room 2 centre (`x=0, z=-12.5, radius=2`). From that point on `nextCommand` returns `moveToward(position, target)` each tick until the bot arrives.
 
-No `onInstruct` or `onOtherPlayerMove` logic is needed — the scenario sends no instructions to bots and the bot does not react to other players' positions.
+`onOtherPlayerMove` and `onActiveVoteAssignmentChange` are wired but no-ops — the demo bot does not react to either.
 
-The door is closed when bots first connect (it opens when the 4th player connection is acknowledged). The server-authoritative walkable area stops the bot at the north wall until the door opens, at which point the next tick's movement command is accepted through the doorway.
+The door is closed when bots first connect (it opens once the fourth player connects). The server-authoritative walkable area stops the bot at the doorway until the door opens; once it opens the next tick's movement command is accepted through.
 
 ## Demo scenario fill timer
 
-`DemoScript.onPlayerConnect` starts a one-shot `ctx.after(10_000, …)` timer on the first connection. When it fires:
+`DemoScript.onPlayerConnect` starts a one-shot `ctx.after(2_000, …)` timer on the first connection (`BOT_FILL_DELAY_MS = 2_000` in `content/server/scenarios/demo.ts`). When it fires:
 
-1. If `doorOpened` is already true (4 players joined naturally), do nothing.
+1. If `doorOpened` is already true (four players joined naturally), do nothing.
 2. Otherwise compute `needed = 4 − ctx.getPlayerIds().length` and spawn that many `DEMO_BOT` instances.
-3. Each spawned bot connects to the same open demo room and fires `onPlayerConnect`, eventually reaching a count of 4 and triggering the door open via the normal path.
+3. Each spawned bot connects to the same open demo room and fires `onPlayerConnect`, eventually reaching a count of 4 and triggering the door-open path.

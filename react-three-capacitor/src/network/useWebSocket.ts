@@ -215,8 +215,8 @@ export function useWsSend() {
   return {
     sendMove: (tick: number, inputs: import('./types').MoveInput[]) =>
       client.send({ type: 'move', tick, inputs }),
-    sendChoiceAction: (eventId: string, optionId: string) =>
-      client.send({ type: 'choice_action', eventId, optionId }),
+    sendChoice: (eventId: string, optionId: string) =>
+      client.send({ type: 'choice', eventId, optionId }),
   }
 }
 

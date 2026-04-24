@@ -7,16 +7,19 @@ content/server/maps/
   scenario1.ts   — MapSpec: walkable areas (default + locked variant), vote region specs, cage geometry specs
   scenario2.ts   — MapSpec: walkable area, vote region specs
   scenario3.ts   — MapSpec: walkable area, transparent s3_rzone vote region, button specs
+  scenario4.ts   — MapSpec: three-room hallway, walkable area (no vote regions or geometry)
 
 content/server/scenarios/
   scenario1.ts   — ScenarioSpec + Scenario1Script: wall reveal logic, 4-player cap
   scenario2.ts   — ScenarioSpec + Scenario2Script: arrival-order pairing, timed resolution
   scenario3.ts   — ScenarioSpec + Scenario3Script: button press callbacks, enableClientPress toggle
+  scenario4.ts   — ScenarioSpec + Scenario4Script: empty (no scripted behaviour)
 
 content/client/maps/
   scenario1.ts   — WorldSpec, GameSpec (vote regions + cage geometry), locked walkableVariant
   scenario2.ts   — WorldSpec, GameSpec (vote regions)
   scenario3.ts   — WorldSpec, GameSpec (button specs)
+  scenario4.ts   — WorldSpec (three rooms: north_hall, center, south_hall)
   index.ts       — Exports CURRENT_MAP resolved from CURRENT_SCENARIO_ID at load time
 
 react-three-capacitor/server/src/
@@ -31,7 +34,7 @@ The client has a parallel file for each scenario (`content/client/maps/`) that m
 
 ## Scenario 1: Find Your Circle
 
-**Map** (`content/server/maps/scenario1.ts`): A wide single room (`VIEWPORT_W × 1.5 = 30` wide). Two `WalkableArea` variants are defined: the default (full floor) and a locked variant (`LOCKED_WALKABLE`) that restricts movement to cage interiors and the narrow corridors between them. The locked variant activates whenever all four front cage walls (`s1_w1f`–`s1_w4f`) are simultaneously visible, via `walkableVariants`. Four vote regions (`s1_v1`–`s1_v4`) sit near the north wall; twelve cage walls (left/right/front per cage) start hidden via `initialVisibility`.
+**Map** (`content/server/maps/scenario1.ts`): A wide single room (`VIEWPORT_W × 1.5`). Two `WalkableArea` variants are defined: the default (full floor) and a locked variant (`LOCKED_WALKABLE`) that restricts movement to cage interiors and the narrow corridors between them. The locked variant activates whenever all four front cage walls (`s1_w1f`–`s1_w4f`) are simultaneously visible, via `walkableVariants`. Four vote regions (`s1_v1`–`s1_v4`) sit near the north wall; twelve cage walls (left/right/front per cage) start hidden via `initialVisibility`.
 
 **Script** (`content/server/scenarios/scenario1.ts`): `Scenario1Script.onPlayerConnect` enables all four vote regions and sends `find_instruction` to the joining player. The vote listener is registered only on the first player connect (`voteListenerRegistered` flag) to avoid duplicate listeners. `closeScenario` is called once the fourth player connects. The `onVoteChanged` callback checks whether every region has exactly one player; when that condition first holds, `wallsShown` is set (preventing re-trigger), `setGeometryVisible` reveals all twelve walls, and `vote_instruction` is sent to all players. Revealing the front walls simultaneously triggers the `walkableVariants` switch on both server and client, locking each player inside their cage.
 
@@ -39,12 +42,18 @@ The client has a parallel file for each scenario (`content/client/maps/`) that m
 
 **Map** (`content/server/maps/scenario2.ts`): A single room exactly `VIEWPORT_W × VIEWPORT_D` (one screen). Four vote regions (`s2_v1`–`s2_v4`) are placed in a 2×2 grid at ±`VIEWPORT_W/4` × ±`VIEWPORT_D/4`.
 
-**Script** (`content/server/scenarios/scenario2.ts`): `Scenario2Script` maintains `playerOrder: string[]` to record the arrival sequence. On each connect it appends the player id, enables all vote regions, and sends `join_instruction`. When the eighth player connects, `closeScenario` is called and `startVoting` begins a two-stage `after` chain: 20 000 ms fires `warning_instruction` to all players, then after a further 10 000 ms `resolveVotes` runs.
+**Script** (`content/server/scenarios/scenario2.ts`): `Scenario2Script` maintains `playerOrder: string[]` to record the arrival sequence. On each connect it appends the player id, enables all vote regions, and sends `join_instruction`. When the eighth player connects, `closeScenario` is called and `startVoting` begins a two-stage `after` chain: `WARN_DELAY_MS` fires `warning_instruction` to all players, then after a further `RESOLVE_DELAY_MS` `resolveVotes` runs.
 
 `resolveVotes` reads `playerOrder` in consecutive pairs (indices `i`, `i+1`). For each pair it fetches their vote assignments and eliminates both if the assignments differ or if either is null. Players who disconnected before resolution are skipped (`living.includes(a)` check). Pairing is based on arrival order captured at connect time, not on any position at resolution time.
 
 ## Scenario 3: Buttons
 
-**Map** (`content/server/maps/scenario3.ts`): A small 12×12 square room. Two button specs are defined: `btn_left` (`requiredPlayers: 1`, `enableClientPress: true`) and `btn_right` (`requiredPlayers: 2`, `enableClientPress: false`). One vote region, `s3_rzone` (transparent, zero-length label), is placed co-located with `btn_right` using the same trigger radius. Its sole purpose is proximity counting for the script; it is never rendered as a labeled circle.
+**Map** (`content/server/maps/scenario3.ts`): A small square room (`ROOM_SIZE = 0.9672`). Two button specs are defined: `btn_left` (`requiredPlayers: 1`, `enableClientPress: true`) and `btn_right` (`requiredPlayers: 2`, `enableClientPress: false`). One vote region, `s3_rzone` (transparent, zero-length label), is placed co-located with `btn_right` using the same trigger radius. Its sole purpose is proximity counting for the script; it is never rendered as a labeled circle.
 
-**Script** (`content/server/scenarios/scenario3.ts`): `Scenario3Script` registers all listeners on the first player connect (`listenersRegistered` flag). `onButtonPress` fires a `sendNotification` for each button. The `onVoteChanged` listener for `s3_rzone` counts how many players are assigned to that region: when exactly one player is present it calls `modifyButton('btn_right', { enableClientPress: true })`, otherwise it resets to `false`. `onButtonPress` is used for the server-confirmed fire event (2-player threshold), while the vote region is used for the 1-player solo feedback toggle — the two mechanisms serve different thresholds and are independent.
+**Script** (`content/server/scenarios/scenario3.ts`): `Scenario3Script` registers all listeners on the first player connect (`listenersRegistered` flag). `onButtonPress` fires a `sendNotification` for each button (`"Left pressed"` / `"Right pressed"`). The `onVoteChanged` listener for `s3_rzone` counts how many players are assigned to that region: when exactly one player is present it calls `modifyButton('btn_right', { enableClientPress: true })`, otherwise it resets to `false`. `onButtonPress` is used for the server-confirmed fire event (2-player threshold), while the vote region is used for the 1-player solo feedback toggle — the two mechanisms serve different thresholds and are independent.
+
+## Scenario 4: Hallway
+
+**Map** (`content/server/maps/scenario4.ts`): A center room (`0.75 × 0.75`) with a north hall and a south hall (each `0.25 × 0.75`), connected by thin doorway rects. The walkable area is the union of the five rects (two halls, centre, two thin connectors at the shared doorway edges). No vote regions and no floor geometry.
+
+**Script** (`content/server/scenarios/scenario4.ts`): `Scenario4Script.onPlayerConnect` is a no-op. The scenario exists as an open sandbox for free movement across three connected rooms.

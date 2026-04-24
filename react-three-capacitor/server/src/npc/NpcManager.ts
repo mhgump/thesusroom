@@ -2,8 +2,8 @@ import type { World, WorldEvent } from '../World.js'
 import type { NpcSpec } from './NpcSpec.js'
 import { createNpcEntity } from './NpcEntity.js'
 import type { NpcEntity } from './NpcEntity.js'
-import { buildNpcActions } from './NpcActions.js'
-import type { NpcActionName } from './NpcActions.js'
+import { buildNpcAbilities } from './NpcAbilities.js'
+import type { NpcAbilityName } from './NpcAbilities.js'
 import { buildNpcHelpers } from './NpcHelpers.js'
 import type { NpcHelperName } from './NpcHelpers.js'
 
@@ -45,10 +45,10 @@ export class NpcManager {
   }
 
   // Called after each player processMove. Returns extra events to append to that move's broadcast.
-  onActionCompleted(triggerEvents: WorldEvent[]): WorldEvent[] {
+  onPlayerMove(triggerEvents: WorldEvent[]): WorldEvent[] {
     const extra: WorldEvent[] = []
     for (const entity of this.entities.values()) {
-      if (entity.spec.trigger === 'each-action') {
+      if (entity.spec.trigger === 'on-player-move') {
         this.runTick(entity, triggerEvents, extra)
       }
     }
@@ -68,15 +68,15 @@ export class NpcManager {
   }
 
   private runTick(entity: NpcEntity, triggerEvents: WorldEvent[], out: WorldEvent[]): void {
-    const allActions = buildNpcActions(this.world, entity.id)
+    const allAbilities = buildNpcAbilities(this.world, entity.id)
     const allHelpers = buildNpcHelpers(this.world)
 
-    // Enforce allowlists — only expose declared actions and helpers.
-    const actions = Object.fromEntries(
-      entity.spec.allowedActions
-        .filter(k => k in allActions)
-        .map(k => [k, allActions[k as NpcActionName]])
-    ) as Partial<typeof allActions>
+    // Enforce allowlists — only expose declared abilities and helpers.
+    const abilities = Object.fromEntries(
+      entity.spec.allowedAbilities
+        .filter(k => k in allAbilities)
+        .map(k => [k, allAbilities[k as NpcAbilityName]])
+    ) as Partial<typeof allAbilities>
 
     const helpers = Object.fromEntries(
       entity.spec.allowedHelpers
@@ -86,7 +86,7 @@ export class NpcManager {
 
     entity.tick({
       npcId: entity.id,
-      actions,
+      abilities,
       helpers,
       worldTime: Date.now(),
       triggerEvents,

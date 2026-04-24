@@ -157,7 +157,7 @@ export class Room {
 
     for (const [playerId, moves] of this.pendingMoves) {
       const playerEvents = eventsPerPlayer.get(playerId) ?? []
-      const npcEvents = this.npcManager.onActionCompleted(playerEvents)
+      const npcEvents = this.npcManager.onPlayerMove(playerEvents)
       const allEvents = npcEvents.length > 0 ? [...playerEvents, ...npcEvents] : playerEvents
       const wp = this.world.getPlayer(playerId)!
 

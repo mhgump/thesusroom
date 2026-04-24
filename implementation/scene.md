@@ -3,22 +3,28 @@
 ## Relevant Files
 
 ```
-src/scene/
+react-three-capacitor/src/scene/
   GameScene.tsx      — Root scene component; room rendering, camera, lighting
   Player.tsx         — Local player: world simulation, move dispatch, room tracking
-  localPlayerPos.ts  — Mutable shared object { x, z, roomId } written each frame
-  VoteRegions.tsx    — Renders vote region discs, border rings, and text labels from DEMO_GAME_SPEC
-src/content/
-  maps/demo.ts       — Demo map spec: DEMO_WORLD_SPEC, DEMO_WALKABLE, DEMO_CAMERA_SHAPES, DEMO_GAME_SPEC
-src/game/
-  WorldSpec.ts       — Room position BFS, walkable area computation, world types
-  RoomSpec.ts        — RoomSpec and RoomConnection type definitions
-  CameraConstraint.ts — buildCameraConstraintShapes, clampToShapes
-  World.ts           — Shared physics simulation (identical to server copy)
-src/scene/
   Ground.tsx         — Floor mesh with texture tiling
-  Walls.tsx          — Barrier wall segmentation (segmentWall)
+  Walls.tsx          — Barrier mesh built from per-room pre-authored barrier segments
   Boundary.tsx       — BgPlane, RoomOutsideTextures
+  VoteRegions.tsx    — Renders vote region discs, border rings, and text labels
+  GeometryLayer.tsx  — Renders toggleable floor-geometry objects
+  ButtonLayer.tsx    — Renders map buttons
+react-three-capacitor/src/game/
+  WorldSpec.ts       — Room position BFS, walkable area computation, world types
+  RoomSpec.ts        — RoomSpec and RoomConnection type definitions (including barrierSegments)
+  CameraConstraint.ts — buildCameraConstraintShapes, clampToShapes
+  World.ts           — Shared physics simulation
+  localPlayerPos.ts  — Mutable shared object { x, z, roomId } written each frame
+content/client/maps/
+  demo.ts            — Demo map spec: DEMO_WORLD_SPEC, walkable rects, camera shapes, DEMO_GAME_SPEC
+  scenario{1..4}.ts  — Per-scenario client map specs
+  index.ts           — Exports CURRENT_MAP resolved from CURRENT_SCENARIO_ID
+content/server/maps/
+  demo.ts            — Server-side demo map spec (walkable rects, physics geometry)
+  scenario{1..4}.ts  — Per-scenario server map specs
 ```
 
 ## Room Positioning
@@ -27,15 +33,13 @@ src/scene/
 
 ## Walkable Area Physics
 
-`WalkableArea` is a precomputed list of axis-aligned rects, each inset by `CAPSULE_RADIUS`:
-- One rect per room floor.
-- One thin corridor rect per connection at the shared floor edge: half-width = `doorWidth/2 − r`, half-depth = `r`.
+`WalkableArea` is a list of axis-aligned rects authored per map. In AABB mode, `World.processMove` runs a three-pass collision check (full move → X-only → Z-only) against `inWalkable`, enabling wall-sliding. In Rapier mode (maps that provide a `PhysicsSpec`), walls and toggleable geometry are registered as colliders and the Rapier `KinematicCharacterController` enforces collision continuously; `WalkableArea` is still retained as a fallback snap target when variants switch.
 
-`World.processMove` runs a three-pass collision check (full move → X-only → Z-only) against `inWalkable`, enabling wall-sliding. The client computes `WalkableArea` in `src/content/maps/demo.ts` via `computeWalkableArea`; the server inlines it in `server/src/content/maps/demo.ts`. The two must use identical constants.
+Walkable rects are authored in `content/client/maps/*.ts` (client) and `content/server/maps/*.ts` (server); the two copies must use identical constants.
 
 ## Room Rendering
 
-`GameScene.tsx` reads `currentRoomId` from the Zustand store to determine which rooms to render: the active room plus its `visibility` list. Each room renders in a `<group>` at its world-space centre so `Ground`, `Barrier`, and `RoomOutsideTextures` use room-local coordinates.
+`GameScene.tsx` reads `currentRoomId` from the Zustand store to determine which rooms to render: the active room plus its `visibility` list (filtered by per-player visibility overrides). Each room renders in a `<group>` at its world-space centre so `Ground`, `Barrier`, and `RoomOutsideTextures` use room-local coordinates.
 
 ## Camera Constraint Shapes
 
@@ -45,7 +49,7 @@ src/scene/
 - **Rects**: each room's `cameraRect` (room-local `{ xMin, xMax, zMin, zMax }`) is offset by the room's world-space centre to produce a world-space `CameraRect`. Rooms without an authored `cameraRect` default to a point at the room centre.
 - **Zones**: each connection's `cameraTransition.corners` (in room-A-local coordinates) are offset by room A's world position to produce world-space `CameraZone` polygons.
 
-`DEMO_CAMERA_SHAPES` is computed once at module load in `src/content/maps/demo.ts` and reused every frame.
+The camera shapes are computed once at map module load time (e.g. `DEMO_CAMERA_SHAPES` in `content/client/maps/demo.ts`) and reused every frame.
 
 `clampToShapes(shapes, x, z)` projects the player position to the nearest point in the union of all rects and zones each frame:
 1. **Inside test**: check all rects with an axis-aligned test; check all zones with ray casting (ray from point in +X direction; odd crossing count = inside). Polygon winding order does not matter.
@@ -62,23 +66,23 @@ src/scene/
 
 The smoothed target is initialised to the first-frame clamped position to prevent a jump from the origin.
 
-## Barrier Wall Segmentation
+## Barriers
 
-`segmentWall(from, to, openings[])` in `Walls.tsx` returns solid intervals after cutting doorway openings. Each interval renders as a separate `BoxGeometry` mesh. E/W walls extend by `barrierThickness` past each floor end to cover corners, except when the corresponding N/S wall has openings — in that case the E/W wall is trimmed to the floor edge to prevent overlap into the adjacent room.
+Barrier geometry is not computed at runtime. Each `RoomSpec` carries a pre-authored `barrierSegments` array of `{cx, cz, width, depth}` blocks. `Walls.tsx#Barrier` iterates the segments and renders each as a `boxGeometry` mesh of height `barrierHeight` using shared side/top materials. Adding or removing a doorway means updating the authored segments, not rerunning a runtime segmentation pass.
 
 ## localPlayerPos
 
-`localPlayerPos.ts` exports a mutable `{ x, z, roomId }` object. `Player.tsx` writes to it every frame. `GameScene.tsx` reads it in `useFrame` for camera follow. When `getDefaultRoomAtPosition` returns a different `roomId`, `store.setCurrentRoomId` is also called to trigger JSX room-set updates.
+`localPlayerPos.ts` exports a mutable `{ x, z, roomId }` object. `Player.tsx` writes to it every frame. `GameScene.tsx` reads it in `useFrame` for camera follow. When `CURRENT_MAP.getRoomAtPosition` returns a different `roomId`, `store.setCurrentRoomId` is also called to trigger JSX room-set updates.
 
 ## Vote Regions
 
-`VoteRegions.tsx` reads `DEMO_GAME_SPEC.voteRegions` from `src/content/maps/demo.ts` and renders each as a `<group>` at its world-space `(x, 0, z)` position. Each group contains three meshes flat on the XZ plane (all rotated `[-π/2, 0, 0]`):
+`VoteRegions.tsx` reads `CURRENT_MAP.gameSpec.voteRegions` and renders each as a `<group>` at its world-space `(x, 0, z)` position. Each group contains three meshes flat on the XZ plane (all rotated `[-π/2, 0, 0]`):
 
-1. **Fill disc** (`CircleGeometry`, 64 segments) at Y = 0.002; `meshBasicMaterial` with the region colour, `transparent`, `opacity: 0.35`.
-2. **Border ring** (`RingGeometry`, inner radius = `r − 0.12`, outer = `r`, 64 segments) at Y = 0.003; opaque region colour.
-3. **Label** (`Text` from `@react-three/drei`) at Y = 0.004; `fontSize: 1.5`, region colour, centred on both axes.
+1. **Fill disc** (`circleGeometry`, 64 segments) at Y = 0.002; `meshBasicMaterial` with the region colour, `transparent`, `opacity: 0.35`.
+2. **Border ring** (`ringGeometry`, inner radius = `r * 0.9625`, outer = `r`, 64 segments) at Y = 0.003; opaque region colour.
+3. **Label** (`Text` from `@react-three/drei`) at Y = 0.004; `fontSize: r * 0.8`, region colour, centred on both axes.
 
-Vote regions are always rendered regardless of which regions are currently enabled on the server; visibility is decorative, not coupled to server game state.
+Only regions whose authored `(x, z)` resolves to a currently-visible room (via `CURRENT_MAP.getRoomAtPosition`) are rendered, keeping hidden rooms' markers out of view.
 
 ## Ground Texture
 

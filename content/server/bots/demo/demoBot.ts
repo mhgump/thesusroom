@@ -21,7 +21,7 @@ export const DEMO_BOT: BotSpec = {
   onActiveVoteAssignmentChange: {
     walk: () => {},
   },
-  nextAction: {
+  nextCommand: {
     walk: (ctx, position) => moveToward(position, ctx.state.target),
   },
 }

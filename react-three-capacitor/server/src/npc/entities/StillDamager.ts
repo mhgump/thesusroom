@@ -26,7 +26,7 @@ class StillDamagerEntity implements NpcEntity {
       if (!targetId || targetId === this.id) continue
       if (this.hitThisContact.has(targetId)) continue
       this.hitThisContact.add(targetId)
-      ctx.emitEvents(ctx.actions.dealDamage!(targetId, 1))
+      ctx.emitEvents(ctx.abilities.dealDamage!(targetId, 1))
     }
 
     // Re-arm when players step out of range

@@ -3,9 +3,9 @@
 - At most one game script runs per world at a time.
 - A game script's lifetime is exactly the lifetime of its room; a new room gets a fresh script with no prior state.
 - When a human player connects to the room, the game script's `onPlayerConnect` callback fires with that player's id.
-- A game script can send an instruction message to any specific player; the player receives a text string derived from a named instruction spec. Instruction messages are displayed to the player using the Rule UX as a single `COMMAND`-labelled rule card.
+- A game script can send an instruction message to any specific player; the player receives a rule card derived from a named instruction spec. The rule card's label is whatever the instruction spec declares (`RULE`, `COMMAND`, or `FACT`).
 - A game script can enable or disable named vote regions; only enabled regions count for position-based vote tracking.
-- A vote region is a circular area in world space with a colour and label. A vote region spec is valid only when the circle is fully contained within a room floor.
+- A vote region is a circular area in world space with a colour and label.
 - The server tracks which vote region (if any) each player is currently inside, based on their position after each move.
 - When a player's vote region assignment changes, any callbacks registered for that region fire with the complete current assignment map (player id → region id or null).
 - A game script can register a one-shot callback to fire after a specified duration in milliseconds; a cancel function is returned that prevents the callback if called before it fires.
