@@ -17,12 +17,12 @@ function validateInput(input: unknown): InsertBotInput {
 
 async function run(rawInput: unknown): Promise<InsertBotOutput> {
   const input = validateInput(rawInput)
-  const { bot, scenario } = getBackends()
+  const { bot } = getBackends()
 
-  if ((await scenario.get(input.scenario_id)) === null) {
-    const scenarioLoc = scenario.locate?.(input.scenario_id) ?? input.scenario_id
-    return { success: false, error: `scenario "${input.scenario_id}" not found at ${scenarioLoc}` }
-  }
+  // Bots are content files scoped to a scenario slug, but the scenario file
+  // itself need not exist yet. The create-scenario orchestrator authors bots
+  // BEFORE the scenario so the scenario's dynamic import can resolve the
+  // bot (see create_scenario_prompt.md stage-2 ordering).
 
   const key = { scenario_id: input.scenario_id, bot_id: input.bot_id }
   await bot.put(key, { source: input.file_content })

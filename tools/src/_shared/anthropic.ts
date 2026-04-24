@@ -5,7 +5,7 @@
 // to `gcloud auth print-access-token` on every request so the access token
 // stays fresh.
 
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import type { ToolSpec } from '../framework.js'
 
 const MODEL_ID = 'claude-opus-4-7'
@@ -61,16 +61,27 @@ async function getAccessToken(): Promise<string> {
   })
 }
 
+let cachedGcloudProject: string | null = null
+
 function getProjectId(): string {
-  const id = process.env.VERTEX_PROJECT_ID ?? process.env.GOOGLE_CLOUD_PROJECT
-  if (!id) {
-    throw new Error(
-      'Set VERTEX_PROJECT_ID (or GOOGLE_CLOUD_PROJECT) to the GCP project that ' +
-      'hosts the Claude models. The agent runtime uses it to build the Vertex ' +
-      'AI endpoint URL.',
-    )
+  const envId = process.env.VERTEX_PROJECT_ID ?? process.env.GOOGLE_CLOUD_PROJECT
+  if (envId) return envId
+
+  if (cachedGcloudProject !== null) return cachedGcloudProject
+  const res = spawnSync('gcloud', ['config', 'get-value', 'project'], {
+    encoding: 'utf8',
+  })
+  const gcloudId = res.status === 0 ? res.stdout.trim() : ''
+  if (gcloudId) {
+    cachedGcloudProject = gcloudId
+    return gcloudId
   }
-  return id
+
+  throw new Error(
+    'Set VERTEX_PROJECT_ID (or GOOGLE_CLOUD_PROJECT), or configure a default ' +
+    'gcloud project (`gcloud config set project <id>`). The agent runtime ' +
+    'uses this to build the Vertex AI endpoint URL.',
+  )
 }
 
 export async function createMessage(params: CreateMessageParams): Promise<AnthropicResponse> {

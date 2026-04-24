@@ -16,8 +16,8 @@ A narrow, single-purpose agent that authors one bot file and stops.
 ## Tools
 
 - `insert_bot` — the only tool; writes + validates
-  `content/bots/{scenario_id}/{bot_id}.ts`. Scenario must already exist at
-  `content/scenarios/{scenario_id}.ts`.
+  `content/bots/{scenario_id}/{bot_id}/bot.ts`. Scenario must already exist at
+  `content/scenarios/{scenario_id}/scenario.ts`.
 
 ## Response schema
 

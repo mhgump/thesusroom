@@ -26,6 +26,9 @@ import { MAP_AGENT_TOOL } from './mapAgentTool/index.js'
 import { SCENARIO_AGENT_TOOL } from './scenarioAgentTool/index.js'
 import { BOT_AGENT_TOOL } from './botAgentTool/index.js'
 import { RUN_SCENARIO_AGENT_TOOL } from './runScenarioAgentTool/index.js'
+import { SCENARIO_PLAN_AGENT_TOOL } from './scenarioPlanAgentTool/index.js'
+import { DIRECT_AGENT_TOOL } from './directAgentTool/index.js'
+import { LOAD_SCENARIO_CONTEXT_TOOL } from './loadScenarioContext/index.js'
 
 export { ToolRegistry } from './framework.js'
 export type { Tool, ToolSpec, JsonSchemaObject } from './framework.js'
@@ -52,6 +55,9 @@ export * from './mapAgentTool/index.js'
 export * from './scenarioAgentTool/index.js'
 export * from './botAgentTool/index.js'
 export * from './runScenarioAgentTool/index.js'
+export * from './scenarioPlanAgentTool/index.js'
+export * from './directAgentTool/index.js'
+export * from './loadScenarioContext/index.js'
 
 // Agent runners (for direct programmatic use alongside the CLI scripts).
 export { runMapAgent, MAP_RESPONSE_SPEC } from './agents/mapAgent.js'
@@ -66,7 +72,7 @@ export { runDirectAgent, DIRECT_RESPONSE_SPEC } from './agents/directAgent.js'
 export type { DirectAgentResponse } from './agents/directAgent.js'
 export { runScenarioPlanAgent, SCENARIO_PLAN_RESPONSE_SPEC } from './agents/scenarioPlanAgent.js'
 export type { ScenarioPlanAgentResponse } from './agents/scenarioPlanAgent.js'
-export { runCreateScenarioAgent } from './agents/createScenarioAgent.js'
+export { runCreateScenarioAgent, CREATE_SCENARIO_RESPONSE_SPEC } from './agents/createScenarioAgent.js'
 export type {
   CreateScenarioAgentResponse,
   CreateScenarioAgentOpts,
@@ -79,10 +85,14 @@ export type { AgentRunParams, AgentRunResult, ResponseSpec } from './_shared/age
 // The canonical list of tools exposed to agent loops. Add new tools here.
 export const ALL_TOOLS: Tool[] = [
   // Sub-agents (callable from higher-level agents such as the direct agent).
+  SCENARIO_PLAN_AGENT_TOOL as Tool,
   MAP_AGENT_TOOL as Tool,
   SCENARIO_AGENT_TOOL as Tool,
   BOT_AGENT_TOOL as Tool,
+  DIRECT_AGENT_TOOL as Tool,
   RUN_SCENARIO_AGENT_TOOL as Tool,
+  // Context loading.
+  LOAD_SCENARIO_CONTEXT_TOOL as Tool,
   // Low-level primitives.
   INSERT_MAP_TOOL as Tool,
   INSERT_SCENARIO_TOOL as Tool,

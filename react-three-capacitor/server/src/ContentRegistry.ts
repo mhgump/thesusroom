@@ -1,7 +1,8 @@
 import type { GameMap } from '../../src/game/GameMap.js'
-import type { Wall } from '../../src/game/RoomSpec.js'
 import type { GameScript } from './GameScript.js'
 import { getBackends } from '../../../tools/src/_shared/backends/index.js'
+import { validateHubConnection } from './orchestration/hubAttachment.js'
+import { MAP as INITIAL_MAP } from '../../../assets/initial/map.js'
 
 export type { GameMap }
 
@@ -34,20 +35,23 @@ export interface ScenarioSpec {
   // to bound a test run and detect early termination. Not consulted by the
   // production server or by any orchestration.
   timeoutMs: number
+  // Hard cap on concurrent human+bot players seated in a single room running
+  // this scenario. The orchestration layer uses it to gate room selection
+  // (`isHubSlotOpen`, transfer-target picking) so a full room stops accepting
+  // joins. Scripts that bot-fill to a target count should set this to that
+  // count; solo scenarios set it to 1.
+  maxPlayers: number
   // Optional hub-attach declaration. When present, this scenario can receive
-  // an incoming hub player through the initial hallway. The orchestration
-  // uses these fields (plus the initial hallway's geometry) to compute the
-  // hallway's world placement and the cross-instance adjacency edge, without
-  // any scenario-specific constants in the hub code.
-  //   `mainRoomId`        — local room id of the scenario's entry room.
-  //   `wallSide`          — which wall of that room the hallway docks against.
-  //   `wallGeometryId`    — the toggleable wall segment that opens on reveal.
-  //   `positionOnWall`    — 0..1 along the wall where the hallway centres.
+  // an incoming hub player through the initial hallway. The docking wall,
+  // position, and hallway placement are all derived from the named dock
+  // geometry — it must exist on `mainRoomId`, sit on that room's south edge,
+  // match the hallway's floorWidth, and lie fully within the south wall span.
+  // `validateHubConnection` asserts these at content-load time.
+  //   `mainRoomId`       — local room id of the scenario's entry room.
+  //   `dockGeometryId`   — the toggleable wall segment that opens on reveal.
   hubConnection?: {
     mainRoomId: string
-    wallSide: Wall
-    wallGeometryId: string
-    positionOnWall: number
+    dockGeometryId: string
   }
 }
 
@@ -77,6 +81,7 @@ export class ContentRegistry {
     const { scenario, map } = getBackends()
     const [s, m] = await Promise.all([scenario.load(scenarioId), map.load(scenarioId)])
     if (!s || !m) return undefined
+    if (s.hubConnection) validateHubConnection(m, s.hubConnection, INITIAL_MAP)
     return { map: m, scenario: s }
   }
 }

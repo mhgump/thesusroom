@@ -1,5 +1,7 @@
 import type { Tool } from '../framework.js'
 import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
+import { withRunLog } from '../_shared/logContext.js'
+import { LOAD_SCENARIO_CONTEXT_TOOL } from '../loadScenarioContext/index.js'
 import { INSERT_MAP_TOOL } from '../insertMap/index.js'
 import { INSERT_SCENARIO_TOOL } from '../insertScenario/index.js'
 import { INSERT_BOT_TOOL } from '../insertBot/index.js'
@@ -13,6 +15,7 @@ import { SCENARIO_AGENT_TOOL } from '../scenarioAgentTool/index.js'
 import { BOT_AGENT_TOOL } from '../botAgentTool/index.js'
 import { RUN_SCENARIO_AGENT_TOOL } from '../runScenarioAgentTool/index.js'
 import { loadSkill } from './_loadPrompt.js'
+import { loadReferenceScenarios } from './_loadReferenceScenarios.js'
 
 export interface DirectAgentResponse {
   goal_achieved: boolean
@@ -77,28 +80,32 @@ export async function runDirectAgent(
   userPrompt: string,
   opts: { verbose?: boolean; maxIterations?: number } = {},
 ): Promise<AgentRunResult<DirectAgentResponse>> {
-  return runAgent<DirectAgentResponse>({
-    systemPrompt: loadSkill('direct-agent'),
-    userPrompt,
-    tools: [
-      // Sub-agents.
-      MAP_AGENT_TOOL as Tool,
-      SCENARIO_AGENT_TOOL as Tool,
-      BOT_AGENT_TOOL as Tool,
-      RUN_SCENARIO_AGENT_TOOL as Tool,
-      // Low-level primitives.
-      INSERT_MAP_TOOL as Tool,
-      INSERT_SCENARIO_TOOL as Tool,
-      INSERT_BOT_TOOL as Tool,
-      RUN_SCENARIO_WITH_BOTS_TOOL as Tool,
-      GET_SCENARIO_LOGS_TOOL as Tool,
-      GET_BOT_LOGS_TOOL as Tool,
-      // Discovery + inspection.
-      LIST_CONTENT_TOOL as Tool,
-      READ_TEST_SPEC_TOOL as Tool,
-    ],
-    responseSpec: DIRECT_RESPONSE_SPEC,
-    verbose: opts.verbose,
-    maxIterations: opts.maxIterations ?? 60,
-  })
+  return withRunLog('direct-agent', { prompt: userPrompt }, () =>
+    runAgent<DirectAgentResponse>({
+      systemPrompt:
+        loadSkill('direct-agent') + '\n\n---\n\n' + loadReferenceScenarios(),
+      userPrompt,
+      tools: [
+        // Sub-agents.
+        MAP_AGENT_TOOL as Tool,
+        SCENARIO_AGENT_TOOL as Tool,
+        BOT_AGENT_TOOL as Tool,
+        RUN_SCENARIO_AGENT_TOOL as Tool,
+        // Low-level primitives.
+        INSERT_MAP_TOOL as Tool,
+        INSERT_SCENARIO_TOOL as Tool,
+        INSERT_BOT_TOOL as Tool,
+        RUN_SCENARIO_WITH_BOTS_TOOL as Tool,
+        GET_SCENARIO_LOGS_TOOL as Tool,
+        GET_BOT_LOGS_TOOL as Tool,
+        // Discovery + inspection.
+        LIST_CONTENT_TOOL as Tool,
+        READ_TEST_SPEC_TOOL as Tool,
+        LOAD_SCENARIO_CONTEXT_TOOL as Tool,
+      ],
+      responseSpec: DIRECT_RESPONSE_SPEC,
+      verbose: opts.verbose,
+      maxIterations: opts.maxIterations ?? 60,
+    }),
+  )
 }

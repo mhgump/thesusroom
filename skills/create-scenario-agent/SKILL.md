@@ -1,95 +1,76 @@
 ---
 name: create-scenario-agent
-description: End-to-end scenario builder — takes a natural-language brief and produces a validated plan, first-pass map/scenario/bots, and one passing test spec per outcome, with regression checks against previously-passing outcomes.
+description: End-to-end scenario builder. Drives plan → map → bots → scenario → per-outcome validation → hero-POV recording. LLM-driven orchestrator that reuses existing assets when the brief names an existing slug.
 ---
 
 # Create-Scenario Agent
 
-Top-level life-cycle driver. Unlike the other agents, this one is a
-**deterministic TypeScript orchestrator**, not a model loop. It composes the
-LLM-driven sub-agents as its primitives:
-
-```
-brief
-  → scenario-plan-agent           (plan JSON)
-  → map-agent                     (first-pass map)
-  → bot-agent × N personas        (parallel)
-  → scenario-agent                (first-pass scenario script)
-  → for each outcome:
-      snapshot → direct-agent → regression-check → rollback-or-keep
-```
+Top-level LLM orchestrator for a scenario's full life-cycle. Unlike the
+other agents it is granted the full tool surface — every sub-agent as a
+tool, plus the full set of primitives, plus `load_scenario_context` for
+fast context recovery on an existing scenario. The agent itself decides
+when each sub-agent fires and when to reuse existing content.
 
 ## Implementation
 
-- Factory: `tools/src/agents/createScenarioAgent.ts` — `runCreateScenarioAgent(brief, opts)`
-- System prompt: there is none. This agent is pure TypeScript; its behavior
-  lives in the runner, not a prompt. `SKILL.md` is for human readers.
-- CLI: `npx tsx tools/scripts/create-scenario-agent.ts "<brief>" [--verbose]`
-- Default `maxEditFailures`: 5 (global across outcomes).
+- Factory: `tools/src/agents/createScenarioAgent.ts` — `runCreateScenarioAgent(brief, opts)`.
+- System prompt: `skills/create-scenario-agent/prompt.md`.
+- CLI: `npx tsx tools/scripts/create-scenario-agent.ts "<brief>" [--verbose]`.
 
-## Stages
+## Tool surface
 
-1. **Plan.** `runScenarioPlanAgent(brief)`. Bail on `success=false`. Reads the
-   persisted plan JSON back to get `bot_personas[]` and `outcomes[]`.
-2. **First-pass content.** Author `content/maps/{plan_id}/map.ts`, then all
-   `content/bots/{plan_id}/{persona}/bot.ts` files in parallel, then
-   `content/scenarios/{plan_id}/scenario.ts`. Bail on any sub-agent returning
-   `success=false`.
-3. **Per-outcome loop.** For each outcome in plan order:
-   - Snapshot `content/maps/{plan_id}/`, `content/scenarios/{plan_id}/`,
-     `content/bots/{plan_id}/` to a tmp dir.
-   - Run `direct-agent` with a fixed `test_spec_name = outcome_{i}` brief.
-   - If `goal_achieved=false` → rollback snapshot, `num_edit_failures++`,
-     retry the same outcome (or bail if cap exceeded).
-   - Regression-check every previously-passing spec via
-     `run_scenario_from_spec`. Any regression → rollback + retry.
-   - Clean pass → push to `passing_specs`, drop snapshot, continue.
-4. **Report.** Return `{ goal_achieved, plan_name, scenario_id, passing_specs,
-   failed_outcomes, num_edit_failures, failure_reason_summary }`.
+Sub-agents (all wrapped as tools):
+- `scenario_plan_agent`, `map_agent`, `scenario_agent`, `bot_agent`
+- `direct_agent` — per-outcome iteration driver
+- `run_scenario_agent` — one-shot run + note-taking
 
-## Conventions the orchestrator enforces
+Context loading:
+- `load_scenario_context(scenario_id)` — plan JSON + map source + scenario
+  source + every bot source + every test spec in one call
 
-| Thing | Convention |
-|---|---|
-| `scenario_id` | same slug as `plan_id` |
-| `map_id` | same slug as `plan_id` |
-| Bot path | `content/bots/{scenario_id}/{persona_name}/bot.ts` |
-| Bot export | `{PERSONA_NAME_UPPER}_BOT` (non-alphanum → `_`) |
-| Test spec name | `outcome_{i}` (zero-based, in plan order) |
+Primitives:
+- `insert_scenario_plan`, `insert_map`, `insert_scenario`, `insert_bot`
+- `insert_run_scenario_spec`, `run_scenario_from_spec`,
+  `run_scenario_with_bots`, `add_notes_to_test_spec`, `read_test_spec`,
+  `list_content`, `get_scenario_logs`, `get_bot_logs`
 
-These are hard-coded in the outcome brief so the direct-agent cannot drift.
+## Flow the prompt enforces
+
+1. Call `load_scenario_context` with the best slug guess.
+2. Reuse anything that already exists; regenerate only missing pieces.
+3. Walk plan outcomes; for each, brief `direct_agent` to produce a
+   passing test spec named `outcome_{i}`, including a `hero_index`.
+4. Regression-check previous outcomes after each pass.
+5. Re-run every passing spec with `record_video_bot_index=hero_index` to
+   produce a hero-POV recording (without re-inserting the spec).
+6. Append validation notes along the way.
+7. Call `record_json_task_response` with the final result.
 
 ## Response schema
 
 ```ts
 {
-  goal_achieved: boolean       // true iff every outcome has a passing spec
-  plan_name: string            // = plan_id
-  scenario_id: string          // = plan_id (empty if plan failed)
-  passing_specs: string[]      // test_spec_names confirmed passing
-  failed_outcomes: Array<{
-    test_spec_name: string
-    personas: { name, count }[]
-    expected_survivors: number
-    failure_reason_summary: string
-  }>
-  num_edit_failures: number    // global, capped at maxEditFailures
+  goal_achieved: boolean
+  plan_name: string
+  scenario_id: string
+  passing_specs: string[]
+  failed_outcomes: { test_spec_name, personas, expected_survivors, failure_reason_summary }[]
+  num_edit_failures: number
   failure_reason_summary: string
+  log_dir: string             // added by the framework wrapper
 }
 ```
 
-## Snapshot / rollback
+## Pre-flight handled by the wrapper (not the LLM)
 
-Implemented in `tools/src/_shared/snapshotScenarioTree.ts`. Snapshots the
-scenario dir (incl. `test_specs/`), the map dir, and the scenario's bot tree
-to a `mkdtemp` directory. Does **not** snapshot `content/scenario_plans/` (the
-plan is fixed) or `content/scenario_runs/` (append-only run artifacts).
-Restore is delete-then-copy: any new files created during the failed attempt
-are removed before the backup is copied back.
+Before the LLM loop starts, `runCreateScenarioAgent` runs:
+- `gcloud auth print-access-token` probe (fast-fails with a clear message
+  if the caller isn't authenticated for Vertex AI).
+- `withRunLog('create-scenario', ...)` wrapper so the whole run plus every
+  sub-agent invocation lands in `logs/`.
 
 ## When to use
 
 When the caller hands over a natural-language gameplay brief and wants the
-whole scenario built + validated end-to-end. If the caller already has a
-specific sub-task (write a bot, fix a test-spec run, etc.) use the
-corresponding focused agent instead.
+whole scenario built + validated + recorded. Pair a specific sub-task
+(write one bot, fix one spec) with the corresponding focused agent instead.

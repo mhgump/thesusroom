@@ -32,6 +32,9 @@ const VALIDATOR_SNIPPETS: Record<ValidationKind, string> = {
     const s = v
     if (typeof s.id !== 'string' || !s.id) throw new Error('missing string id')
     if (typeof s.timeoutMs !== 'number' || !(s.timeoutMs > 0)) throw new Error('timeoutMs must be a positive number')
+    if (typeof s.maxPlayers !== 'number' || !Number.isInteger(s.maxPlayers) || s.maxPlayers < 1) {
+      throw new Error('maxPlayers must be a positive integer')
+    }
     if (!s.script || typeof s.script !== 'object') throw new Error('script must be a GameScript object')
     if (typeof s.script.initialState !== 'function') throw new Error('script.initialState must be a function')
     const initial = s.script.initialState()

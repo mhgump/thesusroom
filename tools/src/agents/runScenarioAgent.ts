@@ -1,5 +1,6 @@
 import type { Tool } from '../framework.js'
 import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
+import { withRunLog } from '../_shared/logContext.js'
 import { INSERT_RUN_SCENARIO_SPEC_TOOL } from '../insertRunScenarioSpec/index.js'
 import { RUN_SCENARIO_FROM_SPEC_TOOL } from '../runScenarioFromSpec/index.js'
 import { ADD_NOTES_TO_TEST_SPEC_TOOL } from '../addNotesToTestSpec/index.js'
@@ -46,20 +47,22 @@ export async function runRunScenarioAgent(
   userPrompt: string,
   opts: { verbose?: boolean; maxIterations?: number } = {},
 ): Promise<AgentRunResult<RunScenarioAgentResponse>> {
-  return runAgent<RunScenarioAgentResponse>({
-    systemPrompt: loadSkill('run-scenario-agent'),
-    userPrompt,
-    tools: [
-      INSERT_RUN_SCENARIO_SPEC_TOOL as Tool,
-      RUN_SCENARIO_FROM_SPEC_TOOL as Tool,
-      ADD_NOTES_TO_TEST_SPEC_TOOL as Tool,
-      READ_TEST_SPEC_TOOL as Tool,
-      LIST_CONTENT_TOOL as Tool,
-      GET_SCENARIO_LOGS_TOOL as Tool,
-      GET_BOT_LOGS_TOOL as Tool,
-    ],
-    responseSpec: RUN_SCENARIO_RESPONSE_SPEC,
-    verbose: opts.verbose,
-    maxIterations: opts.maxIterations,
-  })
+  return withRunLog('run-scenario-agent', { prompt: userPrompt }, () =>
+    runAgent<RunScenarioAgentResponse>({
+      systemPrompt: loadSkill('run-scenario-agent'),
+      userPrompt,
+      tools: [
+        INSERT_RUN_SCENARIO_SPEC_TOOL as Tool,
+        RUN_SCENARIO_FROM_SPEC_TOOL as Tool,
+        ADD_NOTES_TO_TEST_SPEC_TOOL as Tool,
+        READ_TEST_SPEC_TOOL as Tool,
+        LIST_CONTENT_TOOL as Tool,
+        GET_SCENARIO_LOGS_TOOL as Tool,
+        GET_BOT_LOGS_TOOL as Tool,
+      ],
+      responseSpec: RUN_SCENARIO_RESPONSE_SPEC,
+      verbose: opts.verbose,
+      maxIterations: opts.maxIterations,
+    }),
+  )
 }

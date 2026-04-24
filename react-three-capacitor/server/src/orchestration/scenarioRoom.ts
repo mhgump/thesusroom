@@ -39,6 +39,7 @@ export function createScenarioRoom(opts: BuildScenarioRoomOptions): MultiplayerR
     onScenarioTerminate,
     recordingManager: ctx.recordingManager,
     hubConnection: scenario.hubConnection,
+    maxPlayers: scenario.maxPlayers,
   })
 
   const attachedRoomIds = room.addMap(map)

@@ -7,7 +7,8 @@ export interface InsertScenarioInput {
   // The map this scenario runs on. Must correspond to an existing map file at
   // content/maps/{map_id}/map.ts.
   map_id: string
-  // Name of the exported ScenarioSpec in the file, e.g. "SCENARIO5_SCENARIO".
+  // Name of the exported ScenarioSpec in the file. MUST be "SCENARIO" — the
+  // runtime loader looks up exactly mod.SCENARIO.
   export_name: string
   // Full TypeScript source for content/scenarios/{scenario_id}/scenario.ts.
   file_content: string
@@ -43,7 +44,9 @@ export const INSERT_SCENARIO_SPEC: ToolSpec = {
       },
       export_name: {
         type: 'string',
-        description: 'The exported ScenarioSpec constant name (e.g. "SCENARIO5_SCENARIO").',
+        description:
+          'The exported ScenarioSpec constant name. Must be "SCENARIO" — the ' +
+          'runtime loader only recognises mod.SCENARIO.',
       },
       file_content: {
         type: 'string',

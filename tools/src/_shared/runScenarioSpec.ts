@@ -38,6 +38,11 @@ export interface RunScenarioSpec {
   bots: RunScenarioSpecBot[]
   opts: RunScenarioSpecOpts
   notes: RunScenarioSpecNote[]
+  // Index of the "hero" bot — the POV that demonstrates the outcome most
+  // clearly. Used when re-running a validated spec to produce a recording of
+  // the scenario from one player's perspective. Must be in [0, bots.length).
+  // Defaults to 0.
+  hero_index: number
   // Artifact ids for every run_scenario_from_spec execution against this
   // spec, in chronological order. Appended by run_scenario_from_spec.
   last_run_artifact_ids: string[]

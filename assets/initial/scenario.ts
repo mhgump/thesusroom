@@ -21,6 +21,7 @@ const script: GameScript<InitialState> = {
 export const SCENARIO: ScenarioSpec = {
   id: 'initial',
   timeoutMs: 60_000,
+  maxPlayers: 1,
   script,
   // Hall is 0.25×1.5 at the world origin (south wall at z = +0.75). Spawn
   // 0.25 units above (north of) that wall — player lands in the lower third

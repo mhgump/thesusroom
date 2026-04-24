@@ -1,6 +1,6 @@
 ---
 name: scenario-agent
-description: Design a ScenarioSpec tied to an existing map and persist it to content/scenarios/{scenario_id}.ts, iterating on insert_scenario until it validates.
+description: Design a ScenarioSpec tied to an existing map and persist it to content/scenarios/{scenario_id}/scenario.ts, iterating on insert_scenario until it validates.
 ---
 
 # Scenario Agent
@@ -16,7 +16,7 @@ A narrow, single-purpose agent that authors one scenario file and stops.
 ## Tools
 
 - `insert_scenario` — the only tool; writes + validates
-  `content/scenarios/{scenario_id}.ts`. Requires `map_id`, and the referenced
+  `content/scenarios/{scenario_id}/scenario.ts`. Requires `map_id`, and the referenced
   `content/maps/{map_id}.ts` must already exist.
 
 ## Response schema
@@ -29,9 +29,10 @@ A narrow, single-purpose agent that authors one scenario file and stops.
 
 ## Pattern
 
-Draft full TypeScript module exporting a `ScenarioSpec` (`scriptFactory`,
-`timeoutMs`, `onTerminate`, optional initial visibility) → `insert_scenario`
-→ read validator error → revise → repeat. Bounded to ~5 attempts.
+Draft full TypeScript module exporting a `ScenarioSpec` (`id`, `timeoutMs`,
+`maxPlayers`, `script`, optional initial visibility) as `export const
+SCENARIO` → `insert_scenario` → read validator error → revise → repeat.
+Bounded to ~5 attempts.
 
 ## Termination discipline (the validator does NOT catch this)
 

@@ -9,6 +9,7 @@ function validateInput(input: unknown): InsertMapInput {
   if (typeof i.map_id !== 'string' || !i.map_id) throw new Error('map_id must be a non-empty string')
   if (!/^[a-zA-Z0-9_-]+$/.test(i.map_id)) throw new Error('map_id must match [a-zA-Z0-9_-]+')
   if (typeof i.export_name !== 'string' || !i.export_name) throw new Error('export_name must be a non-empty string')
+  if (i.export_name !== 'MAP') throw new Error('export_name must be "MAP" — the runtime loader only recognises mod.MAP')
   if (typeof i.file_content !== 'string' || !i.file_content) throw new Error('file_content must be a non-empty string')
   return i as InsertMapInput
 }

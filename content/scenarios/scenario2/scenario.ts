@@ -139,6 +139,7 @@ function checkAllInRoom2(state: S2State, ctx: GameScriptContext): void {
 export const SCENARIO: ScenarioSpec = {
   id: 'scenario2',
   timeoutMs: 90_000,
+  maxPlayers: 4,
   script,
   initialVisibility: {
     'room2_north_wall': true,
@@ -149,8 +150,6 @@ export const SCENARIO: ScenarioSpec = {
   requiredRoomIds: ['scenario2_room1', 'scenario2_room2', 'scenario2_room3'],
   hubConnection: {
     mainRoomId: 'room1',
-    wallSide: 'south',
-    wallGeometryId: 'r1_s',
-    positionOnWall: 0.5,
+    dockGeometryId: 'r1_s',
   },
 }

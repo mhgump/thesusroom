@@ -4,6 +4,10 @@ import type { RunScenarioWithBotsOutput } from '../runScenarioWithBots/index.js'
 export interface RunScenarioFromSpecInput {
   scenario_id: string
   test_spec_name: string
+  // Override for spec.opts.record_video_bot_index. Applies only to this run
+  // — the spec on disk is not modified. Use this to trigger a hero-POV video
+  // recording without re-inserting the spec (which would wipe notes).
+  record_video_bot_index?: number
 }
 
 export type RunScenarioFromSpecOutput =
@@ -31,6 +35,15 @@ export const RUN_SCENARIO_FROM_SPEC_SPEC: ToolSpec = {
       test_spec_name: {
         type: 'string',
         description: 'Slug of the spec to run.',
+      },
+      record_video_bot_index: {
+        type: 'integer',
+        minimum: 0,
+        description:
+          'One-shot override for spec.opts.record_video_bot_index. Applies ' +
+          'only to this run — the spec on disk is not modified. Use it to ' +
+          'record a hero-POV video without re-inserting the spec (which ' +
+          'would wipe notes). Must be in [0, spec.bots.length).',
       },
     },
   },

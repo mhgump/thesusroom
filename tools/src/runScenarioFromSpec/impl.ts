@@ -23,6 +23,11 @@ function validateInput(input: unknown): RunScenarioFromSpecInput {
     throw new Error('test_spec_name must be a non-empty string')
   }
   if (!SLUG_RE.test(i.test_spec_name)) throw new Error('test_spec_name must match [a-zA-Z0-9_-]+')
+  if (i.record_video_bot_index !== undefined) {
+    if (!Number.isInteger(i.record_video_bot_index) || i.record_video_bot_index < 0) {
+      throw new Error('record_video_bot_index must be a non-negative integer')
+    }
+  }
   return i as RunScenarioFromSpecInput
 }
 
@@ -38,11 +43,21 @@ async function run(rawInput: unknown): Promise<RunScenarioFromSpecOutput> {
     }
   }
 
+  const effectiveRecordIndex =
+    input.record_video_bot_index ?? spec.opts?.record_video_bot_index
+  if (effectiveRecordIndex !== undefined
+    && (effectiveRecordIndex < 0 || effectiveRecordIndex >= spec.bots.length)) {
+    return {
+      test_spec_name: input.test_spec_name,
+      error: `record_video_bot_index ${effectiveRecordIndex} out of range [0, ${spec.bots.length})`,
+    }
+  }
+
   const runInput: RunScenarioWithBotsInput = {
     scenario_id: spec.scenario_id,
     test_spec_name: input.test_spec_name,
     bots: spec.bots,
-    record_video_bot_index: spec.opts?.record_video_bot_index,
+    record_video_bot_index: effectiveRecordIndex,
     timeout_ms: spec.opts?.timeout_ms,
   }
 

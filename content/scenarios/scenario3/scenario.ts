@@ -45,5 +45,10 @@ const script: GameScript<S3State> = {
 export const SCENARIO: ScenarioSpec = {
   id: 'scenario3',
   timeoutMs: 60_000,
+  maxPlayers: 4,
   script,
+  hubConnection: {
+    mainRoomId: 'main',
+    dockGeometryId: 's3_ws',
+  },
 }

@@ -20,6 +20,7 @@ import {
   type AnthropicMessage,
   type ContentBlock,
 } from './anthropic.js'
+import { getCurrentRunLog } from './logContext.js'
 
 export const RECORD_TOOL_NAME = 'record_json_task_response'
 
@@ -58,7 +59,9 @@ function buildRecordSpec(spec: ResponseSpec): ToolSpec {
 }
 
 function logIf(verbose: boolean | undefined, msg: string): void {
-  if (verbose) process.stderr.write(`[agent] ${msg}\n`)
+  const line = `[agent] ${msg}`
+  if (verbose) process.stderr.write(line + '\n')
+  getCurrentRunLog()?.appendStderr(line)
 }
 
 export async function runAgent<T = unknown>(
@@ -76,6 +79,9 @@ export async function runAgent<T = unknown>(
 
   const maxIterations = params.maxIterations ?? 30
   let iterations = 0
+  const runLog = getCurrentRunLog()
+  runLog?.appendTranscript({ kind: 'system', systemPrompt: params.systemPrompt })
+  runLog?.appendTranscript({ kind: 'user', content: params.userPrompt })
 
   while (iterations < maxIterations) {
     iterations++
@@ -88,6 +94,13 @@ export async function runAgent<T = unknown>(
     })
 
     messages.push({ role: 'assistant', content: res.content })
+    runLog?.appendTranscript({
+      kind: 'assistant',
+      iteration: iterations,
+      content: res.content,
+      usage: res.usage,
+      stop_reason: res.stop_reason,
+    })
 
     // Accumulate tool_result blocks; we reply with one user message containing
     // all of them (Anthropic requires one tool_result per tool_use).
@@ -144,6 +157,7 @@ export async function runAgent<T = unknown>(
     }
 
     messages.push({ role: 'user', content: results })
+    runLog?.appendTranscript({ kind: 'tool_results', iteration: iterations, content: results })
   }
 
   throw new Error(

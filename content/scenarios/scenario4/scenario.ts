@@ -8,5 +8,10 @@ const script: GameScript<Record<string, never>> = {
 export const SCENARIO: ScenarioSpec = {
   id: 'scenario4',
   timeoutMs: 60_000,
+  maxPlayers: 4,
   script,
+  hubConnection: {
+    mainRoomId: 'south_hall',
+    dockGeometryId: 's4_s_s',
+  },
 }

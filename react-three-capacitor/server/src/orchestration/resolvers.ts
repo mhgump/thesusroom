@@ -9,13 +9,17 @@ import {
 import { ScenarioRunOrchestration } from './ScenarioRunOrchestration.js'
 import { DefaultGameOrchestration } from './DefaultGameOrchestration.js'
 import type { RoutingResolver } from './RoomOrchestration.js'
+import {
+  chooseMostPopulatedOpenRoom,
+  createRoundRobinScenarioChooser,
+} from './hubDecisions.js'
 import { MAP as INITIAL_MAP } from '../../../../assets/initial/map.js'
 import { SCENARIO as INITIAL_SCENARIO } from '../../../../assets/initial/scenario.js'
-
-// Hardcoded first-pass hub target: `/` visitors are routed into scenario2
-// via the solo-hallway transfer flow. A future iteration will round-robin
-// across any scenario whose spec declares a `hubConnection`.
-const HUB_TARGET_ROUTING_KEY = 'scenarios/scenario2'
+import {
+  getDataBackend,
+  ScenarioList,
+  VettedScenarios,
+} from '../../../../tools/src/_shared/backends/index.js'
 
 // Initial hallway's authored spawn — the solo MR seeds the player here and
 // the hub transfer translates it into the target MR's world frame.
@@ -31,8 +35,13 @@ const SCENARIO_RUN_PREFIX = 'scenariorun/'
 // content registry. `scenariorun/{runId}` keys are one-shot scenario-run
 // harness rooms looked up in the ScenarioRunRegistry. The `hub` routing key
 // (empty URL path) is handled by the shared `DefaultGameOrchestration`
-// singleton. Unknown keys resolve to null; the dispatcher rejects those
-// connections with 4004.
+// singleton, which:
+//   1. packs arriving `/` players into the most-populated open hub-capable
+//      room (`chooseMostPopulatedOpenRoom`);
+//   2. falls back to round-robin across every hub-capable scenario
+//      (`createRoundRobinScenarioChooser`) when no such room exists.
+// Swap the policy by passing a different pair of choosers. Unknown keys
+// resolve to null; the dispatcher rejects those connections with 4004.
 export function createDefaultScenarioResolver(
   content: ContentRegistry,
   spawnBotFn: (routingKey: string, spec: BotSpec) => void,
@@ -40,9 +49,13 @@ export function createDefaultScenarioResolver(
   options?: DefaultScenarioOrchestrationOptions,
 ): RoutingResolver {
   // Singleton: one instance per server, kept across all `/` connections so
-  // the solo-hallway counter stays monotonic across connects.
+  // the solo-hallway counter and round-robin cursor stay monotonic. The
+  // scenario chooser is stateful (closure cursor), so it must be
+  // instantiated here — not per-call — for round-robin to actually cycle.
   const defaultGame = new DefaultGameOrchestration({
-    targetRoutingKey: HUB_TARGET_ROUTING_KEY,
+    resolveHubTargets: () => listHubCapableRoutingKeys(content),
+    chooseExistingRoom: chooseMostPopulatedOpenRoom,
+    chooseScenario: createRoundRobinScenarioChooser(),
     initialMap: INITIAL_MAP,
     initialHallwaySpawnLocal: INITIAL_HALLWAY_SPAWN_LOCAL,
   })
@@ -66,4 +79,29 @@ export function createDefaultScenarioResolver(
     if (!entry) return null
     return new DefaultScenarioOrchestration(entry.map, entry.scenario, spawnBotFn, options)
   }
+}
+
+// Enumerate every authored scenario and return the routing key of each one
+// whose spec declares a `hubConnection`. Result order matches the persisted
+// `ScenarioList` order, so round-robin behaviour is deterministic across
+// server restarts given the same content set. Scenarios that fail to load
+// (returned `undefined` from the content registry) are silently skipped —
+// broken content shouldn't block the hub flow.
+async function listHubCapableRoutingKeys(content: ContentRegistry): Promise<string[]> {
+  const data = getDataBackend()
+  const list = new ScenarioList(data, new VettedScenarios(data))
+  const scenarioIds = await list.listScenarios()
+  const keys: string[] = []
+  for (const id of scenarioIds) {
+    try {
+      const entry = await content.get(id)
+      if (entry?.scenario.hubConnection) keys.push(`${SCENARIOS_PREFIX}${id}`)
+    } catch (err) {
+      // A scenario failing validation (or otherwise failing to load) shouldn't
+      // poison the hub for the rest. Surface the error and move on so healthy
+      // scenarios stay reachable.
+      console.warn(`[resolvers] skipping scenario '${id}' from hub list: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+  return keys
 }

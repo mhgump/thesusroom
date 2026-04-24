@@ -1,5 +1,6 @@
 import type { Tool } from '../framework.js'
 import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
+import { withRunLog } from '../_shared/logContext.js'
 import { INSERT_SCENARIO_PLAN_TOOL } from '../insertScenarioPlan/index.js'
 import { loadSkill } from './_loadPrompt.js'
 
@@ -40,12 +41,14 @@ export async function runScenarioPlanAgent(
   userPrompt: string,
   opts: { verbose?: boolean; maxIterations?: number } = {},
 ): Promise<AgentRunResult<ScenarioPlanAgentResponse>> {
-  return runAgent<ScenarioPlanAgentResponse>({
-    systemPrompt: loadSkill('scenario-plan-agent'),
-    userPrompt,
-    tools: [INSERT_SCENARIO_PLAN_TOOL as Tool],
-    responseSpec: SCENARIO_PLAN_RESPONSE_SPEC,
-    verbose: opts.verbose,
-    maxIterations: opts.maxIterations,
-  })
+  return withRunLog('scenario-plan-agent', { prompt: userPrompt }, () =>
+    runAgent<ScenarioPlanAgentResponse>({
+      systemPrompt: loadSkill('scenario-plan-agent'),
+      userPrompt,
+      tools: [INSERT_SCENARIO_PLAN_TOOL as Tool],
+      responseSpec: SCENARIO_PLAN_RESPONSE_SPEC,
+      verbose: opts.verbose,
+      maxIterations: opts.maxIterations,
+    }),
+  )
 }

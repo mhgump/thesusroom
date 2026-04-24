@@ -24,6 +24,19 @@ You have the full toolbox:
     before building new ones so you don't duplicate work.
   - `read_test_spec` — pull back the full content of any test spec produced
     by a `run_scenario_agent` attempt (including all notes and artifact ids).
+  - `load_scenario_context(scenario_id)` — pull the plan JSON + map source +
+    scenario source + every bot + every test spec for a scenario in one
+    call. Use this when you are about to modify a scenario you have not yet
+    seen — it is cheaper than stitching together `list_content` + individual
+    reads.
+
+## Reference
+
+The four production scenarios (`scenario1`–`scenario4`) are attached below
+this prompt verbatim — plan JSON (where present), map source, scenario
+source, every bot source, and every test spec. Use them as the authoritative
+reference for file layout, API usage, bot conventions, and test-spec shape.
+Copy their patterns; do not invent new ones.
 
 ## Workflow
 

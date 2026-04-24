@@ -90,6 +90,11 @@ export interface MultiplayerRoomOptions {
   // transferred in from a solo hallway via `acceptHubTransfer`. The
   // orchestration populates this from the scenario's `hubConnection` field.
   hubConnection?: NonNullable<ScenarioSpec['hubConnection']>
+  // Hard cap on concurrent players (humans + bots). Threaded from the
+  // scenario's `maxPlayers` field via `scenarioRoom.ts`. Orchestrations read
+  // `getPlayerCount()` vs `maxPlayers` to decide whether to keep seating
+  // joins; `isHubSlotOpen()` also enforces this cap.
+  maxPlayers: number
   // When true, the room tears itself down as soon as its player count
   // reaches zero (used by solo hallway MRs, which are per-connection).
   // Default false: rooms normally linger while their scenario runs.
@@ -124,6 +129,7 @@ export class MultiplayerRoom {
   private readonly recordingManager?: PlayerRecordingManager
   private readonly spawnBotFn: (spec: BotSpec) => void
   private readonly spawnPosition: { x: number; z: number }
+  readonly maxPlayers: number
   // Every map attached via `addMap()`, in attach order. Kept for flattening
   // per-room geometry to the wire on connect/observer snapshot.
   private readonly attachedMaps: GameMap[] = []
@@ -159,7 +165,10 @@ export class MultiplayerRoom {
   private readonly autoDestroyOnEmpty: boolean
 
   constructor(opts: MultiplayerRoomOptions) {
-    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn, spawnPosition, onScenarioTerminate, recordingManager, hubConnection, autoDestroyOnEmpty } = opts
+    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn, spawnPosition, onScenarioTerminate, recordingManager, hubConnection, maxPlayers, autoDestroyOnEmpty } = opts
+    if (!Number.isInteger(maxPlayers) || maxPlayers < 1) {
+      throw new Error(`[MultiplayerRoom:${roomId}] maxPlayers must be a positive integer, got ${maxPlayers}`)
+    }
     this.roomId = roomId
     this.instanceIndex = instanceIndex
     this.onCloseScenario = onCloseScenario
@@ -170,6 +179,7 @@ export class MultiplayerRoom {
     this.spawnPosition = spawnPosition ?? { x: 0, z: 0 }
     this.hubConnection = hubConnection
     this.hubSlotOpen = hubConnection !== undefined
+    this.maxPlayers = maxPlayers
     this.autoDestroyOnEmpty = autoDestroyOnEmpty ?? false
     this.tickRateHz = tickRateHz ?? TICK_RATE_HZ
     this.world = new World([], {
@@ -294,6 +304,22 @@ export class MultiplayerRoom {
 
   isOpen(): boolean {
     return !this.closed
+  }
+
+  // Current seated player count (humans + bots + NPC-driven players — every
+  // entry in `this.players`). Used by orchestrations to decide whether a
+  // room can accept another join without exceeding `maxPlayers`.
+  getPlayerCount(): number {
+    return this.players.size
+  }
+
+  // The id of the scenario currently advertised as "open to new joins" in
+  // this room, or null if no scenario is accepting joins right now. A room
+  // can run multiple scenarios simultaneously but exposes at most one as
+  // the join target — this is exactly the ScenarioManager's default-open
+  // designation, cleared by `ctx.closeScenario()` or scenario deletion.
+  getOpenScenarioId(): string | null {
+    return this.scenarios.getDefaultOpen()?.id ?? null
   }
 
   // Produce a JSON-serializable snapshot of this room's World plus the
@@ -612,9 +638,15 @@ export class MultiplayerRoom {
   }
 
   // Whether this room can accept an incoming hub transfer. Used by the hub
-  // routing code to find a target MR for a waiting solo-hallway player.
+  // routing code to find a target MR for a waiting solo-hallway player. The
+  // capacity check accounts for the transfer itself (seating happens inside
+  // `acceptHubTransfer`), so a room already at `maxPlayers` is not a valid
+  // target even if its internal `hubSlotOpen` flag is still true.
   isHubSlotOpen(): boolean {
-    return this.hubSlotOpen && this.hubConnection !== undefined && !this.closed
+    return this.hubSlotOpen
+      && this.hubConnection !== undefined
+      && !this.closed
+      && this.players.size < this.maxPlayers
   }
 
   hasHubConnection(): boolean {
@@ -642,18 +674,9 @@ export class MultiplayerRoom {
     if (!this.hubSlotOpen) {
       throw new Error(`[MultiplayerRoom:${this.roomId}] acceptHubTransfer called while hub slot is closed`)
     }
-    // Need a reference scenario spec to feed computeHubAttachment. We only
-    // need its hubConnection field — the attachment math doesn't touch the
-    // script, timeout, etc. Construct a minimal stand-in.
-    const scenarioStand: ScenarioSpec = {
-      id: this.roomId,
-      script: { initialState: () => ({}) } as unknown as ScenarioSpec['script'],
-      timeoutMs: 0,
-      hubConnection: this.hubConnection,
-    }
     const targetMap = this.attachedMaps[0]
     if (!targetMap) throw new Error(`[MultiplayerRoom:${this.roomId}] acceptHubTransfer with no attached target map`)
-    const attachment = computeHubAttachment(initialMap, targetMap, scenarioStand)
+    const attachment = computeHubAttachment(initialMap, targetMap, this.hubConnection)
 
     const shiftedHallway = shiftMapToOrigin(initialMap, attachment.hallwayOrigin)
     this.addMap(shiftedHallway)

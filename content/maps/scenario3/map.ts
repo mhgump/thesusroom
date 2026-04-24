@@ -23,6 +23,13 @@ const HD        = ROOM_SIZE / 2
 const WALL_C    = HD - bt / 2
 const EW_DEPTH  = 2 * (HD - bt)
 
+// Hub dock split: the middle 0.25-wide segment of the south wall is the
+// toggleable hallway dock; the two flanking segments stay solid. Matches
+// the initial hallway's 0.25 floorWidth so the faces meet exactly.
+const HUB_DOCK_W = 0.25
+const S_SIDE_W   = (ROOM_SIZE - HUB_DOCK_W) / 2
+const S_SIDE_CX  = (ROOM_SIZE + HUB_DOCK_W) / 4
+
 const BTN_Z = 0
 const BTN_LEFT_X = -0.2014
 const BTN_RIGHT_X = 0.2014
@@ -36,10 +43,12 @@ const ROOMS: RoomSpec[] = [
     height: ROOM_H,
     cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
     geometry: [
-      { id: 's3_wn', cx: 0,       cy: BY, cz: -WALL_C, width: ROOM_SIZE, height: bh, depth: bt },
-      { id: 's3_ws', cx: 0,       cy: BY, cz:  WALL_C, width: ROOM_SIZE, height: bh, depth: bt },
-      { id: 's3_we', cx:  WALL_C, cy: BY, cz: 0,       width: bt,        height: bh, depth: EW_DEPTH },
-      { id: 's3_ww', cx: -WALL_C, cy: BY, cz: 0,       width: bt,        height: bh, depth: EW_DEPTH },
+      { id: 's3_wn',  cx: 0,           cy: BY, cz: -WALL_C, width: ROOM_SIZE,  height: bh, depth: bt },
+      { id: 's3_wsl', cx: -S_SIDE_CX,  cy: BY, cz:  WALL_C, width: S_SIDE_W,   height: bh, depth: bt },
+      { id: 's3_ws',  cx: 0,           cy: BY, cz:  WALL_C, width: HUB_DOCK_W, height: bh, depth: bt },
+      { id: 's3_wsr', cx:  S_SIDE_CX,  cy: BY, cz:  WALL_C, width: S_SIDE_W,   height: bh, depth: bt },
+      { id: 's3_we',  cx:  WALL_C,     cy: BY, cz: 0,       width: bt,         height: bh, depth: EW_DEPTH },
+      { id: 's3_ww',  cx: -WALL_C,     cy: BY, cz: 0,       width: bt,         height: bh, depth: EW_DEPTH },
     ],
   },
 ]

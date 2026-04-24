@@ -1,6 +1,6 @@
 ---
 name: map-agent
-description: Design a GameMap and persist it to content/maps/{map_id}.ts, iterating on insert_map until the file parses and validates.
+description: Design a GameMap and persist it to content/maps/{map_id}/map.ts, iterating on insert_map until the file parses and validates.
 ---
 
 # Map Agent
@@ -16,7 +16,7 @@ A narrow, single-purpose agent that authors one map file and stops.
 ## Tools
 
 - `insert_map` — the only tool this agent has; writes + validates
-  `content/maps/{map_id}.ts`.
+  `content/maps/{map_id}/map.ts`.
 
 ## Response schema
 

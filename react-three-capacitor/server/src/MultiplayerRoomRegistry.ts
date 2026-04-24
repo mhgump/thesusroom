@@ -2,6 +2,24 @@ import type { MultiplayerRoom } from './Room.js'
 import type { RoomOrchestration, RoomCreationContext } from './orchestration/RoomOrchestration.js'
 import type { PlayerRecordingManager } from './PlayerRecordingManager.js'
 
+// Snapshot of a single live multiplayer room — everything transfer-target
+// selection and operational tooling care about, without handing out the
+// underlying MultiplayerRoom reference. `openScenarioId` is the scenario
+// currently accepting joins (null while the room is running but closed to
+// new connections). `isOpen` reflects room-level `!closed`; `isHubSlotOpen`
+// is the orchestration-agnostic hub-transfer eligibility check, which also
+// enforces `maxPlayers`.
+export interface RoomSummary {
+  routingKey: string
+  instanceIndex: number
+  roomId: string
+  openScenarioId: string | null
+  playerCount: number
+  maxPlayers: number
+  isOpen: boolean
+  isHubSlotOpen: boolean
+}
+
 // Owns the live set of shared multiplayer rooms keyed by routing key. Decides
 // whether to reuse an existing open room or spin up a new one, and keeps a
 // stable per-key index so observer URLs (`/observe/{key}/{i}/{j}`) survive
@@ -40,6 +58,37 @@ export class MultiplayerRoomRegistry {
 
   getRoomByIndex(key: string, i: number): MultiplayerRoom | null {
     return this.allRooms.get(key)?.[i] ?? null
+  }
+
+  // Snapshot every live room across every routing key (or just one key if
+  // `filterKey` is supplied). Excludes slots that have already been freed.
+  // Intended for transfer-target picking — callers read it, score the
+  // candidates, and hand the winning `routingKey` back to the dispatcher /
+  // `findOrCreateHubSlot`. Does NOT include solo-hallway MRs built by
+  // `DefaultGameOrchestration` (those are private per-connection and never
+  // registered).
+  listRooms(filterKey?: string): RoomSummary[] {
+    const out: RoomSummary[] = []
+    const keys = filterKey !== undefined ? [filterKey] : [...this.allRooms.keys()]
+    for (const key of keys) {
+      const slots = this.allRooms.get(key)
+      if (!slots) continue
+      for (let i = 0; i < slots.length; i++) {
+        const room = slots[i]
+        if (!room) continue
+        out.push({
+          routingKey: key,
+          instanceIndex: i,
+          roomId: room.roomId,
+          openScenarioId: room.getOpenScenarioId(),
+          playerCount: room.getPlayerCount(),
+          maxPlayers: room.maxPlayers,
+          isOpen: room.isOpen(),
+          isHubSlotOpen: room.isHubSlotOpen(),
+        })
+      }
+    }
+    return out
   }
 
   hasRoomAndPlayer(key: string, i: number, j: number): boolean {

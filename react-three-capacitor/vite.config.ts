@@ -82,6 +82,9 @@ function validate404Plugin() {
         if (path === '/' || path === '') { next(); return; }
         // Vite-internal paths must pass through untouched.
         if (path.startsWith('/@') || path.startsWith('/__vite') || path.startsWith('/node_modules')) { next(); return; }
+        // Number-display paths are proxied to the backend (see
+        // `numberDisplayProxy`); let them through so the proxy handles them.
+        if (NUMBER_DISPLAY_PATHS.some(p => path === p || path.startsWith(`${p}/`))) { next(); return; }
 
         const needsBackendValidation = VALIDATION_PATH_REGEXES.some(re => re.test(path));
         if (needsBackendValidation) {

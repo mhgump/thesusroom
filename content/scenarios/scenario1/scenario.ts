@@ -52,6 +52,11 @@ const script: GameScript<S1State> = {
 export const SCENARIO: ScenarioSpec = {
   id: 'scenario1',
   timeoutMs: 300_000,
+  maxPlayers: 4,
   script,
   initialVisibility: Object.fromEntries(ALL_WALLS.map(id => [id, false])),
+  hubConnection: {
+    mainRoomId: 'main',
+    dockGeometryId: 's1_ws',
+  },
 }

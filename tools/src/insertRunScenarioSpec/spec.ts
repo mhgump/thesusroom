@@ -23,6 +23,11 @@ export interface InsertRunScenarioSpecInput {
   bots: InsertRunScenarioSpecInputBot[]
   opts?: InsertRunScenarioSpecInputOpts
   notes?: InsertRunScenarioSpecInputNote[]
+  // Bot index whose POV best demonstrates this outcome. Defaults to 0.
+  // Must be in [0, bots.length). The create-scenario orchestrator re-runs
+  // each validated spec with record_video_bot_index = hero_index to produce
+  // a recording.
+  hero_index?: number
 }
 
 export type InsertRunScenarioSpecOutput =
@@ -114,6 +119,14 @@ export const INSERT_RUN_SCENARIO_SPEC_SPEC: ToolSpec = {
             text: { type: 'string' },
           },
         },
+      },
+      hero_index: {
+        type: 'integer',
+        minimum: 0,
+        description:
+          'Bot index whose POV best demonstrates this outcome. Must be in ' +
+          '[0, bots.length). Defaults to 0. Used by the orchestrator when ' +
+          're-running the spec with video recording enabled.',
       },
     },
   },

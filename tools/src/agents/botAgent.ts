@@ -1,5 +1,6 @@
 import type { Tool } from '../framework.js'
 import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
+import { withRunLog } from '../_shared/logContext.js'
 import { INSERT_BOT_TOOL } from '../insertBot/index.js'
 import { loadSkill } from './_loadPrompt.js'
 
@@ -40,12 +41,14 @@ export async function runBotAgent(
   userPrompt: string,
   opts: { verbose?: boolean; maxIterations?: number } = {},
 ): Promise<AgentRunResult<BotAgentResponse>> {
-  return runAgent<BotAgentResponse>({
-    systemPrompt: loadSkill('bot-agent'),
-    userPrompt,
-    tools: [INSERT_BOT_TOOL as Tool],
-    responseSpec: BOT_RESPONSE_SPEC,
-    verbose: opts.verbose,
-    maxIterations: opts.maxIterations,
-  })
+  return withRunLog('bot-agent', { prompt: userPrompt }, () =>
+    runAgent<BotAgentResponse>({
+      systemPrompt: loadSkill('bot-agent'),
+      userPrompt,
+      tools: [INSERT_BOT_TOOL as Tool],
+      responseSpec: BOT_RESPONSE_SPEC,
+      verbose: opts.verbose,
+      maxIterations: opts.maxIterations,
+    }),
+  )
 }

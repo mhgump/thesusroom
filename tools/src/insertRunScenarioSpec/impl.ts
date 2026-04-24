@@ -30,6 +30,11 @@ function validateInput(input: unknown): InsertRunScenarioSpecInput {
   if (i.opts !== undefined) {
     if (!i.opts || typeof i.opts !== 'object') throw new Error('opts must be an object')
   }
+  if (i.hero_index !== undefined) {
+    if (!Number.isInteger(i.hero_index) || i.hero_index < 0 || i.hero_index >= i.bots.length) {
+      throw new Error(`hero_index must be an integer in [0, ${i.bots.length})`)
+    }
+  }
   if (i.notes !== undefined) {
     if (!Array.isArray(i.notes)) throw new Error('notes must be an array')
     for (const [idx, n] of i.notes.entries()) {
@@ -113,6 +118,7 @@ async function run(rawInput: unknown): Promise<InsertRunScenarioSpecOutput> {
     bots: input.bots.map(b => ({ path: b.path, export: b.export })),
     opts,
     notes,
+    hero_index: input.hero_index ?? 0,
     last_run_artifact_ids: [],
   }
 

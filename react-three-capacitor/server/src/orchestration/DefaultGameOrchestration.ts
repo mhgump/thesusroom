@@ -5,21 +5,37 @@ import type { MultiplayerRoom } from '../Room.js'
 import type { ConnectionContext, ConnectionHandler } from '../connections/types.js'
 import { MultiplayerRoom as MR } from '../Room.js'
 import { parseRoutingKey, parseSrUid } from '../connections/urls.js'
+import type {
+  ChooseExistingMultiplayerRoom,
+  ChooseScenario,
+  HubDecisionContext,
+} from './hubDecisions.js'
 
 // The `/` flow: every visitor gets a private solo hallway MR immediately (so
 // they can walk around while we resolve a target), then is transferred into
 // a hub-capable scenario MR that seats them via `acceptHubTransfer`.
 //
-// This orchestration does NOT own rooms in the shared registry — the solo
+// Target selection is driven by two pluggable hooks:
+//   1. `chooseExistingRoom` — scans the live room snapshot and may return an
+//      existing room to transfer into.
+//   2. `chooseScenario` — if step 1 returns null, picks a scenario whose
+//      orchestration should create a fresh room.
+// This orchestration never owns rooms in the shared registry: the solo
 // hallway is per-connection and torn down on transfer (or on disconnect via
 // autoDestroyOnEmpty). The target room is owned by whichever orchestration
 // backs the target routing key; we find it through the registry's
 // `findOrCreateHubSlot` using that orchestration, so there's only ever one
 // lifecycle owner per room.
 export interface DefaultGameOrchestrationOptions {
-  // Static hardcoded target for the first-pass hub. A future iteration will
-  // round-robin across any scenario whose spec declares a `hubConnection`.
-  targetRoutingKey: string
+  // Lazy lookup of routing keys whose scenario declares a `hubConnection`.
+  // Resolved once on first use and cached; adding new hub-capable scenarios
+  // requires a server restart. Returns keys like `scenarios/scenario2`.
+  resolveHubTargets: () => Promise<string[]>
+  // Decision hooks. Both are consulted on every `/` connection: existing
+  // first, scenario as fallback. See `hubDecisions.ts` for the stock
+  // implementations.
+  chooseExistingRoom: ChooseExistingMultiplayerRoom
+  chooseScenario: ChooseScenario
   // The initial hallway map (rooms/geometry) attached to the solo MR and
   // injected into the target MR during `acceptHubTransfer`.
   initialMap: GameMap
@@ -31,6 +47,8 @@ export class DefaultGameOrchestration implements ConnectionHandler {
   // Monotonic counter for solo hallway MR ids. Each `/` connection gets a
   // fresh private MR, so these never collide.
   private soloHallwayCounter = 0
+  // Cached hub-target list, resolved once on first use.
+  private hubTargetsPromise: Promise<string[]> | null = null
 
   constructor(private readonly options: DefaultGameOrchestrationOptions) {}
 
@@ -46,36 +64,73 @@ export class DefaultGameOrchestration implements ConnectionHandler {
     const soloPlayerId = solo.connectPlayer(ws, browserUuid, 'hub')
     ctx.wireWs(ws, solo, soloPlayerId)
 
-    // Find or create a target MR with an open hub slot, then transfer the
+    // Resolve a target MR (via the two decision hooks) and transfer the
     // player over. Any failure leaves the player in the solo MR — they can
     // at least walk around the hallway, and the next reconnect will retry.
     try {
-      const targetOrch = await ctx.resolveRoomOrchestration(this.options.targetRoutingKey)
-      if (!targetOrch) {
-        throw new Error(`No orchestration for hub target ${this.options.targetRoutingKey}`)
-      }
-      const target = ctx.roomRegistry.findOrCreateHubSlot(this.options.targetRoutingKey, targetOrch)
-      if (!target.isHubSlotOpen()) throw new Error('Hub slot closed between discovery and transfer')
+      const picked = await this.resolveTarget(ctx)
+      if (!picked) throw new Error('No hub-capable scenario has an open slot')
       if (ws.readyState !== WebSocket.OPEN) {
         // Player dropped while we were resolving; just tear down.
         solo.destroy()
         return
       }
       solo.releasePlayer(soloPlayerId)
-      const newPlayerId = target.acceptHubTransfer(
+      const newPlayerId = picked.room.acceptHubTransfer(
         ws,
         browserUuid,
-        'hub',
+        picked.routingKey,
         this.options.initialMap,
         this.options.initialHallwaySpawnLocal,
       )
-      ctx.rebindWs(ws, target, newPlayerId)
+      ctx.rebindWs(ws, picked.room, newPlayerId)
       solo.destroy()
     } catch (err) {
       console.error('[DefaultGameOrchestration] hub transfer failed:', err)
       // Leave the player in the solo MR; they can walk around the hallway
       // and reconnect later. Alternative: close the socket with an error.
     }
+  }
+
+  // Run the two-step decision: existing room first, then scenario. Returns
+  // the room chosen by whichever hook succeeded, or null if neither could
+  // produce a hub-ready room. The existing-room path verifies the snapshot
+  // still matches the live room (open + hub slot open); the scenario path
+  // goes through `findOrCreateHubSlot`, which either reuses an open room
+  // under that key or creates a fresh one via the orchestration.
+  private async resolveTarget(ctx: ConnectionContext): Promise<{
+    routingKey: string
+    room: MultiplayerRoom
+  } | null> {
+    const hubTargets = await this.resolveTargets()
+    const decisionCtx: HubDecisionContext = {
+      rooms: ctx.roomRegistry.listRooms(),
+      hubTargets,
+    }
+
+    const existing = this.options.chooseExistingRoom(decisionCtx)
+    if (existing) {
+      const room = ctx.roomRegistry.getRoomByIndex(existing.routingKey, existing.instanceIndex)
+      // Snapshot → lookup race: the room may have closed or filled up
+      // between listRooms() and now. Fall through to the scenario path
+      // rather than bubbling the race up as an error.
+      if (room && room.isOpen() && room.isHubSlotOpen()) {
+        return { routingKey: existing.routingKey, room }
+      }
+    }
+
+    const scenarioKey = this.options.chooseScenario(decisionCtx)
+    if (!scenarioKey) return null
+    const orchestration = await ctx.resolveRoomOrchestration(scenarioKey)
+    if (!orchestration) return null
+    const room = ctx.roomRegistry.findOrCreateHubSlot(scenarioKey, orchestration)
+    if (!room.isHubSlotOpen()) return null
+    return { routingKey: scenarioKey, room }
+  }
+
+  private async resolveTargets(): Promise<string[]> {
+    this.hubTargetsPromise ??= this.options.resolveHubTargets()
+    return this.hubTargetsPromise
   }
 
   // Build a one-player-scoped MR whose World contains just the initial
@@ -91,6 +146,8 @@ export class DefaultGameOrchestration implements ConnectionHandler {
       spawnPosition: this.options.initialHallwaySpawnLocal,
       recordingManager: ctx.recordingManager,
       autoDestroyOnEmpty: true,
+      // Per-connection solo hallway: exactly one player seated, no joins.
+      maxPlayers: 1,
       // onCloseScenario / onRoomDone are not wired: the solo MR lives
       // outside the registry's lifecycle and is torn down explicitly via
       // `destroy()` after transfer (or auto-destroyed when empty if the
