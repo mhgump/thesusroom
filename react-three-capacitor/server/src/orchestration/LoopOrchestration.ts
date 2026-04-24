@@ -11,7 +11,6 @@ import { executeExitTransfer } from './exitTransfer.js'
 import {
   INITIAL_LOOP_SCENARIO,
   buildLoopTransferredScript,
-  getInitialLoopInstructionSpecs,
 } from '../../../../assets/initial/loopScript.js'
 import { MAP as INITIAL_MAP } from '../../../../assets/initial/map.js'
 
@@ -101,7 +100,7 @@ export class LoopOrchestration implements ConnectionHandler {
       {
         id: INITIAL_LOOP_SCENARIO.id,
         script: INITIAL_LOOP_SCENARIO.script,
-        instructionSpecs: getInitialLoopInstructionSpecs(),
+        instructionSpecs: [],
         voteRegions: [],
         initialVisibility: INITIAL_LOOP_SCENARIO.initialVisibility ?? {},
         initialRoomVisibility: INITIAL_LOOP_SCENARIO.initialRoomVisibility ?? {},
@@ -150,9 +149,19 @@ export class LoopOrchestration implements ConnectionHandler {
       this.currentHallwayMap = result.targetHallwayMap
     } catch (err) {
       console.error('[loop] advance failed:', err)
-      // Leave currentRoom pointing at the old one; it might already have
-      // been torn down inside executeExitTransfer, in which case the next
-      // /loop connection will rebuild a pristine hallway.
+      // Recovery: the old MR's scenario has already fired `exitScenario`,
+      // which flipped its `advanceFired` guard. Leaving it in place would
+      // leave the loop permanently stuck because subsequent connects land
+      // on that scenario and onPlayerConnect's guard would skip re-arming
+      // the advance timer. Tear it down so the next `/loop` connect
+      // observes `!currentRoom.isOpen()` and builds a fresh pristine MR.
+      try { oldRoom.closeAndDestroy() } catch (inner) {
+        console.error('[loop] closeAndDestroy after failed advance also threw:', inner)
+      }
+      if (this.currentRoom === oldRoom) {
+        this.currentRoom = null
+        this.currentHallwayMap = INITIAL_MAP
+      }
     }
   }
 }

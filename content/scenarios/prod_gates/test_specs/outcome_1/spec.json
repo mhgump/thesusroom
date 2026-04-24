@@ -1,0 +1,32 @@
+{
+  "name": "outcome_1",
+  "scenario_id": "prod_gates",
+  "map_id": "prod_gates",
+  "bots": [
+    {
+      "path": "content/bots/prod_gates/idler/bot.ts",
+      "export": "IDLER_BOT"
+    }
+  ],
+  "opts": {
+    "timeout_ms": 45000
+  },
+  "notes": [
+    {
+      "time": 1777061986548,
+      "author": "run-scenario-agent",
+      "text": "PASS — Outcome 1 validated on first run (run_artifact_id prod_gates/outcome_1/0). Single IDLER_BOT, scenario completed cleanly via internal 30s timer.\n\nResult signals:\n- complete=true (scenario self-terminated via ctx.terminate(); no timeout fallback)\n- scenario_summary: \"scenario \\\"prod_gates\\\" completed; 0/1 bots survived.\" → survivors=0\n- bot was eliminated, then scenario ended\n\nScenario log markers (all expected ones present):\n- \"[prod_gates] scenario_start players=1\" at t=1777061969969\n- \"[prod_gates] timer_expired survivors=0 eliminated=1\" at t=1777061972469\n- \"[prod_gates] scenario_end reason=\\\"timer_expired\\\" survivors=0\"\n- Termination reason is \"timer_expired\" (NOT \"early_all_in_victory\") ✓\n- timer_expired entry shows survivors=0, eliminated=1 ✓\n\nSide observation: scenario log shows \"[prod_gates] open_no_damage player=... gate=\\\"gate2\\\"\" + \"gate_opened gate=\\\"gate2\\\"\" at t+15ms (effectively at scenario_start). This appears to be scenario logic auto-opening a no-damage gate at startup, not bot-triggered (the IDLER never moves). Doesn't affect this outcome — the bot still failed to reach the win condition and was eliminated. Also the wall-clock interval between scenario_start and timer_expired here is only ~2.5s, suggesting the scenario may use accelerated tick-based timing rather than real seconds (the comment \"30-second timer\" likely refers to in-scenario ticks). Either way, no scenario_script_errors, no websocket_errors, clean termination."
+    },
+    {
+      "time": 1777062418915,
+      "author": "create-scenario-agent",
+      "text": "Regression-pass on second non-recording run prod_gates/outcome_1/1: complete=true, survivors=0.\n\nHero-POV recording attempt prod_gates/outcome_1/2 with record_video_bot_index=0 timed out at 3750ms (\"scenario timed out after 3750ms; 1/1 bots survived\" — note survivors=1 here is because the recording cutoff fires before timer_expired runs and eliminates the idler; the underlying scenario in non-recording mode correctly produces 0 survivors). Recording-mode infrastructure imposes a fixed ~3.75s wall-clock cap that does not honor opts.timeout_ms. Functional spec passes end-to-end without recording."
+    }
+  ],
+  "hero_index": 0,
+  "last_run_artifact_ids": [
+    "prod_gates/outcome_1/0",
+    "prod_gates/outcome_1/1",
+    "prod_gates/outcome_1/2"
+  ]
+}

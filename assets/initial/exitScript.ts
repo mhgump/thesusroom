@@ -27,6 +27,7 @@ export interface ExitState {
 export interface BuildExitScriptArgs {
   attachment: ExitAttachment
   sourceMapInstanceId: string
+  sourceScopedRoomIds: string[]
   hallwayScopedRoomId: string
 }
 
@@ -41,6 +42,7 @@ export function buildExitScript(args: BuildExitScriptArgs): {
   config: Omit<ScenarioConfig, 'id' | 'script'>
 } {
   const { attachment, sourceMapInstanceId, hallwayScopedRoomId } = args
+  void args.sourceScopedRoomIds  // reserved for parity with loop variant; not used here yet
 
   const checkAllEntered = (state: ExitState, ctx: GameScriptContext): void => {
     if (state.done) return
@@ -83,10 +85,16 @@ export function buildExitScript(args: BuildExitScriptArgs): {
         if (roomId !== hallwayScopedRoomId) return
         if (state.playersInHallway[playerId]) return
         state.playersInHallway[playerId] = true
-        // Close the exit door behind this player: per-player raise the source
-        // exit dock geometry back to visible (which also makes it solid in
-        // the world for that player only).
-        ctx.setGeometryVisible([attachment.sourceWallIdToDrop], true, [playerId])
+        // Close BOTH walls behind this player — the source-side exit dock
+        // they came through AND the hallway's own south wall which was
+        // dropped per-player for their reveal. Raising both back to `solid`
+        // (per-player) means the hallway reads as a fully enclosed
+        // corridor from their view, with no visible gap at the south face.
+        ctx.setGeometryVisible(
+          [attachment.sourceWallIdToDrop, attachment.initialWallIdToDrop],
+          true,
+          [playerId],
+        )
         checkAllEntered(state, ctx)
       },
 

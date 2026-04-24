@@ -18,7 +18,7 @@ import { IDLE_BOT } from '../../bots/scenario3/idle/bot.js'
 // - finalizeRun provides a fallback terminate — scenario3's button/vote
 //   gameplay never calls ctx.terminate() on its own.
 const MIN_PLAYERS = 4
-const BOT_FILL_DELAY_MS = 10_000
+const BOT_FILL_DELAY_MS = 5_000
 const CLOSE_AFTER_FILL_MS = 1_000
 const FINALIZE_AFTER_CLOSE_MS = 2_000
 

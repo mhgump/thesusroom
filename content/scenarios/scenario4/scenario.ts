@@ -15,7 +15,7 @@ import { IDLE_BOT } from '../../bots/scenario4/idle/bot.js'
 // - finalizeRun provides the only terminate path — scenario4 has no
 //   gameplay beyond room entry.
 const MIN_PLAYERS = 4
-const BOT_FILL_DELAY_MS = 10_000
+const BOT_FILL_DELAY_MS = 5_000
 const CLOSE_AFTER_FILL_MS = 1_000
 const FINALIZE_AFTER_CLOSE_MS = 2_000
 

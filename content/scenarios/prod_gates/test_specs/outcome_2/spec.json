@@ -1,0 +1,42 @@
+{
+  "name": "outcome_2",
+  "scenario_id": "prod_gates",
+  "map_id": "prod_gates",
+  "bots": [
+    {
+      "path": "content/bots/prod_gates/rusher/bot.ts",
+      "export": "RUSHER_BOT"
+    },
+    {
+      "path": "content/bots/prod_gates/idler/bot.ts",
+      "export": "IDLER_BOT"
+    }
+  ],
+  "opts": {
+    "timeout_ms": 45000
+  },
+  "notes": [
+    {
+      "time": 1777062066845,
+      "author": "run-scenario-agent",
+      "text": "FAIL — expected outcome 2 not met. Ran spec twice (run_artifact_ids prod_gates/outcome_2/0 and /1); both runs deterministically produced the same wrong shape.\n\nWhat the spec asks for:\n  - complete=true ✅\n  - survivors=1 ✅ (but for the wrong reason — see below)\n  - termination reason \"timer_expired\" ❌ (got \"early_all_in_victory\")\n  - scenario_start players=2 ❌ (got players=1)\n  - rusher reaches victory ✅\n  - idler eliminated by 30s timer ❌ (idler was never admitted to the scenario)\n\nRoot cause — bot connect race vs early-victory termination:\n  Run /0 scenario_script_logs in order:\n    [prod_gates] scenario_start players=1\n    [MultiplayerRoom:prod_gates] +player <rusher> (total:1)\n    [prod_gates] open_no_damage player=<rusher> gate=\"gate3\"\n    [prod_gates] gate_opened gate=\"gate3\" player=<rusher>\n    [prod_gates] player_entered_victory player=<rusher> z=-0.4515\n    [prod_gates] scenario_end reason=\"early_all_in_victory\" survivors=1\n  Bot 1 (IDLER_BOT) client_logs for the same run:\n    starting — server: ws://localhost:8080/scenariorun/904b9d6ca481\n    connected\n    disconnected (code=4004 reason=Handler failure)\n  i.e. by the time the idler's WebSocket handshake completed, the rusher had already opened gate3, walked into the victory zone (z<-0.40), and triggered the `early_all_in_victory` terminate path. From `early_all_in_victory`'s perspective ALL alive players (just the rusher) were in the victory room, so it fired immediately. The idler's socket was then rejected by the dispatcher with code 4004 \"Handler failure\" because the room had already been closed/torn down. Run /1 reproduced the exact same sequence (open_damage variant of gate3 this time, but same race and same termination reason).\n\nThis is the classic close-and-fill timing bug seen in scenario1/2/3/4 reference scenarios, but in reverse: scenario authoring needs to defer `early_all_in_victory` evaluation (or defer `closeScenario`/terminate) until all initially-provided bots have actually attached to the room — otherwise a fast rusher can win before the slower bot's socket completes its handshake. Recommended fix: gate `early_all_in_victory` on `getPlayerIds().length === expectedPlayerCount` (or wait for an explicit fill-complete signal) before evaluating the \"all in victory room\" predicate. As authored, the scenario can never reach the timer_expired branch with a 2-bot {rusher, idler} configuration via this run path.\n\nsurvivors=1 in the response is therefore coincidentally the right number but for the wrong reason — the idler wasn't eliminated by the 30s timer, it was rejected at WebSocket admission."
+    },
+    {
+      "time": 1777062329591,
+      "author": "run-scenario-agent",
+      "text": "PASS — outcome 2 reproduced cleanly on re-run (run_artifact_id prod_gates/outcome_2/5). Result: complete=true, survivors=1 (scenario_summary: \"scenario \\\"prod_gates\\\" completed; 1/2 bots survived.\"), no scenario_script_errors, no websocket_errors.\n\nAll expected scenario-script log markers fired in order:\n  - [prod_gates] round_scheduled delay_ms=3000\n  - [MultiplayerRoom:prod_gates] +player 476ff41d... (total:1)\n  - [MultiplayerRoom:prod_gates] +player 9056b8bd... (total:2)   ← both bots admitted before scenario_start\n  - [prod_gates] scenario_start players=2                        ← matches expectation (vs prior FAIL where players=1)\n  - [prod_gates] player_entered_victory player=\"476ff41d...\" z=-0.4515  ← rusher reached victory\n  - [prod_gates] open_no_damage / gate_opened gate=\"gate2\" player=\"9056b8bd...\"  ← idler did engage a gate (no_damage variant) but did not reach victory\n  - [MultiplayerRoom:prod_gates] -player 9056b8bd... (total:1)   ← idler eliminated\n  - [prod_gates] timer_expired survivors=1 eliminated=1\n  - [prod_gates] scenario_end reason=\"timer_expired\" survivors=1 ← terminate path is timer_expired, not early_all_in_victory\n\nThe CONNECT_SETTLE_MS fix is holding: both bots' WebSockets complete their handshakes before scenario_start evaluates, so the rusher's early victory no longer triggers `early_all_in_victory` against an unfilled room. Outcome 2 (timer-expired survivor) is now reproducible."
+    },
+    {
+      "time": 1777062418916,
+      "author": "create-scenario-agent",
+      "text": "Hero-POV recording attempt prod_gates/outcome_2/6 with record_video_bot_index=0 timed out at 3750ms (\"scenario timed out after 3750ms; 2/2 bots survived\" — survivors=2 reflects the recording cutoff firing before timer_expired runs and eliminates the idler). Recording-mode infrastructure imposes a fixed ~3.75s wall-clock cap that does not honor opts.timeout_ms. Functional spec passes end-to-end in non-recording mode (run prod_gates/outcome_2/5: complete=true, survivors=1, scenario_end reason=\"timer_expired\")."
+    }
+  ],
+  "hero_index": 0,
+  "last_run_artifact_ids": [
+    "prod_gates/outcome_2/0",
+    "prod_gates/outcome_2/1",
+    "prod_gates/outcome_2/5",
+    "prod_gates/outcome_2/6"
+  ]
+}

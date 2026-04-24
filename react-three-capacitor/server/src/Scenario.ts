@@ -302,19 +302,17 @@ export class Scenario {
     const p = this.deps.world.getPlayer(playerId)
     if (!p) return
 
-    const getRoomAtPosition = this.deps.getRoomAtPosition
-    if (getRoomAtPosition) {
-      const oldRoom = this.playerCurrentRoom.get(playerId) ?? null
-      const newRoom = getRoomAtPosition(p.x, p.z)
-      if (newRoom !== null && newRoom !== oldRoom) {
-        this.playerCurrentRoom.set(playerId, newRoom)
-        this.deps.world.setPlayerRoom(playerId, newRoom)
-        this.dispatchRoomEnter(playerId, newRoom)
-        if (!this.playersEntered.has(playerId) && this.attachedRoomIds.has(newRoom)) {
-          this.playersEntered.add(playerId)
-          if (this.script?.onPlayerEnterScenario) {
-            this.script.onPlayerEnterScenario(this.scriptState, this.ctx, playerId)
-          }
+    // World.processMove already applied the sticky room-resolution rule, so
+    // its playerRoom is authoritative. Scenario just diffs its local mirror.
+    const oldRoom = this.playerCurrentRoom.get(playerId) ?? null
+    const newRoom = this.deps.world.getPlayerRoom(playerId)
+    if (newRoom !== null && newRoom !== oldRoom) {
+      this.playerCurrentRoom.set(playerId, newRoom)
+      this.dispatchRoomEnter(playerId, newRoom)
+      if (!this.playersEntered.has(playerId) && this.attachedRoomIds.has(newRoom)) {
+        this.playersEntered.add(playerId)
+        if (this.script?.onPlayerEnterScenario) {
+          this.script.onPlayerEnterScenario(this.scriptState, this.ctx, playerId)
         }
       }
     }

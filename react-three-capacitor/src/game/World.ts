@@ -836,6 +836,7 @@ export class World {
       charData.body.setNextKinematicTranslation({ x, y: z })
       this.rapierWorld.step()
     }
+    this.advancePlayerRoom(id)
   }
 
   // ── Movement ───────────────────────────────────────────────────────────────
@@ -900,6 +901,13 @@ export class World {
     player.vz = nz - prevZ
     charData.body.setNextKinematicTranslation({ x: player.x, y: player.z })
     this.rapierWorld.step()
+
+    // Maintain the sticky playerRoom mapping: stay in the prior room if its
+    // AABB still contains the new position, else step into a connected
+    // neighbour, else first-match. Required so that overlap-zone positions
+    // don't cause the player's tracked room to flip to the other overlapping
+    // room (which would invert collision/visibility gates mid-move).
+    this.advancePlayerRoom(playerId)
 
     const newAnimState: AnimationState = Math.hypot(jx, jz) > ANIM_THRESHOLD ? 'WALKING' : 'IDLE'
     if (newAnimState !== player.animState) {
@@ -1393,6 +1401,40 @@ export class World {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  // Resolve the containing room for a position using a sticky rule:
+  //   1. if `prevRoomId` still contains (x, z), stay there (keeps players in
+  //      their own room when they step into an overlap zone with another
+  //      room's AABB);
+  //   2. otherwise pick any adjacent (connected) room whose AABB contains
+  //      the position — this enforces "you can only leave your current room
+  //      into a connected neighbour";
+  //   3. otherwise fall back to first-match across every attached map (used
+  //      for initial spawn, teleports, and the observer view).
+  resolveRoomSticky(prevRoomId: string | null, x: number, z: number): string | null {
+    if (prevRoomId) {
+      const b = this.roomBounds.get(prevRoomId)
+      if (b && Math.abs(x - b.cx) <= b.hw && Math.abs(z - b.cz) <= b.hd) return prevRoomId
+      for (const nid of this.connections.get(prevRoomId) ?? []) {
+        const nb = this.roomBounds.get(nid)
+        if (nb && Math.abs(x - nb.cx) <= nb.hw && Math.abs(z - nb.cz) <= nb.hd) return nid
+      }
+    }
+    return this.getRoomAtPosition(x, z)
+  }
+
+  // Apply the sticky rule against the player's stored room and write the
+  // resolved value back. Called at the end of processMove so that
+  // getPlayerRoom always reflects the authoritative room even inside overlap
+  // zones. Returns the new room id.
+  advancePlayerRoom(playerId: string): string | null {
+    const p = this.players.get(playerId)
+    if (!p) return null
+    const prev = this.playerRoom.get(playerId) ?? null
+    const next = this.resolveRoomSticky(prev, p.x, p.z)
+    if (next !== prev) this.playerRoom.set(playerId, next)
+    return next
+  }
 
   // Whether a room should be treated as "off" (invisible + non-collidable)
   // for the given player. Precedence, highest first:

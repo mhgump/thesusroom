@@ -29,6 +29,10 @@ export interface BuildTargetScenarioArgs {
   // world. Scripts that want to drop the source map later must use this id,
   // not the original one.
   sourceMapInstanceId: string
+  // Scoped room ids contributed by the (renamed, shifted) source map.
+  // Handed to target scripts so they can hide the previous hallway from
+  // new joiners via per-player room visibility.
+  sourceScopedRoomIds: string[]
   hallwayScopedRoomId: string
 }
 
@@ -116,9 +120,11 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
   const attachment = computeExitAttachment(renamedSource, INITIAL_MAP, renamedExit)
 
   const hallwayScopedRoomId = scopedRoomId(INITIAL_MAP.mapInstanceId, INITIAL_MAP.rooms[0].id)
+  const sourceScopedRoomIds = renamedSource.rooms.map(r => scopedRoomId(renamedSource.mapInstanceId, r.id))
   const targetBuild = buildTargetScenario({
     attachment,
     sourceMapInstanceId: renamedSource.mapInstanceId,
+    sourceScopedRoomIds,
     hallwayScopedRoomId,
   })
 

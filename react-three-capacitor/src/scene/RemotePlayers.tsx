@@ -20,6 +20,12 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
   const groupRef = useRef<THREE.Group>(null)
   const animStateRef = useRef<AnimationState>(initialAnimState)
   const [animState, setAnimState] = useState<AnimationState>(initialAnimState)
+  // The remote's sticky-tracked current room, derived each frame from
+  // `world.resolveRoomSticky(prev, x, z)`. Using the remote's prior room
+  // (not first-match) avoids overlap-zone ambiguity: a remote player in p2
+  // whose position happens to fall inside p1's AABB (overlap) stays tracked
+  // as p2 as long as p2 still contains the position.
+  const priorRoomRef = useRef<string | null>(null)
   const hp = useGameStore((s) => (s.playerHp[id] ?? 2)) as 0 | 1 | 2
 
   useFrame((state) => {
@@ -31,33 +37,26 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
       g.position.set(pos.x, CAPSULE_CENTER_Y, pos.z)
       const cp = state.camera.position
       g.renderOrder = 1000 - Math.hypot(cp.x - pos.x, cp.y - CAPSULE_CENTER_Y, cp.z - pos.z)
-      // Hide remote players whose containing room is not visible from the
-      // local player's perspective. Mirrors the room-visibility predicate in
-      // GeometryLayer / GameScene. Players in corridors (no room contains
-      // their position) are always shown.
+      // Hide the remote when its (sticky-resolved) room is not visible from
+      // the viewer's perspective — same predicate as GeometryLayer/GameScene.
+      // If the remote is in no room (between rooms / corridor) show them.
       const { currentRoomId, roomVisibility, playerRoomVisibilityOverride } = useGameStore.getState()
       const world = getClientWorld()
       let visible = true
       if (world) {
-        const isRoomVisible = (scopedId: string) => {
-          const override = playerRoomVisibilityOverride[scopedId]
-          if (override !== undefined) return override
-          if (world.isRoomOverlapping(scopedId) && scopedId !== currentRoomId) return false
-          return roomVisibility[scopedId] !== false
-        }
-        const adjacent = world.getAdjacentRoomIds(currentRoomId)
-        const visibleRoomIds = new Set([currentRoomId, ...adjacent].filter(isRoomVisible))
-        let anyContains = false
-        let anyVisible = false
-        for (const view of world.getAllRooms()) {
-          const hw = view.room.floorWidth / 2
-          const hd = view.room.floorDepth / 2
-          if (Math.abs(pos.x - view.worldPos.x) <= hw && Math.abs(pos.z - view.worldPos.z) <= hd) {
-            anyContains = true
-            if (visibleRoomIds.has(view.scopedId)) { anyVisible = true; break }
+        const remoteRoom = world.resolveRoomSticky(priorRoomRef.current, pos.x, pos.z)
+        priorRoomRef.current = remoteRoom
+        if (remoteRoom !== null) {
+          const isRoomVisible = (scopedId: string) => {
+            const override = playerRoomVisibilityOverride[scopedId]
+            if (override !== undefined) return override
+            if (world.isRoomOverlapping(scopedId) && scopedId !== currentRoomId) return false
+            return roomVisibility[scopedId] !== false
           }
+          const adjacent = world.getAdjacentRoomIds(currentRoomId)
+          const visibleRoomIds = new Set([currentRoomId, ...adjacent].filter(isRoomVisible))
+          visible = visibleRoomIds.has(remoteRoom)
         }
-        visible = !anyContains || anyVisible
       }
       g.visible = visible
     } else {

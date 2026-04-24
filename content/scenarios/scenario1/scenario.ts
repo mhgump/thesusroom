@@ -19,7 +19,7 @@ import { IDLE_BOT } from '../../bots/scenario1/idle/bot.js'
 //   bots never converge on the vote, so without it the scenario would hang
 //   until timeoutMs.
 const MIN_PLAYERS = 4
-const BOT_FILL_DELAY_MS = 10_000
+const BOT_FILL_DELAY_MS = 5_000
 const CLOSE_AFTER_FILL_MS = 1_000
 const FINALIZE_AFTER_CLOSE_MS = 2_000
 // Delay between the player walking into the main room and surfacing the

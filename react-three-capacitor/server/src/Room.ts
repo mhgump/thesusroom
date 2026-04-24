@@ -885,21 +885,23 @@ export class MultiplayerRoom {
     return playerId
   }
 
-  // Drop both exit-dock walls and enable the cross-instance adjacency edge
-  // for the transferred player. The edge enable is global and idempotent —
-  // only the first reveal writes it. Wall drops are also sent per-player so
-  // the client's wire view matches its world state; the world itself drops
-  // the walls globally on the first reveal (same as the hub path), so other
-  // transferred players coming through later see them already dropped.
+  // Drop both exit-dock walls FOR THIS PLAYER ONLY and enable the
+  // cross-instance adjacency edge. The edge must be enabled globally (no
+  // per-player connection graph) and is idempotent. Wall drops are
+  // per-player overrides, so new joiners connecting to the same MR later
+  // still see the walls as solid (global state stays `on`). The script
+  // raises these walls back per-player on `onPlayerEnterRoom(hallway)`,
+  // which is what gives the "south wall closes behind me" effect.
   private revealExitForPlayer(playerId: string, attachment: ExitAttachment): void {
     if (!this.exitEdgeEnabled) {
-      this.world.toggleGeometryOff(attachment.initialWallIdToDrop)
-      this.world.toggleGeometryOff(attachment.sourceWallIdToDrop)
       this.world.setConnectionEnabled(attachment.crossInstanceEdge.a, attachment.crossInstanceEdge.b, true)
       this.exitEdgeEnabled = true
     }
+    this.world.toggleGeometryOff(attachment.initialWallIdToDrop, playerId)
+    this.world.toggleGeometryOff(attachment.sourceWallIdToDrop, playerId)
     this.sendToPlayer(playerId, {
       type: 'geometry_state',
+      perPlayer: true,
       updates: [
         { id: attachment.initialWallIdToDrop, visible: false },
         { id: attachment.sourceWallIdToDrop, visible: false },

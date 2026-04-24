@@ -9,7 +9,7 @@ import { MOVER_BOT } from '../../bots/scenario2/mover/bot.js'
 // Designed around 4-player rooms (see content/scenario_plans/scenario2.json).
 // MIN_PLAYERS is both `maxPlayers` and the bot-fill target.
 const MIN_PLAYERS = 4
-const BOT_FILL_DELAY_MS  = 10_000  // 200 ticks
+const BOT_FILL_DELAY_MS  = 5_000   // 100 ticks
 const MOVE_WARN_DELAY_MS = 2_000   // 40 ticks
 // Extended from 4s to 8s so fill bots (which start ticking later than any
 // initially-provided bots) have enough bot-tick cycles between receiving

@@ -69,7 +69,7 @@ export function Player() {
         groupRef.current.position.z = ack.z
         localPlayerPos.x = ack.x
         localPlayerPos.z = ack.z
-        const newRoomId = obsWorld?.getRoomAtPosition(ack.x, ack.z) ?? localPlayerPos.roomId
+        const newRoomId = obsWorld?.resolveRoomSticky(localPlayerPos.roomId, ack.x, ack.z) ?? localPlayerPos.roomId
         if (newRoomId !== localPlayerPos.roomId) {
           localPlayerPos.roomId = newRoomId
           store.setCurrentRoomId(newRoomId)
@@ -259,7 +259,10 @@ export function Player() {
     localPlayerPos.x = player.x
     localPlayerPos.z = player.z
 
-    const newRoomId = world.getRoomAtPosition(player.x, player.z) ?? localPlayerPos.roomId
+    // World.processMove already applied the sticky room-resolution rule, so
+    // read the authoritative result rather than recomputing from position
+    // (which would be first-match and wrong in overlap zones).
+    const newRoomId = world.getPlayerRoom(playerId) ?? localPlayerPos.roomId
     if (newRoomId !== localPlayerPos.roomId) {
       localPlayerPos.roomId = newRoomId
       store.setCurrentRoomId(newRoomId)

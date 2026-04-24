@@ -23,17 +23,25 @@ import type {
 //   victory threshold for survival is z < -0.40 as specified).
 // - Three gates start CLOSED. Each tick, every alive player's nearest
 //   CLOSED gate is computed; if they're within PROXIMITY_R of (0, gateZ)
-//   they auto-trigger an "open" on that gate (the design called out an
-//   ability, but with no button/ability infra wired into the map we use
-//   the proximity check as the trigger). Each open: 50% chance to deal 1
-//   damage to the activator; gate becomes permanently OPEN (both wall
-//   segments removed).
+//   they auto-trigger an "open" on that gate. Each open: 50% chance to deal
+//   1 damage to the activator; gate becomes permanently OPEN.
 // - 30s after scenario_start, any alive player not in z < -0.40 is
 //   eliminated. Survivors = players in victory_room. Always terminate.
 // - Early-terminate if every alive player is already in z < -0.40.
+//
+// Bot-connect race fix:
+// - The first onPlayerConnect schedules `beginRound` after CONNECT_SETTLE_MS
+//   instead of starting immediately. This gives all initially-provided bots
+//   time to complete their WebSocket handshakes before the round starts and
+//   the early_all_in_victory predicate becomes evaluable. Without this
+//   delay, a fast rusher could enter the victory room before a slower bot
+//   (e.g. an idler whose socket connected later) had even joined, causing
+//   `early_all_in_victory` to fire prematurely with the slower bot rejected
+//   by the dispatcher with code 4004 "Handler failure".
 
 const PROXIMITY_R = 0.12
 const TICK_MS = 200
+const CONNECT_SETTLE_MS = 3_000
 const ROUND_DURATION_MS = 30_000
 const SAFETY_TIMEOUT_MS = 38_000
 
@@ -46,6 +54,7 @@ const VICTORY_WALLS = ['victory_wall_l', 'victory_wall_r']
 const VICTORY_Z = -0.40
 
 interface S {
+  startScheduled: boolean
   started: boolean
   finished: boolean
   startTime: number
@@ -54,7 +63,7 @@ interface S {
   damageRoll: Record<string, number>
 }
 
-function log(event: string, fields: Record<string, unknown> = {}): void {
+function logEvent(event: string, fields: Record<string, unknown> = {}): void {
   // Structured one-line logs the test harness can grep.
   const parts = [`[prod_gates] ${event}`]
   for (const [k, v] of Object.entries(fields)) parts.push(`${k}=${JSON.stringify(v)}`)
@@ -83,22 +92,6 @@ function nearestClosedGate(
   return best
 }
 
-function startScenario(state: S, ctx: GameScriptContext): void {
-  if (state.started) return
-  state.started = true
-  state.startTime = Date.now()
-
-  // Open victory_wall immediately (band4 + victory area become one room).
-  ctx.setGeometryVisible(VICTORY_WALLS, false)
-
-  const playerIds = ctx.getPlayerIds()
-  log('scenario_start', { players: playerIds.length })
-
-  ctx.after(TICK_MS, 'tick')
-  ctx.after(ROUND_DURATION_MS, 'timerExpired')
-  ctx.after(SAFETY_TIMEOUT_MS, 'safetyTerminate')
-}
-
 function finish(state: S, ctx: GameScriptContext, reason: string): void {
   if (state.finished) return
   state.finished = true
@@ -106,12 +99,13 @@ function finish(state: S, ctx: GameScriptContext, reason: string): void {
     const pos = ctx.getPlayerPosition(pid)
     return pos !== null && pos.z < VICTORY_Z
   }).length
-  log('scenario_end', { reason, survivors })
+  logEvent('scenario_end', { reason, survivors })
   ctx.terminate()
 }
 
 const script: GameScript<S> = {
   initialState: () => ({
+    startScheduled: false,
     started: false,
     finished: false,
     startTime: 0,
@@ -121,10 +115,31 @@ const script: GameScript<S> = {
   }),
 
   onPlayerConnect(state, ctx) {
-    if (!state.started) startScenario(state, ctx)
+    // Defer the round start until all initially-provided bots have had a
+    // chance to complete their WebSocket handshakes. See header comment.
+    if (state.startScheduled) return
+    state.startScheduled = true
+    logEvent('round_scheduled', { delay_ms: CONNECT_SETTLE_MS })
+    ctx.after(CONNECT_SETTLE_MS, 'startRound')
   },
 
   handlers: {
+    startRound(state, ctx) {
+      if (state.started) return
+      state.started = true
+      state.startTime = Date.now()
+
+      // Open victory_wall immediately (band4 + victory area become one room).
+      ctx.setGeometryVisible(VICTORY_WALLS, false)
+
+      const playerIds = ctx.getPlayerIds()
+      logEvent('scenario_start', { players: playerIds.length })
+
+      ctx.after(TICK_MS, 'tick')
+      ctx.after(ROUND_DURATION_MS, 'timerExpired')
+      ctx.after(SAFETY_TIMEOUT_MS, 'safetyTerminate')
+    },
+
     tick(state, ctx) {
       if (state.finished) return
 
@@ -147,7 +162,7 @@ const script: GameScript<S> = {
         const inV = pos.z < VICTORY_Z
         if (inV && !state.inVictory[pid]) {
           state.inVictory[pid] = true
-          log('player_entered_victory', { player: pid, z: pos.z })
+          logEvent('player_entered_victory', { player: pid, z: pos.z })
         }
         if (!inV) allInVictory = false
 
@@ -159,12 +174,12 @@ const script: GameScript<S> = {
           ctx.setGeometryVisible([...near.walls], false)
           // 50% damage roll.
           if (Math.random() < 0.5) {
-            log('open_damage', { player: pid, gate: near.id })
+            logEvent('open_damage', { player: pid, gate: near.id })
             ctx.applyDamage(pid, 1)
           } else {
-            log('open_no_damage', { player: pid, gate: near.id })
+            logEvent('open_no_damage', { player: pid, gate: near.id })
           }
-          log('gate_opened', { gate: near.id, player: pid })
+          logEvent('gate_opened', { gate: near.id, player: pid })
         }
       }
 
@@ -206,13 +221,13 @@ const script: GameScript<S> = {
           eliminated++
         }
       }
-      log('timer_expired', { survivors, eliminated })
+      logEvent('timer_expired', { survivors, eliminated })
       finish(state, ctx, 'timer_expired')
     },
 
     safetyTerminate(state, ctx) {
       if (state.finished) return
-      log('safety_terminate', {})
+      logEvent('safety_terminate', {})
       finish(state, ctx, 'safety_timeout')
     },
   },
