@@ -83,7 +83,7 @@ const GAME_SPEC: GameSpec = {
   ],
 }
 
-export const SCENARIO3_MAP: GameMap = {
+export const MAP: GameMap = {
   id: 'scenario3',
   mapInstanceId: MAP_INSTANCE_ID,
   worldSpec: WORLD_SPEC,

@@ -119,7 +119,7 @@ const GAME_SPEC: GameSpec = {
   geometry: [],
 }
 
-export const SCENARIO4_MAP: GameMap = {
+export const MAP: GameMap = {
   id: 'scenario4',
   mapInstanceId: MAP_INSTANCE_ID,
   worldSpec: WORLD_SPEC,

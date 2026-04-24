@@ -2,11 +2,12 @@ import http from 'http'
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { GameServer } from './GameServer.js'
+import { GameServer, loadContentRegistry } from './GameServer.js'
 import { initPhysics } from './World.js'
 
 const PORT = parseInt(process.env.PORT ?? '8080', 10)
 await initPhysics()
+const content = await loadContentRegistry()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Running via tsx: __dirname = .../react-three-capacitor/server/src
@@ -17,7 +18,7 @@ const app = express()
 app.use(express.static(staticDir))
 
 const server = http.createServer(app)
-const gameServer = new GameServer(server)
+const gameServer = new GameServer(content, server, PORT)
 
 // Observer not-found guard: return dummy HTML before the SPA fallback catches it.
 app.get('/observe/:key/:i/:j', (req, res) => {

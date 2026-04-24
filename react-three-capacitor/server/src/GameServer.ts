@@ -1,20 +1,11 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type http from 'http'
 import type { IncomingMessage } from 'http'
-import { ContentRegistry } from './ContentRegistry.js'
+import { ContentRegistry, type ScenarioSpec, type GameMap } from './ContentRegistry.js'
 import { RoomRouter } from './RoomRouter.js'
 import { createDefaultScenarioResolver } from './orchestration/index.js'
 import { BotManager } from './bot/BotManager.js'
-import { DEMO_MAP } from '../../../content/maps/demo/map.js'
-import { DEMO_SCENARIO } from '../../../content/scenarios/demo/scenario.js'
-import { SCENARIO1_MAP } from '../../../content/maps/scenario1/map.js'
-import { SCENARIO1_SCENARIO } from '../../../content/scenarios/scenario1/scenario.js'
-import { SCENARIO2_MAP } from '../../../content/maps/scenario2/map.js'
-import { SCENARIO2_SCENARIO } from '../../../content/scenarios/scenario2/scenario.js'
-import { SCENARIO3_MAP } from '../../../content/maps/scenario3/map.js'
-import { SCENARIO3_SCENARIO } from '../../../content/scenarios/scenario3/scenario.js'
-import { SCENARIO4_MAP } from '../../../content/maps/scenario4/map.js'
-import { SCENARIO4_SCENARIO } from '../../../content/scenarios/scenario4/scenario.js'
+import { getBackends } from '../../../tools/src/_shared/backends/index.js'
 import type { MultiplayerRoom } from './Room.js'
 import type { ClientMessage } from './types.js'
 
@@ -40,6 +31,22 @@ function parseRoutingKey(url: string | undefined): string | null {
   return first
 }
 
+// Iterates scenario_map.json via the data backend and dynamic-imports each
+// scenario / map module (via their shared `id`). The caller owns when to run
+// this — GameServer's constructor is synchronous so it can't await inside.
+export async function loadContentRegistry(): Promise<ContentRegistry> {
+  const { scenario, map } = getBackends()
+  const ids = await scenario.listIndex()
+  const entries: { map: GameMap; scenario: ScenarioSpec }[] = []
+  for (const id of ids) {
+    const [s, m] = await Promise.all([scenario.load(id), map.load(id)])
+    if (!s) throw new Error(`scenario "${id}" listed in scenario_map.json but load() returned null`)
+    if (!m) throw new Error(`map "${id}" referenced by scenario "${id}" but load() returned null`)
+    entries.push({ map: m, scenario: s })
+  }
+  return new ContentRegistry(entries)
+}
+
 export class GameServer {
   private readonly wss: WebSocketServer
   private readonly content: ContentRegistry
@@ -48,7 +55,12 @@ export class GameServer {
   private readonly botManager: BotManager
   private readonly observerReadyListeners: Set<() => void> = new Set()
 
-  constructor(portOrServer: number | http.Server, httpServerPort?: number, options?: { tickRateHz?: number; autoStartScenario?: boolean }) {
+  constructor(
+    content: ContentRegistry,
+    portOrServer: number | http.Server,
+    httpServerPort?: number,
+    options?: { tickRateHz?: number; autoStartScenario?: boolean },
+  ) {
     let botServerUrl: string
     if (typeof portOrServer === 'number') {
       this.wss = new WebSocketServer({ port: portOrServer })
@@ -61,13 +73,7 @@ export class GameServer {
       console.log(`[GameServer] attached to HTTP server, bot url: ${botServerUrl}`)
     }
     this.botManager = new BotManager(botServerUrl)
-    this.content = new ContentRegistry([
-      { map: DEMO_MAP, scenario: DEMO_SCENARIO },
-      { map: SCENARIO1_MAP, scenario: SCENARIO1_SCENARIO },
-      { map: SCENARIO2_MAP, scenario: SCENARIO2_SCENARIO },
-      { map: SCENARIO3_MAP, scenario: SCENARIO3_SCENARIO },
-      { map: SCENARIO4_MAP, scenario: SCENARIO4_SCENARIO },
-    ])
+    this.content = content
     const resolver = createDefaultScenarioResolver(this.content, (routingKey, spec) => {
       this.botManager.spawnBot(routingKey, spec)
     }, options)
@@ -82,6 +88,10 @@ export class GameServer {
 
   getBotManager(): BotManager {
     return this.botManager
+  }
+
+  getContent(): ContentRegistry {
+    return this.content
   }
 
   onObserverReady(cb: () => void): () => void {

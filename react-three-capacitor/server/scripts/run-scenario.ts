@@ -31,24 +31,10 @@ import fs from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import express from 'express'
 import { initPhysics } from '../src/World.js'
-import { GameServer } from '../src/GameServer.js'
+import { GameServer, loadContentRegistry } from '../src/GameServer.js'
 import { BotClient } from '../src/bot/BotClient.js'
 import { formatLogs, type LogEntry } from './logFormat.js'
-import { DEMO_SCENARIO } from '../../../content/scenarios/demo/scenario.js'
-import { SCENARIO1_SCENARIO } from '../../../content/scenarios/scenario1/scenario.js'
-import { SCENARIO2_SCENARIO } from '../../../content/scenarios/scenario2/scenario.js'
-import { SCENARIO3_SCENARIO } from '../../../content/scenarios/scenario3/scenario.js'
-import { SCENARIO4_SCENARIO } from '../../../content/scenarios/scenario4/scenario.js'
 import type { BotSpec } from '../src/bot/BotTypes.js'
-import type { ScenarioSpec } from '../src/ContentRegistry.js'
-
-const SCENARIO_SPECS: Record<string, ScenarioSpec> = {
-  demo: DEMO_SCENARIO,
-  scenario1: SCENARIO1_SCENARIO,
-  scenario2: SCENARIO2_SCENARIO,
-  scenario3: SCENARIO3_SCENARIO,
-  scenario4: SCENARIO4_SCENARIO,
-}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
@@ -135,13 +121,15 @@ const LOG_BOT_INDICES: number[] | null = values['log-bot-indices'] === undefined
     ? []
     : values['log-bot-indices'].split(',').map(s => parseInt(s.trim(), 10))
 
-// ── Validate scenario ─────────────────────────────────────────────────────────
+// ── Load content registry (maps + scenarios) via data backend ────────────────
 
-const scenarioSpec = SCENARIO_SPECS[SCENARIO_ID]
-if (!scenarioSpec) {
-  console.error(`Unknown scenario: ${SCENARIO_ID}. Available: ${Object.keys(SCENARIO_SPECS).join(', ')}`)
+const contentRegistry = await loadContentRegistry()
+const entry = contentRegistry.get(SCENARIO_ID)
+if (!entry) {
+  console.error(`Unknown scenario: ${SCENARIO_ID}. Add it to content/scenario_map.json.`)
   process.exit(1)
 }
+const scenarioSpec = entry.scenario
 
 // ── Load bot specs from CLI args ──────────────────────────────────────────────
 
@@ -239,7 +227,7 @@ const httpServer = http.createServer(app)
 // and replays them in order when `startScenario(id)` is called. Non-recording
 // runs start the scenario immediately.
 const AUTO_START = RECORD_BOT_INDEX === null
-const gameServer = new GameServer(httpServer, PORT, {
+const gameServer = new GameServer(contentRegistry, httpServer, PORT, {
   tickRateHz: TICK_RATE_HZ,
   autoStartScenario: AUTO_START,
 })

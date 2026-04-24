@@ -1,12 +1,14 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { CONTENT_DIR } from '../../paths.js'
-import type { DataBackend } from '../dataBackend.js'
+import type { MapBackend } from '../index.js'
 import type { MapKey, TsSource } from '../types.js'
+import type { GameMap } from '../../../../../react-three-capacitor/src/game/GameMap.js'
 
 const MAPS_DIR = path.join(CONTENT_DIR, 'maps')
 
-export class FilesystemMapBackend implements DataBackend<MapKey, TsSource> {
+export class FilesystemMapBackend implements MapBackend {
   private mapDir(key: MapKey): string {
     return path.join(MAPS_DIR, key)
   }
@@ -65,5 +67,18 @@ export class FilesystemMapBackend implements DataBackend<MapKey, TsSource> {
 
   locate(key: MapKey): string | null {
     return this.filePath(key)
+  }
+
+  async load(key: MapKey): Promise<GameMap | null> {
+    const abs = this.filePath(key)
+    try {
+      await fs.access(abs)
+    } catch {
+      return null
+    }
+    const mod = await import(pathToFileURL(abs).href) as Record<string, unknown>
+    const m = mod.MAP
+    if (!m) throw new Error(`map "${key}" missing required \`export const MAP\` at ${abs}`)
+    return m as GameMap
   }
 }

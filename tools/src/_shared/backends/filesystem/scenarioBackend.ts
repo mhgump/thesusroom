@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { CONTENT_DIR, SCENARIO_RUNS_DIR } from '../../paths.js'
 import type { ScenarioBackend } from '../index.js'
 import type { ScenarioKey, TsSource } from '../types.js'
+import type { ScenarioSpec } from '../../../../../react-three-capacitor/server/src/ContentRegistry.js'
 
 const SCENARIOS_DIR = path.join(CONTENT_DIR, 'scenarios')
 const BOTS_DIR = path.join(CONTENT_DIR, 'bots')
@@ -58,6 +60,19 @@ export class FilesystemScenarioBackend implements ScenarioBackend {
 
   async listIndex(): Promise<string[]> {
     return readScenarioMap()
+  }
+
+  async load(key: ScenarioKey): Promise<ScenarioSpec | null> {
+    const abs = this.filePath(key)
+    try {
+      await fs.access(abs)
+    } catch {
+      return null
+    }
+    const mod = await import(pathToFileURL(abs).href) as Record<string, unknown>
+    const spec = mod.SCENARIO
+    if (!spec) throw new Error(`scenario "${key}" missing required \`export const SCENARIO\` at ${abs}`)
+    return spec as ScenarioSpec
   }
 
   async newScenario(scenario_id: string): Promise<number> {

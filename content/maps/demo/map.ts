@@ -202,7 +202,7 @@ export const DEMO_GAME_SPEC: GameSpec = {
 
 // ── Unified map ────────────────────────────────────────────────────────────────
 
-export const DEMO_MAP: GameMap = {
+export const MAP: GameMap = {
   id: 'demo',
   mapInstanceId: DEMO_MAP_INSTANCE_ID,
   worldSpec: DEMO_WORLD_SPEC,

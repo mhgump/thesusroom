@@ -90,7 +90,7 @@ class DemoScript implements GameScript {
   }
 }
 
-export const DEMO_SCENARIO: ScenarioSpec = {
+export const SCENARIO: ScenarioSpec = {
   id: 'demo',
   timeoutMs: 90_000,
   onTerminate(cb) { _terminateCb = cb },

@@ -10,6 +10,11 @@ import type {
   TestSpecKey,
   TsSource,
 } from './types.js'
+// Type-only imports of the runtime shapes scenarios and maps evaluate to. These
+// live in the server / client source trees respectively; resolving them here
+// does not pull the server or client runtime into this package.
+import type { ScenarioSpec } from '../../../../react-three-capacitor/server/src/ContentRegistry.js'
+import type { GameMap } from '../../../../react-three-capacitor/src/game/GameMap.js'
 
 // Scenario runs need an atomic "next index" per (scenario, test_spec) to
 // assign fresh keys before put(). Every backend must provide this — it's
@@ -23,10 +28,20 @@ export interface ScenarioRunBackend extends DataBackend<RunResultKey, ScenarioRu
 // assigned index; deleteScenario shifts remaining entries so indices stay
 // contiguous (the index is a view of the file, not a stable reference).
 // Deletes cascade to content/bots/{scenario}/ and content/scenario_runs/{scenario}/.
+//
+// load() evaluates the scenario module and returns its `SCENARIO` export. Used
+// by the runtime (GameServer, run-scenario) to avoid static imports of content.
 export interface ScenarioBackend extends DataBackend<ScenarioKey, TsSource> {
   newScenario(scenario_id: string): Promise<number>
   deleteScenario(scenario_id: string): Promise<void>
   listIndex(): Promise<string[]>
+  load(key: ScenarioKey): Promise<ScenarioSpec | null>
+}
+
+// Mirrors the scenario backend for maps: storage (TsSource) via the base
+// interface, plus load() to return the evaluated `MAP` export.
+export interface MapBackend extends DataBackend<MapKey, TsSource> {
+  load(key: MapKey): Promise<GameMap | null>
 }
 
 // The test-spec backend owns content/scenarios/{scenario}/test_specs.json
@@ -41,7 +56,7 @@ export interface TestSpecBackend extends DataBackend<TestSpecKey, RunScenarioSpe
 
 export interface Backends {
   bot: DataBackend<BotKey, TsSource>
-  map: DataBackend<MapKey, TsSource>
+  map: MapBackend
   scenario: ScenarioBackend
   testSpec: TestSpecBackend
   scenarioRunResult: ScenarioRunBackend

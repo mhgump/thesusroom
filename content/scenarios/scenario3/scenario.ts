@@ -31,7 +31,7 @@ class Scenario3Script implements GameScript {
   }
 }
 
-export const SCENARIO3_SCENARIO: ScenarioSpec = {
+export const SCENARIO: ScenarioSpec = {
   id: 'scenario3',
   timeoutMs: 60_000,
   onTerminate(cb) { _terminateCb = cb },

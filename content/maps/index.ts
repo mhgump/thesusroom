@@ -1,20 +1,6 @@
 import type { GameMap } from '../../react-three-capacitor/src/game/GameMap.js'
-import { DEMO_MAP } from './demo/map.js'
-import { SCENARIO1_MAP } from './scenario1/map.js'
-import { SCENARIO2_MAP } from './scenario2/map.js'
-import { SCENARIO3_MAP } from './scenario3/map.js'
-import { SCENARIO4_MAP } from './scenario4/map.js'
 
 export type { GameMap }
-export { DEMO_MAP, SCENARIO1_MAP, SCENARIO2_MAP, SCENARIO3_MAP, SCENARIO4_MAP }
-
-const ALL_MAPS: Record<string, GameMap> = {
-  demo:      DEMO_MAP,
-  scenario1: SCENARIO1_MAP,
-  scenario2: SCENARIO2_MAP,
-  scenario3: SCENARIO3_MAP,
-  scenario4: SCENARIO4_MAP,
-}
 
 // Extracts `{scenario}` from an `r_{scenario}` routing key, or null if the
 // key is not in that shape.
@@ -47,4 +33,16 @@ export const CURRENT_SCENARIO_ID: string =
     ? parseScenarioIdFromPath(window.location.pathname)
     : 'demo'
 
-export const CURRENT_MAP: GameMap = ALL_MAPS[CURRENT_SCENARIO_ID] ?? DEMO_MAP
+// `import.meta.glob` builds a lazy-loader map keyed by each sibling map
+// module path; Vite emits one chunk per entry so only the map for
+// CURRENT_SCENARIO_ID is fetched at runtime. Falls back to the demo map when
+// the URL-derived id doesn't match a known directory.
+const MAP_LOADERS = import.meta.glob('./*/map.ts') as Record<string, () => Promise<{ MAP: GameMap }>>
+
+async function loadCurrentMap(): Promise<GameMap> {
+  const loader = MAP_LOADERS[`./${CURRENT_SCENARIO_ID}/map.ts`] ?? MAP_LOADERS['./demo/map.ts']
+  const mod = await loader()
+  return mod.MAP
+}
+
+export const CURRENT_MAP: GameMap = await loadCurrentMap()
