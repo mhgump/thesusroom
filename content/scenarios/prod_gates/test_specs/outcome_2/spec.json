@@ -13,7 +13,7 @@
     }
   ],
   "opts": {
-    "timeout_ms": 45000
+    "timeout_ms": 90000
   },
   "notes": [
     {
@@ -38,6 +38,13 @@
     "prod_gates/outcome_2/1",
     "prod_gates/outcome_2/5",
     "prod_gates/outcome_2/6",
-    "prod_gates/outcome_2/8"
+    "prod_gates/outcome_2/8",
+    "prod_gates/outcome_2/9",
+    "prod_gates/outcome_2/11",
+    "prod_gates/outcome_2/12",
+    "prod_gates/outcome_2/13",
+    "prod_gates/outcome_2/14",
+    "prod_gates/outcome_2/15",
+    "prod_gates/outcome_2/16"
   ]
 }

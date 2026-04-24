@@ -120,6 +120,18 @@ function subGeometry(prefix: string) {
 // four sub-rooms. South wall has four doors at the same VOTE_X positions
 // as main's north (one per sub-room); the script drops them per-player as
 // each player crosses out of their sub-room. North/east/west are solid.
+// Final room's north wall: three segments split around a centred exit dock
+// matching the initial hallway's width (HALL_W / EXIT_DOCK_W = 0.25). The
+// scenario's `exitConnection` points at `s1_fwne` so the walk-out hallway
+// attaches past the north edge of the final room (the actual terminal room
+// players end up in), not main's north wall (which is blocked by the sub-
+// rooms and the final room itself).
+const finalNorthSegments = [
+  seg('s1_fwnl', -HW,      -EX_HALF, -WALL_CZ),
+  seg('s1_fwne', -EX_HALF,  EX_HALF, -WALL_CZ),
+  seg('s1_fwnr',  EX_HALF,  HW,      -WALL_CZ),
+]
+
 const finalSouthSegments = [
   seg('s1_fwsl1', -HW,                    VOTE_X[0] - D_HALF, WALL_CZ),
   seg('s1_fd1',   VOTE_X[0] - D_HALF,     VOTE_X[0] + D_HALF, WALL_CZ, '#555555'),
@@ -181,7 +193,7 @@ const ROOMS: RoomSpec[] = [
     cameraRect: { xMin: -0.4028, xMax: 0.4028, zMin: 0, zMax: 0 },
     geometry: [
       ...finalSouthSegments,
-      { id: 's1_fwn', cx: 0,           cy: BY, cz: -WALL_CZ, width: ROOM_W,     height: bh, depth: bt },
+      ...finalNorthSegments,
       { id: 's1_fwe', cx:  WALL_CX,    cy: BY, cz: 0,        width: bt,         height: bh, depth: EW_DEPTH },
       { id: 's1_fww', cx: -WALL_CX,    cy: BY, cz: 0,        width: bt,         height: bh, depth: EW_DEPTH },
     ],

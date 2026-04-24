@@ -12,7 +12,14 @@ export function VoteRegions({ visibleIds }: Props) {
         <group key={region.id} position={[region.x, 0, region.z]}>
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}>
             <circleGeometry args={[region.radius, 64]} />
-            <meshBasicMaterial color={region.color} transparent opacity={0.35} />
+            <meshBasicMaterial
+              color={region.color}
+              transparent
+              opacity={0.35}
+              depthWrite={false}
+              polygonOffset
+              polygonOffsetFactor={-4}
+            />
           </mesh>
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, 0]}>
             <ringGeometry args={[region.radius * 0.9625, region.radius, 64]} />

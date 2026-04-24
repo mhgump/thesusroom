@@ -271,6 +271,10 @@ export class BotClient {
       getOtherPlayers() {
         return new Map(self.otherPlayers)
       },
+      useAbility(abilityId: string): void {
+        if (!self.ws || self.ws.readyState !== WebSocket.OPEN) return
+        self.ws.send(JSON.stringify({ type: 'ability_use', abilityId }))
+      },
     }
   }
 }

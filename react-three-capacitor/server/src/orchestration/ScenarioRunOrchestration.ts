@@ -48,6 +48,8 @@ export class ScenarioRunOrchestration implements RoomOrchestration {
       scenario: entry.scenario,
       autoStart: !recording,
       tickRateHz: request.tick_rate_hz,
+      // One-shot harness — never accept hub-routed `/` connections.
+      allowHubFill: false,
       onScenarioTerminate: () => {
         this.registry.finalize(this.run, 'scenario', 0)
       },

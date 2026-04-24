@@ -9,7 +9,7 @@ import { MOVER_BOT } from '../../bots/scenario2/mover/bot.js'
 // Designed around 4-player rooms (see content/scenario_plans/scenario2.json).
 // MIN_PLAYERS is both `maxPlayers` and the bot-fill target.
 const MIN_PLAYERS = 4
-const BOT_FILL_DELAY_MS  = 5_000   // 100 ticks
+const BOT_FILL_DELAY_MS  = 3_000   // 60 ticks
 const MOVE_WARN_DELAY_MS = 2_000   // 40 ticks
 // Extended from 4s to 8s so fill bots (which start ticking later than any
 // initially-provided bots) have enough bot-tick cycles between receiving
@@ -113,7 +113,7 @@ const script: GameScript<S2State> = {
         if (!state.inRoom2[pid]) ctx.eliminatePlayer(pid)
       }
       if (ctx.getPlayerIds().length === 0) {
-        ctx.terminate()
+        ctx.exitScenario()
         return
       }
       checkAllInRoom2(state, ctx)
@@ -127,7 +127,7 @@ const script: GameScript<S2State> = {
       // Reveal room 3: remove the room2 north wall and show room3 to all survivors.
       ctx.setGeometryVisible(['room2_north_wall'], false)
       ctx.setRoomVisible(['scenario2_room3'], true)
-      ctx.terminate()
+      ctx.exitScenario()
     },
   },
 }
@@ -156,5 +156,9 @@ export const SCENARIO: ScenarioSpec = {
   hubConnection: {
     mainRoomId: 'room1',
     dockGeometryId: 'r1_s',
+  },
+  exitConnection: {
+    roomId: 'room3',
+    dockGeometryId: 'r3_ne',
   },
 }

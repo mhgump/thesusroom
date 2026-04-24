@@ -8,8 +8,8 @@ import type { ExitAttachment } from '../../react-three-capacitor/server/src/orch
 import type { InstructionEventSpec } from '../../react-three-capacitor/src/game/GameSpec.js'
 
 // Sim-time delays (ms). Tick-driven, matching the canonical 20Hz tick rate.
-const WARN_DELAY_MS = 10_000   // 200 ticks
-const ELIM_DELAY_MS = 4_000    // 80 ticks
+const WARN_DELAY_MS = 6_000    // 120 ticks
+const ELIM_DELAY_MS = 2_000    // 40 ticks
 
 const EXIT_SCENARIO_ID = 'initial_exit'
 const RULE_EXIT_SPEC_ID = 'rule_exit'

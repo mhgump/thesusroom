@@ -395,6 +395,11 @@ export class MultiplayerRoom {
     this.scenarios.forPlayer(playerId)?.onPlayerReady(playerId)
   }
 
+  handleAbilityUse(playerId: string, abilityId: string): void {
+    if (!this.players.has(playerId)) return
+    this.scenarios.forPlayer(playerId)?.handleAbilityUse(playerId, abilityId)
+  }
+
   // Fires when the client confirms it has rebuilt its local World from a
   // `world_reset`. Per-player callbacks registered via
   // `onceWorldResetAcked` are invoked, then cleared. Used by the hub flow to
@@ -855,15 +860,25 @@ export class MultiplayerRoom {
   }
 
   // Seat a player transferred in from an exit-source MR at a caller-supplied
-  // world position. Mirrors `acceptHubTransfer` but doesn't attach a hallway
-  // map (the hallway is already the target MR's primary map) and uses the
-  // room's pre-computed `exitAttachment` to arm a per-player reveal: on
-  // `world_reset_ack`, drop both exit-dock walls for the player and enable
-  // the cross-instance adjacency edge once for the whole room.
+  // world position. Mirrors `acceptHubTransfer` structurally: the source map
+  // is pulled into THIS MR's world lazily on the first transfer (subsequent
+  // transfers short-circuit), the player is seated at their carry-over world
+  // position, `attachPlayerToDefault` fires so `onPlayerAttach` replays this
+  // MR's global runtime state (geometry / room-visibility), and the per-
+  // player reveal is armed on `world_reset_ack` to drop both exit-dock walls
+  // and enable the cross-instance adjacency edge.
+  //
+  // The target MR is constructed with only the hallway + exit scenario (see
+  // `executeExitTransfer`); the source map's rooms and geometry arrive here
+  // via `addMap(sourceMap)` rather than being pre-attached at construction.
+  // This keeps target MR initialisation symmetric with every other MR (one
+  // map + one default scenario at construction time) and mirrors how
+  // `acceptHubTransfer` attaches the arriving-side hallway.
   acceptExitTransfer(
     ws: WebSocket,
     browserUuid: string | null,
     routingKey: string,
+    sourceMap: GameMap,
     worldPos: { x: number; z: number },
   ): string {
     if (this.closed) {
@@ -872,6 +887,16 @@ export class MultiplayerRoom {
     const attachment = this.exitAttachment
     if (!attachment) {
       throw new Error(`[MultiplayerRoom:${this.roomId}] acceptExitTransfer called without exitAttachment`)
+    }
+
+    // Lazily attach the source map on the first transfer. Subsequent transfers
+    // short-circuit because all players share the same target world. We
+    // don't need to broadcast a `map_add` to existing players — the first
+    // transfer has no existing players, and later transfers see the source
+    // via their own `world_reset` below.
+    const alreadyAttached = this.attachedMaps.some(m => m.mapInstanceId === sourceMap.mapInstanceId)
+    if (!alreadyAttached) {
+      this.addMap(sourceMap)
     }
 
     const playerId = this.seatPlayer(ws, browserUuid, routingKey, worldPos)
@@ -1010,6 +1035,7 @@ export class MultiplayerRoom {
       // symmetrically so a future BotSpec.onChoice path doesn't need a
       // separate plumbing change.
       sendChoice: () => { /* no-op: no game_event flow wired to bots today */ },
+      sendAbilityUse: (abilityId) => this.handleAbilityUse(playerId, abilityId),
     }, options)
     // Start the runner before seating so the welcome message dispatched from
     // `seatPlayerCore` → `sendToPlayer` → `runner.deliverMessage` isn't

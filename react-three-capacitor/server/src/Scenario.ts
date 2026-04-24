@@ -264,6 +264,22 @@ export class Scenario {
       }
     }
 
+    // Re-send any pre-granted abilities to this player. Typically the
+    // scenario grants abilities after the player connects, but a restore
+    // (or a retry where the same player id reconnects) can leave entries
+    // here; replay them so the client HUD reflects the authoritative state.
+    const existingAbilities = this.playerAbilities.get(playerId)
+    if (existingAbilities) {
+      for (const [aid, spec] of existingAbilities) {
+        this.deps.sendToPlayer(playerId, {
+          type: 'ability_grant',
+          abilityId: aid,
+          label: spec.label,
+          color: spec.color,
+        })
+      }
+    }
+
     if (this.script && this.started) {
       this.script.onPlayerConnect?.(this.scriptState, this.ctx, playerId)
     }
@@ -305,6 +321,10 @@ export class Scenario {
     this.readyPlayerIds.delete(playerId)
     this.playerCurrentRoom.delete(playerId)
     this.playersEntered.delete(playerId)
+    // Drop any abilities the scenario had granted this player — they're
+    // leaving the room, so the HUD buttons go with them. No revoke message
+    // is needed because the ws is closing.
+    this.playerAbilities.delete(playerId)
     // World's removePlayer (called by the Room after us) handles clearing
     // vote assignments and button occupancy, emitting the relevant events.
   }
@@ -376,6 +396,10 @@ export class Scenario {
     for (const [id, t] of this.timers) {
       timers[id] = { fireAtTick: t.fireAtTick, handlerId: t.handlerId, payload: t.payload }
     }
+    const playerAbilities: Record<string, Record<string, AbilityGrantRecord>> = {}
+    for (const [pid, abilities] of this.playerAbilities) {
+      playerAbilities[pid] = Object.fromEntries(abilities)
+    }
     return {
       state: this.scriptState,
       nextId: this.nextId,
@@ -385,6 +409,8 @@ export class Scenario {
         roomEnterListeners: Object.fromEntries(this.roomEnterListeners),
         buttonPressListeners: Object.fromEntries(this.buttonPressListeners),
         buttonReleaseListeners: Object.fromEntries(this.buttonReleaseListeners),
+        abilityUseListeners: Object.fromEntries(this.abilityUseListeners),
+        playerAbilities,
       },
     }
   }
@@ -407,6 +433,14 @@ export class Scenario {
     }
     for (const [id, rec] of Object.entries(dump.pending.buttonReleaseListeners)) {
       this.buttonReleaseListeners.set(id, rec)
+    }
+    for (const [id, rec] of Object.entries(dump.pending.abilityUseListeners ?? {})) {
+      this.abilityUseListeners.set(id, rec)
+    }
+    for (const [pid, abilityMap] of Object.entries(dump.pending.playerAbilities ?? {})) {
+      const inner = new Map<string, AbilityGrantRecord>()
+      for (const [aid, rec] of Object.entries(abilityMap)) inner.set(aid, rec)
+      this.playerAbilities.set(pid, inner)
     }
     const now = this.deps.getServerTick()
     const simMsPerTick = this.deps.getSimMsPerTick()
@@ -540,7 +574,8 @@ export class Scenario {
         if (self.voteListeners.delete(listenerId)) return
         if (self.roomEnterListeners.delete(listenerId)) return
         if (self.buttonPressListeners.delete(listenerId)) return
-        self.buttonReleaseListeners.delete(listenerId)
+        if (self.buttonReleaseListeners.delete(listenerId)) return
+        self.abilityUseListeners.delete(listenerId)
       },
       getPlayerIds() {
         return [...self.attachedPlayerIds]

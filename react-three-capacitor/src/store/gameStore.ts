@@ -49,6 +49,9 @@ interface GameState {
   buttonSpecs: Record<string, ButtonSpec>
   buttonStates: Record<string, { state: ButtonState; occupancy: number }>
   localButtonPressing: Record<string, boolean>
+  // Abilities granted to the local player by the scenario. The order
+  // mirrors grant order so the HUD stacks them deterministically.
+  abilities: Array<{ abilityId: string; label: string; color?: string }>
   sceneReady: boolean
 
   setConnected: (v: boolean) => void
@@ -85,6 +88,8 @@ interface GameState {
   applyButtonStateUpdate: (id: string, state: ButtonState, occupancy: number) => void
   applyButtonConfigUpdate: (id: string, changes: Partial<ButtonConfig>) => void
   setLocalButtonPressing: (id: string, pressing: boolean) => void
+  grantAbility: (abilityId: string, label: string, color?: string) => void
+  revokeAbility: (abilityId: string) => void
   reset: () => void
 }
 
@@ -116,6 +121,7 @@ export const useGameStore = create<GameState>((set) => ({
   buttonSpecs: {},
   buttonStates: {},
   localButtonPressing: {},
+  abilities: [],
   sceneReady: false,
 
   setConnected: (v) => set({ connected: v }),
@@ -240,6 +246,18 @@ export const useGameStore = create<GameState>((set) => ({
   setLocalButtonPressing: (id, pressing) =>
     set((s) => ({ localButtonPressing: { ...s.localButtonPressing, [id]: pressing } })),
 
+  grantAbility: (abilityId, label, color) =>
+    set((s) => {
+      // Re-grant replaces the existing entry in place so order stays stable.
+      const idx = s.abilities.findIndex(a => a.abilityId === abilityId)
+      const next = [...s.abilities]
+      if (idx >= 0) next[idx] = { abilityId, label, color }
+      else next.push({ abilityId, label, color })
+      return { abilities: next }
+    }),
+  revokeAbility: (abilityId) =>
+    set((s) => ({ abilities: s.abilities.filter(a => a.abilityId !== abilityId) })),
+
   reset: () => set({
     connected: false,
     observerEndReason: 'none',
@@ -266,6 +284,7 @@ export const useGameStore = create<GameState>((set) => ({
     buttonSpecs: {},
     buttonStates: {},
     localButtonPressing: {},
+    abilities: [],
     sceneReady: false,
   }),
 }))

@@ -18,7 +18,7 @@ import { IDLE_BOT } from '../../bots/scenario3/idle/bot.js'
 // - finalizeRun provides a fallback terminate — scenario3's button/vote
 //   gameplay never calls ctx.terminate() on its own.
 const MIN_PLAYERS = 4
-const BOT_FILL_DELAY_MS = 5_000
+const BOT_FILL_DELAY_MS = 3_000
 const CLOSE_AFTER_FILL_MS = 1_000
 const FINALIZE_AFTER_CLOSE_MS = 2_000
 
@@ -74,7 +74,7 @@ const script: GameScript<S3State> = {
     finalizeRun(state, ctx) {
       if (state.finalized) return
       state.finalized = true
-      ctx.terminate()
+      ctx.exitScenario()
     },
 
     onLeftPress(_state, ctx) {
@@ -104,5 +104,9 @@ export const SCENARIO: ScenarioSpec = {
   hubConnection: {
     mainRoomId: 'main',
     dockGeometryId: 's3_ws',
+  },
+  exitConnection: {
+    roomId: 'main',
+    dockGeometryId: 's3_wne',
   },
 }

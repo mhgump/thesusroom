@@ -15,7 +15,7 @@ import { IDLE_BOT } from '../../bots/scenario4/idle/bot.js'
 // - finalizeRun provides the only terminate path — scenario4 has no
 //   gameplay beyond room entry.
 const MIN_PLAYERS = 4
-const BOT_FILL_DELAY_MS = 5_000
+const BOT_FILL_DELAY_MS = 3_000
 const CLOSE_AFTER_FILL_MS = 1_000
 const FINALIZE_AFTER_CLOSE_MS = 2_000
 
@@ -59,7 +59,7 @@ const script: GameScript<S4State> = {
     finalizeRun(state, ctx) {
       if (state.finalized) return
       state.finalized = true
-      ctx.terminate()
+      ctx.exitScenario()
     },
   },
 }
@@ -72,5 +72,11 @@ export const SCENARIO: ScenarioSpec = {
   hubConnection: {
     mainRoomId: 'center',
     dockGeometryId: 's4_c_s',
+  },
+  // north_hall's north wall is already exactly the hallway width (0.25), so
+  // the existing `s4_n_n` segment is the exit dock as-is — no split needed.
+  exitConnection: {
+    roomId: 'north_hall',
+    dockGeometryId: 's4_n_n',
   },
 }

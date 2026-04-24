@@ -77,7 +77,8 @@ export function HeartSprite({ hp }: Props) {
         map={tex}
         transparent={false}
         alphaTest={0.5}
-        depthTest={false}
+        alphaHash={true}
+        depthTest={true}
         depthWrite={true}
       />
     </sprite>

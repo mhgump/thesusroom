@@ -27,11 +27,11 @@ import { FILL_BOT } from '../../bots/scenario1/fill/bot.js'
 //   drop, and players walk into the final room. After a short grace
 //   window the scenario terminates.
 const MIN_PLAYERS = 4
-const BOT_FILL_DELAY_MS = 5_000
+const BOT_FILL_DELAY_MS = 3_000
 const CLOSE_AFTER_FILL_MS = 1_000
 const FIND_INSTRUCTION_DELAY_MS = 1_000
-const ELIMINATION_DELAY_MS = 30_000
-const FINAL_DELAY_MS = 15_000
+const ELIMINATION_DELAY_MS = 8_000
+const FINAL_DELAY_MS = 8_000
 
 const ALL_REGIONS = ['s1_v1', 's1_v2', 's1_v3', 's1_v4']
 const ALL_WALLS = [
@@ -85,7 +85,7 @@ function resolveElimination(state: S1State, ctx: GameScriptContext): void {
   }
 
   if (survivors.length === 0) {
-    ctx.terminate()
+    ctx.exitScenario()
     return
   }
 
@@ -211,7 +211,7 @@ const script: GameScript<S1State> = {
     finalizeRun(state, ctx) {
       if (state.finalized) return
       state.finalized = true
-      ctx.terminate()
+      ctx.exitScenario()
     },
   },
 }
@@ -227,7 +227,7 @@ export const SCENARIO: ScenarioSpec = {
     dockGeometryId: 's1_ws',
   },
   exitConnection: {
-    roomId: 'main',
-    dockGeometryId: 's1_wne',
+    roomId: 'final',
+    dockGeometryId: 's1_fwne',
   },
 }

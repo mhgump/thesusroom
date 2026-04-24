@@ -44,12 +44,33 @@ const SCENARIO_RUN_PREFIX = 'scenariorun/'
 //      (`createRoundRobinScenarioChooser`) when no such room exists.
 // Swap the policy by passing a different pair of choosers. Unknown keys
 // resolve to null; the dispatcher rejects those connections with 4004.
+// Singleton-per-server: one DefaultGameOrchestration handles every `/`
+// connection so the solo-hallway counter and round-robin cursor stay
+// monotonic. The scenario chooser is stateful (closure cursor), so it must
+// be instantiated here — not per-call — for round-robin to actually cycle.
+// Exposed as its own factory so GameServer can keep a reference for the
+// exit-hallway reenter flow (see `onExitScenario` wiring in GameServer:
+// `targetOnScenarioTerminate` calls `defaultGame.transferPlayerToHub` for
+// each walked-out player).
+export function createDefaultGameOrchestration(
+  content: ContentRegistry,
+): DefaultGameOrchestration {
+  return new DefaultGameOrchestration({
+    resolveHubTargets: () => listHubCapableRoutingKeys(content),
+    chooseExistingRoom: chooseMostPopulatedOpenRoom,
+    chooseScenario: createRoundRobinScenarioChooser(),
+    initialMap: INITIAL_MAP,
+    initialHallwaySpawnLocal: INITIAL_HALLWAY_SPAWN_LOCAL,
+  })
+}
+
 export function createDefaultScenarioResolver(
   content: ContentRegistry,
   scenarioRunRegistry: ScenarioRunRegistry,
   options: DefaultScenarioOrchestrationOptions | undefined,
   onExitScenario: (sourceRoom: MultiplayerRoom, sourceMap: GameMap, sourceScenario: ScenarioSpec) => void,
   loopOrchestration: LoopOrchestration,
+  defaultGame: DefaultGameOrchestration,
 ): RoutingResolver {
   // Fold the exit-transfer trigger into the per-scenario orchestration
   // options. Every DefaultScenarioOrchestration instance below inherits it;
@@ -59,17 +80,6 @@ export function createDefaultScenarioResolver(
     ...(options ?? {}),
     onExitScenario,
   }
-  // Singleton: one instance per server, kept across all `/` connections so
-  // the solo-hallway counter and round-robin cursor stay monotonic. The
-  // scenario chooser is stateful (closure cursor), so it must be
-  // instantiated here — not per-call — for round-robin to actually cycle.
-  const defaultGame = new DefaultGameOrchestration({
-    resolveHubTargets: () => listHubCapableRoutingKeys(content),
-    chooseExistingRoom: chooseMostPopulatedOpenRoom,
-    chooseScenario: createRoundRobinScenarioChooser(),
-    initialMap: INITIAL_MAP,
-    initialHallwaySpawnLocal: INITIAL_HALLWAY_SPAWN_LOCAL,
-  })
 
   return async (routingKey: string): Promise<ConnectionHandler | null> => {
     if (routingKey === 'hub') {

@@ -2,6 +2,7 @@ import { useGameStore } from '../store/gameStore'
 import { Joystick } from './Joystick'
 import { Notifications } from './Notifications'
 import { EliminationOverlay } from './EliminationOverlay'
+import { AbilityBar } from './AbilityBar'
 import { ChoicePopup } from './ChoicePopup'
 import { RulePopup } from './RulePopup'
 import { RulesPanel } from './RulesPanel'
@@ -107,6 +108,9 @@ export function HUD() {
       {!observerMode && <RulePopup />}
       {!observerMode && <RulesPanel />}
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+
+      {/* Ability bar — bottom-right, hidden in observer mode */}
+      {!observerMode && <AbilityBar />}
 
       {/* Joystick — bottom-left, hidden in observer mode and tap-to-move mode */}
       {!observerMode && inputMode === 'joystick' && (

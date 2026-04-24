@@ -172,6 +172,10 @@ export function useWebSocket(): void {
             w.applyConnectionsSnapshot(msg.connections)
           }
           store.setGeometryObjects(msg.geometry)
+          // Abilities are scenario-scoped; clear on world_reset so stale
+          // grants from a previous world don't persist into the new one.
+          // The scenario re-grants whatever it wants via ability_grant.
+          for (const a of useGameStore.getState().abilities) store.revokeAbility(a.abilityId)
           // Ack the reset so the server can proceed with post-transfer state
           // changes (e.g. the hub reveal that drops walls + enables the
           // cross-instance adjacency edge).
@@ -262,6 +266,14 @@ export function useWebSocket(): void {
         case 'replay_ended':
           store.setObserverEndReason('replay_ended')
           break
+
+        case 'ability_grant':
+          store.grantAbility(msg.abilityId, msg.label, msg.color)
+          break
+
+        case 'ability_revoke':
+          store.revokeAbility(msg.abilityId)
+          break
       }
     })
 
@@ -298,6 +310,8 @@ export function useWsSend() {
     sendChoice: (eventId: string, optionId: string) =>
       client.send({ type: 'choice', eventId, optionId }),
     sendReady: () => client.send({ type: 'ready' }),
+    sendAbilityUse: (abilityId: string) =>
+      client.send({ type: 'ability_use', abilityId }),
   }
 }
 

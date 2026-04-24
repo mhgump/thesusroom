@@ -3,7 +3,11 @@ import type http from 'http'
 import type { IncomingMessage } from 'http'
 import { ContentRegistry } from './ContentRegistry.js'
 import { MultiplayerRoomRegistry } from './MultiplayerRoomRegistry.js'
-import { createDefaultScenarioResolver } from './orchestration/index.js'
+import {
+  createDefaultScenarioResolver,
+  createDefaultGameOrchestration,
+  type DefaultGameOrchestration,
+} from './orchestration/index.js'
 import { BotManager } from './bot/BotManager.js'
 import type { BotSpec } from './bot/BotTypes.js'
 import { MultiplayerRoom } from './Room.js'
@@ -36,6 +40,10 @@ export class GameServer {
   private readonly playerRecordings: PlayerRecordings
   private readonly recordingManager: PlayerRecordingManager
   private readonly scenarioRunRegistry: ScenarioRunRegistry
+  // Singleton that owns the hub-transfer flow. `/` connections route into
+  // it via the resolver; the exit-hallway reenter flow calls
+  // `transferPlayerToHub` on it directly once the walk-out completes.
+  private readonly defaultGame: DefaultGameOrchestration
 
   // Bind a WebSocket's message handlers to a (room, playerId) pair. The
   // binding is mutable — `rebindWs` (called by the hub transfer flow)
@@ -76,6 +84,11 @@ export class GameServer {
 
     this.scenarioRunRegistry = new ScenarioRunRegistry(this.content, this.botManager)
 
+    // Constructed up here so both the resolver (routes `/` connections into
+    // it) and the `onExitScenario` callback (drives the reenter flow back
+    // through its `transferPlayerToHub`) can share the same singleton.
+    this.defaultGame = createDefaultGameOrchestration(this.content)
+
     const onExitScenario = (sourceRoom: MultiplayerRoom, sourceMap: GameMap, sourceScenario: ScenarioSpec) => {
       try {
         executeExitTransfer({
@@ -89,6 +102,30 @@ export class GameServer {
           // any future exit-hallway scripts that legitimately need a bot
           // reached over the public WebSocket routing.
           spawnBotFn: (routingKey, spec) => this.botManager.spawnBot(routingKey, spec),
+          // Once the exit-hallway's `buildExitScript` has walked every
+          // living player into the new hallway it calls `ctx.terminate()`,
+          // which fires this callback. Each remaining player is then
+          // hub-transferred into a fresh scenario MR via the same flow
+          // that serves `/` connections — closing the loop:
+          //   scenario → exit hallway → (random) scenario → …
+          // The hallway MR tears itself down automatically once its last
+          // player is released (autoDestroyOnEmpty on the target MR), or
+          // via the explicit closeAndDestroy below if nobody survived.
+          targetOnScenarioTerminate: (hallwayRoom) => {
+            const handles = hallwayRoom.getPlayerHandles()
+              .filter(h => h.ws.readyState === h.ws.OPEN)
+            if (handles.length === 0) {
+              hallwayRoom.closeAndDestroy()
+              return
+            }
+            for (const h of handles) {
+              this.defaultGame
+                .transferPlayerToHub(h.ws, h.browserUuid, hallwayRoom, h.playerId, this.buildCtx())
+                .catch((err) => {
+                  console.error('[GameServer] reenter transfer failed:', err)
+                })
+            }
+          },
         })
       } catch (err) {
         console.error('[GameServer] exit transfer failed:', err)
@@ -101,7 +138,7 @@ export class GameServer {
       },
       (ws, room, playerId) => this.rebindWs(ws, room, playerId),
     )
-    const resolver = createDefaultScenarioResolver(this.content, this.scenarioRunRegistry, options, onExitScenario, loopOrchestration)
+    const resolver = createDefaultScenarioResolver(this.content, this.scenarioRunRegistry, options, onExitScenario, loopOrchestration, this.defaultGame)
     this.roomRegistry = new MultiplayerRoomRegistry(this.recordingManager)
     this.dispatcher = new ConnectionDispatcher(
       resolver,
@@ -201,6 +238,8 @@ export class GameServer {
           binding.room.handlePlayerReady(binding.playerId)
         } else if (msg.type === 'world_reset_ack') {
           binding.room.handleWorldResetAck(binding.playerId)
+        } else if (msg.type === 'ability_use') {
+          binding.room.handleAbilityUse(binding.playerId, msg.abilityId)
         }
       } catch {
         // ignore malformed messages

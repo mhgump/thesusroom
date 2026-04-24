@@ -31,6 +31,10 @@ export interface BotCallbackContext {
   updateBotState(updates: Partial<BotState>): void
   getPosition(): { x: number; z: number }
   getOtherPlayers(): Map<string, { x: number; z: number }>
+  // Send an `ability_use` back to the scenario. No-op if the scenario
+  // hasn't granted that ability to this bot. Fire-and-forget — no feedback
+  // on whether the scenario's handler actually did anything.
+  useAbility(abilityId: string): void
 }
 
 export type BotCommand =

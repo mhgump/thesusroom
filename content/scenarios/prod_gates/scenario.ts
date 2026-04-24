@@ -1,6 +1,6 @@
 import type { ScenarioSpec } from '../../../react-three-capacitor/server/src/ContentRegistry.js'
 import type {
-  ButtonPressPayload,
+  AbilityUsePayload,
   GameScript,
   GameScriptContext,
   PlayerEnterRoomPayload,
@@ -9,51 +9,57 @@ import type {
 // prod_gates scenario.
 //
 // Map layout (see content/maps/prod_gates/map.ts):
-//   spawn     — 0.25 × 0.25  (hub dock on the south edge, open north)
-//   corridor  — 0.50 × 1.25  (three full-span internal doors: gate1/2/3)
-//   victory   — 0.25 × 0.25  (safe zone north of corridor)
+//   spawn    — 0.25 × 0.25  (hub dock on the south edge, open north)
+//   corridor — 0.50 × 1.25  (three full-span internal doors: gate1/2/3)
+//   victory  — 0.25 × 0.25  (safe zone north of corridor)
 //
 // Gameplay:
-//   1. CONNECT_SETTLE_MS after the first player connects, the round starts:
-//      the scenario closes (no more joins), the 30-second timer arms, and
-//      players are told the rules.
-//   2. Each of the three gates (gate1, gate2, gate3) blocks its band with a
-//      solid wall. A button sits just south of each gate in the same band.
-//      Stepping on the button (requiredPlayers=1, enableClientPress=true) is
-//      the "Open" ability — on press:
-//        - the gate geometry is removed (wall drops, path opens);
-//        - there is a 50% chance the pressing player takes 1 damage;
-//        - the button is disabled so it can't fire again.
-//   3. Any player inside the `victory` room when the 30-second timer
-//      expires survives. Everyone else is eliminated and the scenario ends.
-//      If every still-living player is already in the victory room the
-//      scenario terminates early.
-//
-// The CONNECT_SETTLE_MS delay mirrors the previous prod_gates impl: it gives
-// every initially-provided bot a chance to finish its WebSocket handshake
-// before closeScenario() fires and the timer starts. Without it a fast
-// rusher could clear the round before a slow idler bot had even joined.
+//   1. Every player joining receives a single HUD ability called OPEN.
+//   2. Pressing OPEN fires `ability_use` back to this scenario. The handler
+//      picks the player's nearest closed gate (must be within DOOR_REACH_Z
+//      of the player's world z) and:
+//        - drops the gate geometry (globally — the corridor is shared);
+//        - rolls a 50% chance to apply 1 damage to the player who pressed.
+//      If no closed gate is in range, the press is a silent no-op.
+//   3. CONNECT_SETTLE_MS after the first player connects the round starts:
+//      scenario closes to new joiners, everyone gets the OPEN ability, and
+//      a 30-second timer arms.
+//   4. At the 30-second mark, any player not inside the victory room is
+//      eliminated. Early termination fires as soon as every still-connected
+//      player has reached the victory room.
 
-const CONNECT_SETTLE_MS = 3_000
-const ROUND_DURATION_MS = 30_000
-const SAFETY_TIMEOUT_MS = 38_000
+const CONNECT_SETTLE_MS = 2_000
+const ROUND_DURATION_MS = 8_000
+const SAFETY_TIMEOUT_MS = 12_000
 
-// Button id → gate geometry id. The scenario's button-press handler reads
-// this to know which wall to drop when a given button fires.
-const GATES: Record<string, string> = {
-  btn_open_1: 'gate1',
-  btn_open_2: 'gate2',
-  btn_open_3: 'gate3',
-}
+// World-frame gate z-coords. The corridor room sits at world z = -0.75 (BFS
+// from spawn at origin, corridor is 0.75 units north of spawn centre), and
+// the gates' local z values are +0.3125, 0, -0.3125. World z = corridor_z +
+// local_z. Any drift here will be caught at first run — the gate cz values
+// in map.ts are the source of truth; these are derived constants.
+const CORR_WORLD_Z = -0.75
+const GATES: ReadonlyArray<{ id: string; worldZ: number }> = [
+  { id: 'gate1', worldZ: CORR_WORLD_Z + 0.3125 },   // -0.4375  (closest to spawn)
+  { id: 'gate2', worldZ: CORR_WORLD_Z + 0        },  // -0.75
+  { id: 'gate3', worldZ: CORR_WORLD_Z - 0.3125 },   // -1.0625  (closest to victory)
+] as const
 
+// A player must be within this z-distance of a gate (absolute value) for
+// the OPEN ability to target it. One band depth is 0.3125, so 0.2 keeps the
+// press from targeting the *previous* gate once the player has walked past
+// the midpoint of a new band.
+const DOOR_REACH_Z = 0.2
+
+const ABILITY_OPEN = 'open'
 const VICTORY_ROOM_ID = 'prod_gates_victory'
 
 interface S {
   startScheduled: boolean
   started: boolean
   finished: boolean
-  gateOpen: Record<string, boolean>   // gate geometry id → opened?
+  gateOpen: Record<string, boolean>   // gate id → opened?
   inVictory: Record<string, true>     // player id → has reached victory
+  abilityGranted: Record<string, true>
   listenersRegistered: boolean
 }
 
@@ -67,11 +73,16 @@ function finish(state: S, ctx: GameScriptContext, reason: string): void {
   if (state.finished) return
   state.finished = true
   const survivors = Object.keys(state.inVictory).filter(pid => {
-    // Only count players still connected as survivors.
     return ctx.getPlayerIds().includes(pid)
   }).length
   logEvent('scenario_end', { reason, survivors })
-  ctx.terminate()
+  ctx.exitScenario()
+}
+
+function grantOpenTo(state: S, ctx: GameScriptContext, playerId: string): void {
+  if (state.abilityGranted[playerId]) return
+  state.abilityGranted[playerId] = true
+  ctx.grantAbility(playerId, ABILITY_OPEN, { label: 'OPEN', color: '#27ae60' })
 }
 
 const script: GameScript<S> = {
@@ -81,25 +92,26 @@ const script: GameScript<S> = {
     finished: false,
     gateOpen: { gate1: false, gate2: false, gate3: false },
     inVictory: {},
+    abilityGranted: {},
     listenersRegistered: false,
   }),
 
-  onPlayerConnect(state, ctx) {
-    // Defer the round start until every initially-provided bot has had a
-    // chance to complete its WebSocket handshake. See header comment.
+  onPlayerConnect(state, ctx, playerId) {
+    // If the round already started, grant OPEN immediately so late-joiners
+    // still get the ability (e.g. reconnect). Before the round starts the
+    // grant happens in `startRound`.
+    if (state.started && !state.finished) grantOpenTo(state, ctx, playerId)
+
     if (!state.startScheduled) {
       state.startScheduled = true
       logEvent('round_scheduled', { delay_ms: CONNECT_SETTLE_MS })
       ctx.after(CONNECT_SETTLE_MS, 'startRound')
     }
 
-    // Register framework listeners exactly once.
     if (state.listenersRegistered) return
     state.listenersRegistered = true
     ctx.onPlayerEnterRoom('onEnterRoom')
-    ctx.onButtonPress('btn_open_1', 'onButtonPress')
-    ctx.onButtonPress('btn_open_2', 'onButtonPress')
-    ctx.onButtonPress('btn_open_3', 'onButtonPress')
+    ctx.onAbilityUse(ABILITY_OPEN, 'onOpenUsed')
   },
 
   handlers: {
@@ -108,10 +120,11 @@ const script: GameScript<S> = {
       state.started = true
 
       ctx.closeScenario()
-      logEvent('scenario_start', { players: ctx.getPlayerIds().length })
       for (const pid of ctx.getPlayerIds()) {
+        grantOpenTo(state, ctx, pid)
         ctx.sendInstructions(pid, ['rule_open', 'rule_timer'])
       }
+      logEvent('scenario_start', { players: ctx.getPlayerIds().length })
 
       ctx.after(ROUND_DURATION_MS, 'timerExpired')
       ctx.after(SAFETY_TIMEOUT_MS, 'safetyTerminate')
@@ -123,61 +136,48 @@ const script: GameScript<S> = {
       if (state.inVictory[payload.playerId]) return
       state.inVictory[payload.playerId] = true
       ctx.sendInstruction(payload.playerId, 'fact_survived')
+      // Player made it — revoke OPEN so the HUD button disappears.
+      ctx.revokeAbility(payload.playerId, ABILITY_OPEN)
+      delete state.abilityGranted[payload.playerId]
       logEvent('player_entered_victory', { player: payload.playerId })
 
-      // Early-terminate once every still-connected player is in victory.
       const playerIds = ctx.getPlayerIds()
       if (playerIds.length > 0 && playerIds.every(pid => state.inVictory[pid])) {
         finish(state, ctx, 'early_all_in_victory')
       }
     },
 
-    onButtonPress(state, ctx, payload: ButtonPressPayload) {
-      // The framework doesn't tell us which button fired, so we infer from
-      // the occupant's position: only one button can fire with this occupant
-      // set at a time, and every gate button maps 1:1 to a gate id. We use
-      // modifyButton to disable once fired — but since the handler is shared,
-      // we walk the GATES map and pick the one whose matching gate is still
-      // closed AND whose occupants list contains the caller.
-      //
-      // In practice every press has exactly one occupant (requiredPlayers=1)
-      // and one closed gate's button at a time is within range, so the
-      // "nearest-closed" button is unambiguous. We just find the first
-      // still-closed gate and open it; disabling the button stops that pad
-      // from re-firing later.
+    onOpenUsed(state, ctx, payload: AbilityUsePayload) {
       if (state.finished) return
-      if (payload.occupants.length === 0) return
+      const pos = ctx.getPlayerPosition(payload.playerId)
+      if (!pos) return
 
-      // Identify the pressed button by process of elimination: only gates
-      // whose buttons haven't fired yet are candidates. If multiple remain
-      // open we pick the one whose button is currently occupied.
-      let buttonId: string | null = null
-      for (const [bid, gateId] of Object.entries(GATES)) {
-        if (state.gateOpen[gateId]) continue
-        buttonId = bid
-        // Pick the first matching unfired button. Because the scenario only
-        // disables fired buttons (via setButtonState('disabled')), any
-        // occupancy event we receive here must come from the lowest-indexed
-        // still-open gate's button — unless a player steps onto a far-away
-        // one. To be robust, prefer the button whose gate is physically
-        // closest to any occupant in the press payload.
-        break
+      // Pick the closest closed gate within reach on the z-axis.
+      let target: { id: string; worldZ: number } | null = null
+      let bestDist = Infinity
+      for (const g of GATES) {
+        if (state.gateOpen[g.id]) continue
+        const dz = Math.abs(pos.z - g.worldZ)
+        if (dz < bestDist && dz <= DOOR_REACH_Z) {
+          bestDist = dz
+          target = g
+        }
       }
-      if (buttonId === null) return
-      const gateId = GATES[buttonId]
+      if (!target) {
+        logEvent('open_missed', { player: payload.playerId, pz: pos.z })
+        return
+      }
 
-      state.gateOpen[gateId] = true
-      ctx.setGeometryVisible([gateId], false)
-      ctx.setButtonState(buttonId, 'disabled')
+      state.gateOpen[target.id] = true
+      ctx.setGeometryVisible([target.id], false)
 
-      const presser = payload.occupants[0]
       if (Math.random() < 0.5) {
-        logEvent('open_damage', { player: presser, gate: gateId })
-        ctx.applyDamage(presser, 1)
+        logEvent('open_damage', { player: payload.playerId, gate: target.id })
+        ctx.applyDamage(payload.playerId, 1)
       } else {
-        logEvent('open_no_damage', { player: presser, gate: gateId })
+        logEvent('open_no_damage', { player: payload.playerId, gate: target.id })
       }
-      logEvent('gate_opened', { gate: gateId, player: presser })
+      logEvent('gate_opened', { gate: target.id, player: payload.playerId })
     },
 
     timerExpired(state, ctx) {
@@ -214,5 +214,11 @@ export const SCENARIO: ScenarioSpec = {
   hubConnection: {
     mainRoomId: 'spawn',
     dockGeometryId: 'pg_spawn_s',
+  },
+  // victory's north wall is already exactly the hallway width (0.25), so the
+  // existing `pg_vict_n` segment is the exit dock as-is — no split needed.
+  exitConnection: {
+    roomId: 'victory',
+    dockGeometryId: 'pg_vict_n',
   },
 }

@@ -39,6 +39,13 @@ const DOOR_GAP_W = 2 * D_HALF                 // 0.2  width of the gap (and ther
 const R1_S_SEG_W  = R1W / 3   // 0.25 — matches hallway floorWidth
 const R1_S_SEG_CX = R1W / 3   // 0.25 — half-room minus half-segment = 0.375 - 0.125
 
+// Room3's north wall is split the same way so the exit hallway can dock on
+// the middle segment (`r3_ne`) without exposing the north corners. Width of
+// the middle segment matches the hallway's 0.25 floorWidth.
+const EXIT_DOCK_W  = 0.25
+const R3_N_SEG_W   = R3W / 3   // 0.25 — matches hallway floorWidth
+const R3_N_SEG_CX  = R3W / 3   // 0.25
+
 const ROOMS: RoomSpec[] = [
   {
     id: 'room1', name: 'Room 1',
@@ -81,11 +88,14 @@ const ROOMS: RoomSpec[] = [
     floorWidth: R3W, floorDepth: R3D,
     height: ROOM_H,
     cameraRect: { xMin: -0.375, xMax: 0.375, zMin: 0.125, zMax: 0.375 },
-    // North + E/W. South boundary is owned by room2's north wall
-    // (room2_north_wall) — room3 has no south wall of its own so it reads
-    // as open-to-room2 once that toggleable wall drops.
+    // North (three segments; middle `r3_ne` is the exit dock) + E/W. South
+    // boundary is owned by room2's north wall (room2_north_wall) — room3 has
+    // no south wall of its own so it reads as open-to-room2 once that
+    // toggleable wall drops.
     geometry: [
-      { id: 'r3_n', cx: 0,       cy: BY, cz: -WALL_C, width: R3W, height: BT, depth: BT },
+      { id: 'r3_nl', cx: -R3_N_SEG_CX, cy: BY, cz: -WALL_C, width: R3_N_SEG_W, height: BT, depth: BT },
+      { id: 'r3_ne', cx: 0,            cy: BY, cz: -WALL_C, width: EXIT_DOCK_W, height: BT, depth: BT },
+      { id: 'r3_nr', cx:  R3_N_SEG_CX, cy: BY, cz: -WALL_C, width: R3_N_SEG_W, height: BT, depth: BT },
       { id: 'r3_e', cx:  WALL_C, cy: BY, cz:  EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
       { id: 'r3_w', cx: -WALL_C, cy: BY, cz:  EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
     ],

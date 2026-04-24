@@ -9,7 +9,7 @@
     }
   ],
   "opts": {
-    "timeout_ms": 45000
+    "timeout_ms": 90000
   },
   "notes": [
     {
@@ -28,6 +28,11 @@
     "prod_gates/outcome_0/0",
     "prod_gates/outcome_0/1",
     "prod_gates/outcome_0/2",
-    "prod_gates/outcome_0/3"
+    "prod_gates/outcome_0/3",
+    "prod_gates/outcome_0/4",
+    "prod_gates/outcome_0/6",
+    "prod_gates/outcome_0/7",
+    "prod_gates/outcome_0/8",
+    "prod_gates/outcome_0/9"
   ]
 }

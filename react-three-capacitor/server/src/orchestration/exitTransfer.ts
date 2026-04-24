@@ -56,6 +56,13 @@ export interface ExecuteExitTransferArgs {
   // set, the target MR can itself fire another exit transfer. Used by the
   // /loop flow so each fresh hallway automatically advances to the next.
   targetOnExitScenario?: (targetRoom: MultiplayerRoom) => void
+  // Optional wiring for the target MR's `ctx.terminate()` hook. Fired once
+  // the walk-out scenario signals completion (all living players have
+  // crossed into the hallway). Used by the production reenter flow in
+  // GameServer to hub-transfer each player into a random scenario after
+  // they've walked out. Receives the target (hallway) MR so the caller can
+  // iterate its player handles.
+  targetOnScenarioTerminate?: (targetRoom: MultiplayerRoom, scenarioId: string) => void
   // Caps the target MR's `maxPlayers`. Defaults to `sourceRoom.maxPlayers`.
   targetMaxPlayers?: number
 }
@@ -91,6 +98,7 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
     spawnBotFn,
     buildTargetScenario = buildExitScript,
     targetOnExitScenario,
+    targetOnScenarioTerminate,
     targetMaxPlayers,
   } = args
 
@@ -146,6 +154,16 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
     recordingManager,
     exitAttachment: attachment,
     onExitScenario: targetOnExitScenario ? () => targetOnExitScenario(target) : undefined,
+    onScenarioTerminate: targetOnScenarioTerminate
+      ? (scenarioId) => targetOnScenarioTerminate(target, scenarioId)
+      : undefined,
+    // Reenter flow drains this MR player-by-player via `releasePlayer`; once
+    // the last transfer succeeds the player count hits zero and the MR
+    // should not linger. `closeAndDestroy` in the terminate callback covers
+    // the zero-player edge case (everyone disconnected mid-walk); this flag
+    // covers the happy path without the caller having to gate on "all
+    // players successfully moved".
+    autoDestroyOnEmpty: true,
     // Scenario-spawn callbacks are scoped to the new routing key so any bots
     // the target script spawns (currently none) reconnect into this
     // transfer's orchestration. Informational unless a ConnectionHandler is
@@ -153,16 +171,17 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
     spawnBotFn: (spec) => spawnBotFn(targetRoutingKey, spec),
   })
 
-  // Attach the shifted hallway north of the source, then the renamed source
-  // at its original origin. Players' world-space positions in the source MR
-  // are preserved 1:1 in this frame (source was at origin in the source MR,
-  // still at origin here), so no coordinate translation is needed on seat.
+  // Attach ONLY the shifted hallway at construction. The renamed source is
+  // pulled in lazily by the first `acceptExitTransfer` call below, so the
+  // target MR is structurally symmetric with any other MR (one authored map +
+  // one default scenario at construction time) — the same shape as the
+  // scenario MR that the entrance flow targets, where the arriving-side
+  // hallway is attached by `acceptHubTransfer` rather than pre-seeded.
   const shiftedHallway = shiftMapToOrigin(INITIAL_MAP, attachment.hallwayOrigin)
   const hallwayRoomIds = target.addMap(shiftedHallway)
-  const sourceRoomIds = target.addMap(renamedSource)
 
   const scenario = target.buildScenario(
-    [...hallwayRoomIds, ...sourceRoomIds],
+    [...hallwayRoomIds],
     {
       id: targetBuild.scenarioId,
       script: targetBuild.script,
@@ -184,12 +203,15 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
   for (const handle of handles) {
     if (handle.ws.readyState !== handle.ws.OPEN) continue
     sourceRoom.releasePlayer(handle.playerId)
-    // World-space position carries over 1:1 — the source map is at the same
-    // origin in the target world, so the player stays physically in place.
+    // World-space position carries over 1:1 — the source map is attached at
+    // its authored origin inside target (the first `acceptExitTransfer` call
+    // addMaps it), matching where the source MR had it, so the player stays
+    // physically in place from the client's perspective.
     const newPlayerId = target.acceptExitTransfer(
       handle.ws,
       handle.browserUuid,
       targetRoutingKey,
+      renamedSource,
       { x: handle.x, z: handle.z },
     )
     rebindWs(handle.ws, target, newPlayerId)

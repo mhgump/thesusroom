@@ -68,28 +68,54 @@ export class DefaultGameOrchestration implements ConnectionHandler {
     // player over. Any failure leaves the player in the solo MR — they can
     // at least walk around the hallway, and the next reconnect will retry.
     try {
-      const picked = await this.resolveTarget(ctx)
-      if (!picked) throw new Error('No hub-capable scenario has an open slot')
-      if (ws.readyState !== WebSocket.OPEN) {
-        // Player dropped while we were resolving; just tear down.
+      const picked = await this.transferPlayerToHub(ws, browserUuid, solo, soloPlayerId, ctx)
+      if (!picked) {
+        // `null` means either no hub-capable target exists or the ws closed
+        // while we were resolving. Tear down the per-connection solo MR
+        // either way — nothing else is going to use it.
         solo.destroy()
         return
       }
-      solo.releasePlayer(soloPlayerId)
-      const newPlayerId = picked.room.acceptHubTransfer(
-        ws,
-        browserUuid,
-        picked.routingKey,
-        this.options.initialMap,
-        this.options.initialHallwaySpawnLocal,
-      )
-      ctx.rebindWs(ws, picked.room, newPlayerId)
       solo.destroy()
     } catch (err) {
       console.error('[DefaultGameOrchestration] hub transfer failed:', err)
       // Leave the player in the solo MR; they can walk around the hallway
       // and reconnect later. Alternative: close the socket with an error.
     }
+  }
+
+  // Move a connected player from an arbitrary source MR into a hub-capable
+  // scenario MR picked by the decision hooks. Returns the picked
+  // (routingKey, room) on success, null when no target was available or the
+  // ws closed mid-resolve. Throws if the target refused the seat
+  // (`acceptHubTransfer` race between `isHubSlotOpen` and seat) — caller
+  // decides whether to retry or tear the source down.
+  //
+  // Used by `handle()` for the `/` solo-hallway → scenario hop and by the
+  // exit-hallway reenter flow (GameServer.onExitScenario) to drain a shared
+  // hallway MR one player at a time. Does NOT destroy the source room — the
+  // source lifecycle belongs to the caller (per-connection destroy for solo,
+  // autoDestroyOnEmpty for the shared exit hallway).
+  async transferPlayerToHub(
+    ws: WebSocket,
+    browserUuid: string | null,
+    sourceRoom: MultiplayerRoom,
+    sourcePlayerId: string,
+    ctx: ConnectionContext,
+  ): Promise<{ routingKey: string; room: MultiplayerRoom } | null> {
+    const picked = await this.resolveTarget(ctx)
+    if (!picked) return null
+    if (ws.readyState !== WebSocket.OPEN) return null
+    sourceRoom.releasePlayer(sourcePlayerId)
+    const newPlayerId = picked.room.acceptHubTransfer(
+      ws,
+      browserUuid,
+      picked.routingKey,
+      this.options.initialMap,
+      this.options.initialHallwaySpawnLocal,
+    )
+    ctx.rebindWs(ws, picked.room, newPlayerId)
+    return picked
   }
 
   // Run the two-step decision: existing room first, then scenario. Returns

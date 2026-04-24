@@ -30,6 +30,12 @@ const HUB_DOCK_W = 0.25
 const S_SIDE_W   = (ROOM_SIZE - HUB_DOCK_W) / 2
 const S_SIDE_CX  = (ROOM_SIZE + HUB_DOCK_W) / 4
 
+// Exit dock split: the north wall mirrors the hub split so the exit hallway
+// can dock on the middle segment without exposing the north corners.
+const EXIT_DOCK_W = 0.25
+const N_SIDE_W    = (ROOM_SIZE - EXIT_DOCK_W) / 2
+const N_SIDE_CX   = (ROOM_SIZE + EXIT_DOCK_W) / 4
+
 const BTN_Z = 0
 const BTN_LEFT_X = -0.2014
 const BTN_RIGHT_X = 0.2014
@@ -43,7 +49,9 @@ const ROOMS: RoomSpec[] = [
     height: ROOM_H,
     cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
     geometry: [
-      { id: 's3_wn',  cx: 0,           cy: BY, cz: -WALL_C, width: ROOM_SIZE,  height: bh, depth: bt },
+      { id: 's3_wnl', cx: -N_SIDE_CX,  cy: BY, cz: -WALL_C, width: N_SIDE_W,    height: bh, depth: bt },
+      { id: 's3_wne', cx: 0,           cy: BY, cz: -WALL_C, width: EXIT_DOCK_W, height: bh, depth: bt },
+      { id: 's3_wnr', cx:  N_SIDE_CX,  cy: BY, cz: -WALL_C, width: N_SIDE_W,    height: bh, depth: bt },
       { id: 's3_wsl', cx: -S_SIDE_CX,  cy: BY, cz:  WALL_C, width: S_SIDE_W,   height: bh, depth: bt },
       { id: 's3_ws',  cx: 0,           cy: BY, cz:  WALL_C, width: HUB_DOCK_W, height: bh, depth: bt },
       { id: 's3_wsr', cx:  S_SIDE_CX,  cy: BY, cz:  WALL_C, width: S_SIDE_W,   height: bh, depth: bt },

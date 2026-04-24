@@ -15,6 +15,7 @@ export interface BotRunnerHooks {
   sendMove(tick: number, inputs: MoveInput[]): void
   sendReady(): void
   sendChoice(eventId: string, optionId: string): void
+  sendAbilityUse(abilityId: string): void
 }
 
 export interface BotRunnerOptions {
@@ -240,6 +241,10 @@ export class BotRunner {
       },
       getPosition() { return { ...self.position } },
       getOtherPlayers() { return new Map(self.otherPlayers) },
+      useAbility(abilityId: string): void {
+        if (!self.running) return
+        self.hooks.sendAbilityUse(abilityId)
+      },
     }
   }
 }

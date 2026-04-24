@@ -26,10 +26,15 @@ export interface BuildScenarioRoomOptions {
   // so the caller can build a target exit-hallway MR and transfer players.
   // Only meaningful for scenarios whose spec carries `exitConnection`.
   onExitScenario?: (sourceRoom: MultiplayerRoom, sourceMap: GameMap, sourceScenario: ScenarioSpec) => void
+  // When false, the created room does not advertise itself as a hub-fill
+  // target even if the scenario spec carries `hubConnection`. Used by the
+  // scenario-run harness so stray `/` connections can't be routed into the
+  // one-shot room that the test runner just registered. Defaults to true.
+  allowHubFill?: boolean
 }
 
 export function createScenarioRoom(opts: BuildScenarioRoomOptions): MultiplayerRoom {
-  const { ctx, map, scenario, autoStart = true, tickRateHz, onScenarioTerminate, onExitScenario } = opts
+  const { ctx, map, scenario, autoStart = true, tickRateHz, onScenarioTerminate, onExitScenario, allowHubFill = true } = opts
 
   // Holder captured by the MR's onExitScenario callback below. Assigned on
   // the line after `new MultiplayerRoom(...)` so the callback (which only
@@ -51,7 +56,7 @@ export function createScenarioRoom(opts: BuildScenarioRoomOptions): MultiplayerR
         }
       : undefined,
     recordingManager: ctx.recordingManager,
-    hubConnection: scenario.hubConnection,
+    hubConnection: allowHubFill ? scenario.hubConnection : undefined,
     maxPlayers: scenario.maxPlayers,
   })
   self = room
