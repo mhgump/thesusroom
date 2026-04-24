@@ -1,9 +1,9 @@
 import type { GameMap } from '../../react-three-capacitor/src/game/GameMap.js'
-import { DEMO_MAP } from './demo.js'
-import { SCENARIO1_MAP } from './scenario1.js'
-import { SCENARIO2_MAP } from './scenario2.js'
-import { SCENARIO3_MAP } from './scenario3.js'
-import { SCENARIO4_MAP } from './scenario4.js'
+import { DEMO_MAP } from './demo/map.js'
+import { SCENARIO1_MAP } from './scenario1/map.js'
+import { SCENARIO2_MAP } from './scenario2/map.js'
+import { SCENARIO3_MAP } from './scenario3/map.js'
+import { SCENARIO4_MAP } from './scenario4/map.js'
 
 export type { GameMap }
 export { DEMO_MAP, SCENARIO1_MAP, SCENARIO2_MAP, SCENARIO3_MAP, SCENARIO4_MAP }

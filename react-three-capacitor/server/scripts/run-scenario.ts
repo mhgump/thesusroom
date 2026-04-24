@@ -5,7 +5,7 @@
  *   npx tsx scripts/run-scenario.ts \
  *     [--scenario <id>]               default: demo
  *     [--bots <path:Export> ...]      bot specs relative to project root, e.g.
- *                                     content/bots/demo/demoBot.ts:DEMO_BOT
+ *                                     content/bots/demo/demoBot/bot.ts:DEMO_BOT
  *     [--record-bot-index <n>]        bot index to observe + record video for.
  *                                     Optional; default: no recording.
  *                                     Must be < bot count when set.
@@ -33,11 +33,12 @@ import express from 'express'
 import { initPhysics } from '../src/World.js'
 import { GameServer } from '../src/GameServer.js'
 import { BotClient } from '../src/bot/BotClient.js'
-import { DEMO_SCENARIO } from '../../../content/scenarios/demo.js'
-import { SCENARIO1_SCENARIO } from '../../../content/scenarios/scenario1.js'
-import { SCENARIO2_SCENARIO } from '../../../content/scenarios/scenario2.js'
-import { SCENARIO3_SCENARIO } from '../../../content/scenarios/scenario3.js'
-import { SCENARIO4_SCENARIO } from '../../../content/scenarios/scenario4.js'
+import { formatLogs, type LogEntry } from './logFormat.js'
+import { DEMO_SCENARIO } from '../../../content/scenarios/demo/scenario.js'
+import { SCENARIO1_SCENARIO } from '../../../content/scenarios/scenario1/scenario.js'
+import { SCENARIO2_SCENARIO } from '../../../content/scenarios/scenario2/scenario.js'
+import { SCENARIO3_SCENARIO } from '../../../content/scenarios/scenario3/scenario.js'
+import { SCENARIO4_SCENARIO } from '../../../content/scenarios/scenario4/scenario.js'
 import type { BotSpec } from '../src/bot/BotTypes.js'
 import type { ScenarioSpec } from '../src/ContentRegistry.js'
 
@@ -86,6 +87,9 @@ const { values } = parseArgs({
     'log-bot-indices':   { type: 'string'                   },
     'output-dir':        { type: 'string'                   },
     'response-json':     { type: 'string'                   },
+    'run-id':            { type: 'string'                   },
+    'test-spec-name':    { type: 'string'                   },
+    'run-index':         { type: 'string'                   },
     timeout:             { type: 'string'                   },
     'tick-rate-hz':      { type: 'string',  default: '240'  },
     'capture-fps':       { type: 'string',  default: '60'   },
@@ -104,6 +108,9 @@ const OUTPUT_DIR       = values['output-dir']
 const RESPONSE_JSON    = values['response-json']
   ? path.resolve(process.cwd(), values['response-json'])
   : null
+const TEST_SPEC_NAME   = values['test-spec-name'] ?? '_adhoc'
+const RUN_INDEX        = values['run-index'] !== undefined ? parseInt(values['run-index'], 10) : 0
+const RUN_ID           = values['run-id'] ?? `${SCENARIO_ID}/${TEST_SPEC_NAME}/${RUN_INDEX}`
 const TIMEOUT_OVERRIDE = values.timeout ? parseInt(values.timeout, 10) : undefined
 
 const TICK_RATE_HZ = parseFloat(values['tick-rate-hz'] ?? '240')
@@ -443,47 +450,83 @@ if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
 
 // ── Collect bot logs (filtered by --log-bot-indices) ──────────────────────────
 
-const cliBotLogs = botClients.flatMap((c, i) =>
+const cliBotLogs: LogEntry[] = botClients.flatMap((c, i) =>
   (logBotIndexSet === null || logBotIndexSet.has(i))
-    ? c.logs.map(l => ({ clientIndex: i, source: 'cli-bot' as const, log: l }))
+    ? c.logs.map(l => ({
+        time: l.time,
+        level: l.level,
+        source: 'cli-bot' as const,
+        bot_index: i,
+        message: l.message,
+      }))
     : [],
 )
-const scenarioBotLogs = gameServer.getBotManager().collectLogs().map(e => ({
-  ...e, source: 'scenario-bot' as const,
+const scenarioBotLogs: LogEntry[] = gameServer.getBotManager().collectLogs().map(e => ({
+  time: e.log.time,
+  level: e.log.level,
+  source: 'scenario-bot' as const,
+  bot_index: e.clientIndex,
+  message: e.log.message,
 }))
 
-const allLogs = [...cliBotLogs, ...scenarioBotLogs].sort((a, b) => a.log.time - b.log.time)
+const allBotLogs: LogEntry[] = [...cliBotLogs, ...scenarioBotLogs].sort((a, b) => a.time - b.time)
 
-if (allLogs.length > 0) {
-  console.log('\n[run-scenario] bot logs:')
-  for (const { source, clientIndex, log } of allLogs) {
-    const ts = new Date(log.time).toISOString().slice(11, 23)
-    console.log(`  [${ts}] [${source}#${clientIndex}] ${log.level.toUpperCase()} ${log.message}`)
-  }
-}
+const serverLogEntries: LogEntry[] = serverLogs.map(e => ({
+  time: e.time,
+  level: e.level,
+  source: 'server' as const,
+  bot_index: null,
+  message: e.message,
+}))
 
 // ── Build structured response ─────────────────────────────────────────────────
 
-const response = {
-  scenario_id: SCENARIO_ID,
-  bot_count: botSpecs.length,
-  record_bot_index: RECORD_BOT_INDEX,
-  log_bot_indices: LOG_BOT_INDICES,
-  effective_timeout_ms: effectiveTimeout,
-  terminated_by: terminatedByScenario ? 'scenario' as const : 'timeout' as const,
-  logs: allLogs.map(({ source, clientIndex, log }) => ({
-    time: log.time,
-    level: log.level,
-    source,
-    bot_index: clientIndex,
-    message: log.message,
-  })),
-  video_path: videoOutPath,
-  screenshot_path: screenshotOutPath,
-  screenshot_has_content: screenshotHasContent,
-  observer_ready_fired: observerReadyFired,
-  server_logs: serverLogs,
-  exit_code: process.exitCode ?? 0,
+interface ScenarioRunResult {
+  run_id: string
+  output_dir: string
+  config: {
+    scenario_id: string
+    test_spec_name: string
+    index: number
+    bot_count: number
+    record_bot_index: number | null
+    log_bot_indices: number[] | null
+    effective_timeout_ms: number
+  }
+  logs: string
+  termination_metadata: {
+    terminated_by: 'scenario' | 'timeout'
+    exit_code: number
+    video_path: string | null
+    screenshot_path: string | null
+    screenshot_has_content: boolean | null
+    observer_ready_fired: boolean
+  }
+  server_logs: string
+}
+
+const response: ScenarioRunResult = {
+  run_id: RUN_ID,
+  output_dir: OUTPUT_DIR ?? '',
+  config: {
+    scenario_id: SCENARIO_ID,
+    test_spec_name: TEST_SPEC_NAME,
+    index: RUN_INDEX,
+    bot_count: botSpecs.length,
+    record_bot_index: RECORD_BOT_INDEX,
+    log_bot_indices: LOG_BOT_INDICES,
+    effective_timeout_ms: effectiveTimeout,
+  },
+  logs: formatLogs(allBotLogs),
+  termination_metadata: {
+    terminated_by: terminatedByScenario ? 'scenario' : 'timeout',
+    exit_code: process.exitCode ?? 0,
+    video_path: videoOutPath,
+    screenshot_path: screenshotOutPath,
+    screenshot_has_content: screenshotHasContent,
+    observer_ready_fired: observerReadyFired,
+  },
+  server_logs: formatLogs(serverLogEntries),
 }
 
 if (RESPONSE_JSON) {

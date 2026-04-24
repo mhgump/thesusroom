@@ -1,12 +1,13 @@
 // Persistent description of a scenario-run attempt by the Run-Scenario Agent.
 //
-// Test specs live on disk at content/test_specs/{name}.json. Each spec
+// Test specs live on disk at
+// content/scenarios/{scenario_id}/test_specs/{name}/spec.json. Each spec
 // captures the scenario / map / bots / opts that were tried, plus a growing
 // list of notes — the agent's reasoning about the attempt — and the artifact
 // ids of every run produced against this spec.
 
 export interface RunScenarioSpecBot {
-  // Path relative to repo root, e.g. "content/bots/demo/demoBot.ts".
+  // Path relative to repo root, e.g. "content/bots/demo/demoBot/bot.ts".
   path: string
   // Exported BotSpec name, e.g. "DEMO_BOT".
   export: string

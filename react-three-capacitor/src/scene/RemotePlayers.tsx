@@ -6,7 +6,7 @@ import type { RemotePlayerInfo } from '../store/gameStore'
 import { getInterpolatedPos, consumeRemoteEvents } from '../network/positionBuffer'
 import { CapsuleFallback } from './animation/CapsuleFallback'
 import type { AnimationState } from '../game/World'
-import { CURRENT_MAP } from '../../../content/client/maps'
+import { CURRENT_MAP } from '../../../content/maps'
 import { HeartSprite } from './HeartSprite'
 
 const CAPSULE_CENTER_Y = 0.0282 + 0.0806 / 2

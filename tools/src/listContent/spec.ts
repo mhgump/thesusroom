@@ -15,6 +15,7 @@ export interface ListContentInput {
 
 export interface ListedScenario {
   name: string
+  index: number
   path: string
 }
 
@@ -31,6 +32,7 @@ export interface ListedBot {
 
 export interface ListedTestSpec {
   name: string
+  index: number
   path: string
   scenario_id: string
   map_id: string
@@ -42,7 +44,9 @@ export interface ListContentOutput {
   scenarios: ListedScenario[]
   maps: ListedMap[]
   bots: ListedBot[]
-  test_specs: ListedTestSpec[]
+  // Test specs grouped by scenario_id. Scenarios with no test specs are
+  // still present with an empty array.
+  test_specs: Record<string, ListedTestSpec[]>
 }
 
 export const LIST_CONTENT_SPEC: ToolSpec = {
@@ -54,8 +58,10 @@ export const LIST_CONTENT_SPEC: ToolSpec = {
     '`bot_spec_name` for historical reasons but is treated as a regex pattern ' +
     'like the others. If none of the for_* flags are set, all four categories ' +
     'are returned; if any for_* flag is true, only the flagged categories ' +
-    'are populated (others come back as empty arrays). Paths are repo-root ' +
-    'relative.',
+    'are populated (others come back empty). Test specs are grouped by ' +
+    'scenario_id. Paths are repo-root relative. Scenarios and test specs ' +
+    'include their integer `index` from content/scenario_map.json / ' +
+    'content/scenarios/{scenario}/test_specs.json.',
   input_schema: {
     type: 'object',
     additionalProperties: false,

@@ -1,6 +1,7 @@
 import type { ToolSpec } from '../framework.js'
 
 export interface AddNotesToTestSpecInput {
+  scenario_id: string
   test_spec_name: string
   author: string
   text: string
@@ -21,8 +22,12 @@ export const ADD_NOTES_TO_TEST_SPEC_SPEC: ToolSpec = {
   input_schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['test_spec_name', 'author', 'text'],
+    required: ['scenario_id', 'test_spec_name', 'author', 'text'],
     properties: {
+      scenario_id: {
+        type: 'string',
+        description: 'Scenario slug the test spec belongs to.',
+      },
       test_spec_name: {
         type: 'string',
         description: 'Slug of the spec to append to.',

@@ -1,7 +1,6 @@
-import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { CONTENT_DIR } from '../_shared/paths.js'
-import { writeAndValidate } from '../_shared/validate.js'
+import { getBackends } from '../_shared/backends/index.js'
+import { validateWrittenFile } from '../_shared/validate.js'
 import { INSERT_MAP_SPEC, type InsertMapInput, type InsertMapOutput } from './spec.js'
 
 function validateInput(input: unknown): InsertMapInput {
@@ -16,8 +15,15 @@ function validateInput(input: unknown): InsertMapInput {
 
 async function run(rawInput: unknown): Promise<InsertMapOutput> {
   const input = validateInput(rawInput)
-  const absPath = path.join(CONTENT_DIR, 'maps', `${input.map_id}.ts`)
-  return writeAndValidate(absPath, input.file_content, input.export_name, 'map')
+  const { map } = getBackends()
+
+  await map.put(input.map_id, { source: input.file_content })
+
+  const abs = map.locate?.(input.map_id)
+  if (!abs) {
+    throw new Error('backend does not support locate() — validation requires filesystem access')
+  }
+  return validateWrittenFile(abs, input.export_name, 'map')
 }
 
 export const INSERT_MAP_TOOL: Tool<InsertMapInput, InsertMapOutput> = {

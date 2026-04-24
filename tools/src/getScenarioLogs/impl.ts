@@ -1,5 +1,7 @@
 import type { Tool } from '../framework.js'
-import { readArtifact } from '../_shared/artifact.js'
+import { getBackends } from '../_shared/backends/index.js'
+import { parseRunResultKey } from '../_shared/backends/types.js'
+import { parseLogs } from '../_shared/logFormat.js'
 import {
   GET_SCENARIO_LOGS_SPEC,
   type GetScenarioLogsInput,
@@ -22,11 +24,25 @@ function isWebsocketError(message: string): boolean {
 
 async function run(rawInput: unknown): Promise<GetScenarioLogsOutput> {
   const input = validateInput(rawInput)
-  const artifact = readArtifact(input.run_artifact_id)
-  if ('error' in artifact) {
+  const key = parseRunResultKey(input.run_artifact_id)
+  if (key === null) {
     return {
       scenario_script_logs: [],
-      scenario_script_errors: [{ time: 0, level: 'error', message: artifact.error }],
+      scenario_script_errors: [
+        { time: 0, level: 'error', message: `invalid run_artifact_id: ${input.run_artifact_id}` },
+      ],
+      websocket_errors: [],
+      success: false,
+    }
+  }
+  const { scenarioRunResult } = getBackends()
+  const artifact = await scenarioRunResult.get(key)
+  if (artifact === null) {
+    return {
+      scenario_script_logs: [],
+      scenario_script_errors: [
+        { time: 0, level: 'error', message: `artifact not found: ${input.run_artifact_id}` },
+      ],
       websocket_errors: [],
       success: false,
     }
@@ -36,7 +52,13 @@ async function run(rawInput: unknown): Promise<GetScenarioLogsOutput> {
   const scenario_script_errors: LogLine[] = []
   const websocket_errors: LogLine[] = []
 
-  for (const s of artifact.server_logs ?? []) {
+  // `dateMs` anchors the date for the time-of-day prefix. Using Date.now()
+  // is fine: entries share the run's day and only relative order matters.
+  const now = Date.now()
+  const serverEntries = parseLogs(artifact.server_logs, now)
+  const botEntries = parseLogs(artifact.logs, now)
+
+  for (const s of serverEntries) {
     const line: LogLine = { time: s.time, level: s.level, message: s.message }
     if (isWebsocketError(s.message)) {
       websocket_errors.push(line)
@@ -47,7 +69,7 @@ async function run(rawInput: unknown): Promise<GetScenarioLogsOutput> {
   }
 
   // Also surface any ws-error entries that showed up in bot client logs.
-  for (const log of artifact.logs) {
+  for (const log of botEntries) {
     if (isWebsocketError(log.message)) {
       websocket_errors.push({ time: log.time, level: log.level, message: log.message })
     }
@@ -56,8 +78,8 @@ async function run(rawInput: unknown): Promise<GetScenarioLogsOutput> {
   websocket_errors.sort((a, b) => a.time - b.time)
 
   const success =
-    artifact.terminated_by === 'scenario' &&
-    artifact.exit_code === 0 &&
+    artifact.termination_metadata.terminated_by === 'scenario' &&
+    artifact.termination_metadata.exit_code === 0 &&
     scenario_script_errors.length === 0
 
   return {

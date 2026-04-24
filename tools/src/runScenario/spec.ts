@@ -3,8 +3,12 @@ import type { ToolSpec } from '../framework.js'
 export interface RunScenarioInput {
   // Scenario identifier (as registered in react-three-capacitor/server/scripts/run-scenario.ts).
   scenario_id: string
+  // Optional test-spec name. Used as the middle segment of the run's storage key
+  // (content/scenario_runs/{scenario}/{test_spec}/{index}/). Omit for direct runs
+  // not driven by a named spec — '_adhoc' is substituted.
+  test_spec_name?: string
   // Bot specs to connect, in order. Each is a reference into content/ resolved as
-  //   {path}:{export_name}   e.g. "content/bots/demo/demoBot.ts:DEMO_BOT"
+  //   {path}:{export_name}   e.g. "content/bots/demo/demoBot/bot.ts:DEMO_BOT"
   bots: { path: string; export: string }[]
   // Optional bot index to record video for. Must be < bots.length when set.
   record_video_bot_index?: number
@@ -15,36 +19,35 @@ export interface RunScenarioInput {
   timeout_ms?: number
 }
 
-export interface RunScenarioLogEntry {
-  time: number
-  level: 'info' | 'warn' | 'error'
-  source: 'cli-bot' | 'scenario-bot'
-  bot_index: number
-  message: string
-}
-
-export interface ServerLogEntry {
-  time: number
-  level: 'info' | 'warn' | 'error'
-  message: string
-}
-
-export interface RunScenarioOutput {
+// Wire shape of content/scenario_runs/{scenario}/{test_spec}/{index}/response.json.
+// The writer (react-three-capacitor/server/scripts/run-scenario.ts) produces
+// this; readers in tools/src/ parse `logs` / `server_logs` with parseLogs()
+// from _shared/logFormat.ts.
+export interface ScenarioRunResult {
+  // Canonical string form of the RunResultKey: "<scenario>/<test_spec>/<index>".
   run_id: string
-  scenario_id: string
-  bot_count: number
-  record_bot_index: number | null
-  log_bot_indices: number[] | null
-  effective_timeout_ms: number
-  terminated_by: 'scenario' | 'timeout'
-  logs: RunScenarioLogEntry[]
-  server_logs: ServerLogEntry[]
-  // Absolute path — only set when recording was requested.
-  video_path: string | null
-  screenshot_path: string | null
-  screenshot_has_content: boolean | null
   output_dir: string
-  exit_code: number
+  config: {
+    scenario_id: string
+    test_spec_name: string
+    index: number
+    bot_count: number
+    record_bot_index: number | null
+    log_bot_indices: number[] | null
+    effective_timeout_ms: number
+  }
+  // Text block, one LogEntry per line — see _shared/logFormat.ts.
+  logs: string
+  termination_metadata: {
+    terminated_by: 'scenario' | 'timeout'
+    exit_code: number
+    video_path: string | null
+    screenshot_path: string | null
+    screenshot_has_content: boolean | null
+    observer_ready_fired: boolean
+  }
+  // Text block, one LogEntry per line — see _shared/logFormat.ts.
+  server_logs: string
 }
 
 export const RUN_SCENARIO_SPEC: ToolSpec = {
@@ -52,8 +55,9 @@ export const RUN_SCENARIO_SPEC: ToolSpec = {
   description:
     'Run a scenario from content/ with a chosen list of bots. Returns structured ' +
     'JSON with collected bot logs and (optionally) a recorded video of one bot\'s ' +
-    'point of view. The video, screenshot, and JSON response are also written to ' +
-    'data/scenario_runs/{run_id}/ on disk.',
+    'point of view. The video, screenshot, and JSON response are persisted via ' +
+    'the configured data backend; for the filesystem backend they live under ' +
+    'content/scenario_runs/{scenario}/{test_spec}/{index}/.',
   input_schema: {
     type: 'object',
     additionalProperties: false,
@@ -64,6 +68,12 @@ export const RUN_SCENARIO_SPEC: ToolSpec = {
         description:
           'Scenario to load from content/scenarios/. One of: demo, scenario1, ' +
           'scenario2, scenario3, scenario4.',
+      },
+      test_spec_name: {
+        type: 'string',
+        description:
+          'Optional test-spec name this run belongs to. Becomes the middle ' +
+          'segment of the storage key. Omit for ad-hoc runs.',
       },
       bots: {
         type: 'array',
@@ -79,7 +89,7 @@ export const RUN_SCENARIO_SPEC: ToolSpec = {
               type: 'string',
               description:
                 'Path (relative to repo root) to a .ts module that exports a ' +
-                'BotSpec, e.g. "content/bots/demo/demoBot.ts".',
+                'BotSpec, e.g. "content/bots/demo/demoBot/bot.ts".',
             },
             export: {
               type: 'string',

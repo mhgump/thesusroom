@@ -6,7 +6,7 @@ import { ChoicePopup } from './ChoicePopup'
 import { RulePopup } from './RulePopup'
 import { RulesPanel } from './RulesPanel'
 import { SettingsPanel } from './SettingsPanel'
-import { CURRENT_MAP } from '../../../content/client/maps'
+import { CURRENT_MAP } from '../../../content/maps'
 
 export function HUD() {
   const connected = useGameStore((s) => s.connected)

@@ -1,8 +1,6 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { CONTENT_DIR } from '../_shared/paths.js'
-import { writeAndValidate } from '../_shared/validate.js'
+import { getBackends } from '../_shared/backends/index.js'
+import { validateWrittenFile } from '../_shared/validate.js'
 import {
   INSERT_SCENARIO_SPEC,
   type InsertScenarioInput,
@@ -23,12 +21,23 @@ function validateInput(input: unknown): InsertScenarioInput {
 
 async function run(rawInput: unknown): Promise<InsertScenarioOutput> {
   const input = validateInput(rawInput)
-  const mapPath = path.join(CONTENT_DIR, 'maps', `${input.map_id}.ts`)
-  if (!fs.existsSync(mapPath)) {
-    return { success: false, error: `map "${input.map_id}" not found at ${mapPath}` }
+  const { map, scenario } = getBackends()
+
+  if ((await map.get(input.map_id)) === null) {
+    const mapLoc = map.locate?.(input.map_id) ?? input.map_id
+    return { success: false, error: `map "${input.map_id}" not found at ${mapLoc}` }
   }
-  const absPath = path.join(CONTENT_DIR, 'scenarios', `${input.scenario_id}.ts`)
-  return writeAndValidate(absPath, input.file_content, input.export_name, 'scenario')
+
+  const scenario_index = await scenario.newScenario(input.scenario_id)
+  await scenario.put(input.scenario_id, { source: input.file_content })
+
+  const abs = scenario.locate?.(input.scenario_id)
+  if (!abs) {
+    throw new Error('backend does not support locate() — validation requires filesystem access')
+  }
+  const validation = await validateWrittenFile(abs, input.export_name, 'scenario')
+  if (!validation.success) return validation
+  return { success: true, scenario_index }
 }
 
 export const INSERT_SCENARIO_TOOL: Tool<InsertScenarioInput, InsertScenarioOutput> = {

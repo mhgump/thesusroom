@@ -1,8 +1,6 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { CONTENT_DIR } from '../_shared/paths.js'
-import { writeAndValidate } from '../_shared/validate.js'
+import { getBackends } from '../_shared/backends/index.js'
+import { validateWrittenFile } from '../_shared/validate.js'
 import { INSERT_BOT_SPEC, type InsertBotInput, type InsertBotOutput } from './spec.js'
 
 function validateInput(input: unknown): InsertBotInput {
@@ -19,12 +17,21 @@ function validateInput(input: unknown): InsertBotInput {
 
 async function run(rawInput: unknown): Promise<InsertBotOutput> {
   const input = validateInput(rawInput)
-  const scenarioPath = path.join(CONTENT_DIR, 'scenarios', `${input.scenario_id}.ts`)
-  if (!fs.existsSync(scenarioPath)) {
-    return { success: false, error: `scenario "${input.scenario_id}" not found at ${scenarioPath}` }
+  const { bot, scenario } = getBackends()
+
+  if ((await scenario.get(input.scenario_id)) === null) {
+    const scenarioLoc = scenario.locate?.(input.scenario_id) ?? input.scenario_id
+    return { success: false, error: `scenario "${input.scenario_id}" not found at ${scenarioLoc}` }
   }
-  const absPath = path.join(CONTENT_DIR, 'bots', input.scenario_id, `${input.bot_id}.ts`)
-  return writeAndValidate(absPath, input.file_content, input.export_name, 'bot')
+
+  const key = { scenario_id: input.scenario_id, bot_id: input.bot_id }
+  await bot.put(key, { source: input.file_content })
+
+  const abs = bot.locate?.(key)
+  if (!abs) {
+    throw new Error('backend does not support locate() — validation requires filesystem access')
+  }
+  return validateWrittenFile(abs, input.export_name, 'bot')
 }
 
 export const INSERT_BOT_TOOL: Tool<InsertBotInput, InsertBotOutput> = {

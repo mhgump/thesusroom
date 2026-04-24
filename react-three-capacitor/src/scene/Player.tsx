@@ -8,7 +8,7 @@ import { CapsuleFallback } from './animation/CapsuleFallback'
 import { useWsSend } from '../network/useWebSocket'
 import { consumeMoveAcks, getInterpolatedPos } from '../network/positionBuffer'
 import { localPlayerPos } from '../game/localPlayerPos'
-import { CURRENT_MAP } from '../../../content/client/maps'
+import { CURRENT_MAP } from '../../../content/maps'
 import { localWorld } from '../game/localWorld'
 import { HeartSprite } from './HeartSprite'
 

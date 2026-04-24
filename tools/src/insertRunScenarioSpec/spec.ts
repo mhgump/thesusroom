@@ -33,10 +33,10 @@ export const INSERT_RUN_SCENARIO_SPEC_SPEC: ToolSpec = {
   name: 'insert_run_scenario_spec',
   description:
     'Create or replace a run-scenario test spec at ' +
-    'content/test_specs/{name}.json. Captures the scenario_id, map_id, bot ' +
-    'refs, and run opts that define one attempt; notes are set to whatever ' +
-    'is passed (default []) and are replaced wholesale — use ' +
-    'add_notes_to_test_spec to append reasoning after creation. Validates ' +
+    'content/scenarios/{scenario_id}/test_specs/{name}/spec.json. Captures ' +
+    'the scenario_id, map_id, bot refs, and run opts that define one attempt; ' +
+    'notes are set to whatever is passed (default []) and are replaced wholesale — ' +
+    'use add_notes_to_test_spec to append reasoning after creation. Validates ' +
     'that the scenario / map files and every bot path exist, and that opts ' +
     'indices are within range. Returns {success:true, test_spec_name} on ' +
     'success, {success:false, error} on validation failure (no file is written).',
@@ -47,15 +47,16 @@ export const INSERT_RUN_SCENARIO_SPEC_SPEC: ToolSpec = {
     properties: {
       name: {
         type: 'string',
-        description: 'Slug for the spec file: content/test_specs/{name}.json.',
+        description:
+          'Slug for the spec. Stored at content/scenarios/{scenario_id}/test_specs/{name}/spec.json.',
       },
       scenario_id: {
         type: 'string',
-        description: 'Scenario slug — content/scenarios/{scenario_id}.ts must exist.',
+        description: 'Scenario slug — content/scenarios/{scenario_id}/scenario.ts must exist.',
       },
       map_id: {
         type: 'string',
-        description: 'Map slug — content/maps/{map_id}.ts must exist.',
+        description: 'Map slug — content/maps/{map_id}/map.ts must exist.',
       },
       bots: {
         type: 'array',
@@ -67,7 +68,7 @@ export const INSERT_RUN_SCENARIO_SPEC_SPEC: ToolSpec = {
           properties: {
             path: {
               type: 'string',
-              description: 'Repo-root-relative path, e.g. "content/bots/demo/demoBot.ts".',
+              description: 'Repo-root-relative path, e.g. "content/bots/demo/demoBot/bot.ts".',
             },
             export: {
               type: 'string',

@@ -12,9 +12,9 @@ You have the full toolbox:
 - Sub-agents (delegate and get back a structured summary):
   - `map_agent`, `scenario_agent`, `bot_agent` — create or iterate on content.
   - `run_scenario_agent` — run and summarize, including log analysis. Returns
-    only `{test_spec_name, success}`; the full trail (scenario/map/bots, the
-    agent's notes, and `last_run_artifact_ids`) lives in
-    `content/test_specs/{test_spec_name}.json`.
+    `{scenario_id, test_spec_name, success}`; the full trail (scenario/map/bots,
+    the agent's notes, and `last_run_artifact_ids`) lives in
+    `content/scenarios/{scenario_id}/test_specs/{test_spec_name}/spec.json`.
 - Low-level primitives (use when the sub-agents are overkill):
   - `insert_map`, `insert_scenario`, `insert_bot` — direct content edits.
   - `run_scenario_with_bots`, `get_scenario_logs`, `get_bot_logs` — direct run
@@ -33,10 +33,11 @@ You have the full toolbox:
 2. Use the sub-agents for chunky, self-contained sub-tasks ("write a bot that
    does X") and the primitives for small surgical changes ("swap this one
    line").
-3. After each `run_scenario_agent` call, read the returned `test_spec_name`
-   and call `read_test_spec` to inspect the notes and `last_run_artifact_ids`.
-   If you need more detail about the run itself, call `get_scenario_logs` /
-   `get_bot_logs` on an id from `last_run_artifact_ids`.
+3. After each `run_scenario_agent` call, read the returned `{scenario_id,
+   test_spec_name}` and call `read_test_spec` to inspect the notes and
+   `last_run_artifact_ids`. If you need more detail about the run itself,
+   call `get_scenario_logs` / `get_bot_logs` on an id from
+   `last_run_artifact_ids`.
 4. After each run, decide whether the goal is met. If not, plan the next
    edit and loop.
 5. Stop iterating once the goal is met, the user's intent is clearly

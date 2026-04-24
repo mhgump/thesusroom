@@ -10,20 +10,26 @@ import { GET_BOT_LOGS_TOOL } from '../getBotLogs/index.js'
 import { loadPrompt } from './_loadPrompt.js'
 
 export interface RunScenarioAgentResponse {
+  scenario_id: string
   test_spec_name: string
   success: boolean
 }
 
 export const RUN_SCENARIO_RESPONSE_SPEC: ResponseSpec = {
   description:
-    '{ test_spec_name, success } — test_spec_name is the slug of the spec ' +
-    'you created under content/test_specs/; success is true iff the prompt\'s ' +
-    'goal was met by the run. Full reasoning lives in the spec\'s notes array.',
+    '{ scenario_id, test_spec_name, success } — identifies the spec created at ' +
+    'content/scenarios/{scenario_id}/test_specs/{test_spec_name}/spec.json; ' +
+    'success is true iff the prompt\'s goal was met by the run. Full reasoning ' +
+    'lives in the spec\'s notes array.',
   schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['test_spec_name', 'success'],
+    required: ['scenario_id', 'test_spec_name', 'success'],
     properties: {
+      scenario_id: {
+        type: 'string',
+        description: 'Scenario slug the test spec belongs to.',
+      },
       test_spec_name: {
         type: 'string',
         description: 'Slug of the test spec this attempt produced.',

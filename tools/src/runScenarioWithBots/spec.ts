@@ -3,6 +3,9 @@ import type { ToolSpec } from '../framework.js'
 export interface RunScenarioWithBotsInput {
   // Scenario slug registered in run-scenario.ts.
   scenario_id: string
+  // Optional test-spec name this run belongs to. Becomes the middle segment
+  // of the storage key; '_adhoc' is used when omitted.
+  test_spec_name?: string
   // Bots to connect, in order. Each reference must be importable relative to the repo root.
   bots: { path: string; export: string }[]
   // Optional: bot index whose POV to record to video.
@@ -26,8 +29,8 @@ export const RUN_SCENARIO_WITH_BOTS_SPEC: ToolSpec = {
   name: 'run_scenario_with_bots',
   description:
     'Run a scenario with the given bots and return a Scenario Summary: ' +
-    '{complete, scenario_summary, survivors, run_artifact_id}. Full logs are ' +
-    'persisted to data/scenario_runs/{run_artifact_id}/ and retrievable via ' +
+    '{complete, scenario_summary, survivors, run_artifact_id}. run_artifact_id ' +
+    'has the form "<scenario>/<test_spec>/<index>" and can be passed into ' +
     'get_scenario_logs and get_bot_logs.',
   input_schema: {
     type: 'object',
@@ -37,6 +40,12 @@ export const RUN_SCENARIO_WITH_BOTS_SPEC: ToolSpec = {
       scenario_id: {
         type: 'string',
         description: 'Scenario slug registered in run-scenario.ts.',
+      },
+      test_spec_name: {
+        type: 'string',
+        description:
+          'Optional test-spec name this run belongs to. Used as the middle ' +
+          'segment of the run storage key.',
       },
       bots: {
         type: 'array',
@@ -48,7 +57,7 @@ export const RUN_SCENARIO_WITH_BOTS_SPEC: ToolSpec = {
           properties: {
             path: {
               type: 'string',
-              description: 'Path relative to repo root, e.g. "content/bots/demo/demoBot.ts".',
+              description: 'Path relative to repo root, e.g. "content/bots/demo/demoBot/bot.ts".',
             },
             export: {
               type: 'string',

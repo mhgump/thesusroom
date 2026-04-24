@@ -1,5 +1,7 @@
 import type { Tool } from '../framework.js'
-import { readArtifact } from '../_shared/artifact.js'
+import { getBackends } from '../_shared/backends/index.js'
+import { parseRunResultKey } from '../_shared/backends/types.js'
+import { parseLogs } from '../_shared/logFormat.js'
 import type { LogLine } from '../getScenarioLogs/index.js'
 import {
   GET_BOT_LOGS_SPEC,
@@ -35,10 +37,23 @@ function isDisconnect(message: string): boolean {
 
 async function run(rawInput: unknown): Promise<GetBotLogsOutput> {
   const input = validateInput(rawInput)
-  const artifact = readArtifact(input.run_artifact_id)
-  if ('error' in artifact) {
+  const key = parseRunResultKey(input.run_artifact_id)
+  if (key === null) {
     return {
-      client_logs: [{ time: 0, level: 'error', message: artifact.error }],
+      client_logs: [
+        { time: 0, level: 'error', message: `invalid run_artifact_id: ${input.run_artifact_id}` },
+      ],
+      disconnected: true,
+      bot_script_logs: [],
+    }
+  }
+  const { scenarioRunResult } = getBackends()
+  const artifact = await scenarioRunResult.get(key)
+  if (artifact === null) {
+    return {
+      client_logs: [
+        { time: 0, level: 'error', message: `artifact not found: ${input.run_artifact_id}` },
+      ],
       disconnected: true,
       bot_script_logs: [],
     }
@@ -48,7 +63,11 @@ async function run(rawInput: unknown): Promise<GetBotLogsOutput> {
   const bot_script_logs: LogLine[] = []
   let disconnected = false
 
-  for (const log of artifact.logs) {
+  // `dateMs` anchors the date for the time-of-day prefix. Using Date.now()
+  // is fine: all entries share the same day-of-run and only relative order
+  // matters downstream.
+  const entries = parseLogs(artifact.logs, Date.now())
+  for (const log of entries) {
     if (log.source !== 'cli-bot' || log.bot_index !== input.bot_id) continue
     const line: LogLine = { time: log.time, level: log.level, message: log.message }
     if (isBotScript(log.message)) {

@@ -1,8 +1,7 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { CONTENT_DIR, PROJECT_ROOT, TEST_SPECS_DIR } from '../_shared/paths.js'
-import type { RunScenarioSpec } from '../_shared/runScenarioSpec.js'
+import { getBackends } from '../_shared/backends/index.js'
+import { PROJECT_ROOT } from '../_shared/paths.js'
 import {
   LIST_CONTENT_SPEC,
   type ListContentInput,
@@ -31,14 +30,6 @@ function relPath(abs: string): string {
   return path.relative(PROJECT_ROOT, abs).split(path.sep).join('/')
 }
 
-function readDirSafe(dir: string): string[] {
-  try {
-    return fs.readdirSync(dir)
-  } catch {
-    return []
-  }
-}
-
 async function run(rawInput: unknown): Promise<ListContentOutput> {
   const input = validateInput(rawInput)
 
@@ -58,76 +49,65 @@ async function run(rawInput: unknown): Promise<ListContentOutput> {
   const wantBots = !anyFor || input.for_bots === true
   const wantTestSpecs = !anyFor || input.for_test_specs === true
 
+  const { bot, map, scenario, testSpec } = getBackends()
+
   const scenarios: ListedScenario[] = []
   const maps: ListedMap[] = []
   const bots: ListedBot[] = []
-  const testSpecs: ListedTestSpec[] = []
+  const testSpecs: Record<string, ListedTestSpec[]> = {}
+
+  const scenarioIndex = await scenario.listIndex()
 
   if (wantScenarios) {
-    const dir = path.join(CONTENT_DIR, 'scenarios')
-    for (const entry of readDirSafe(dir)) {
-      if (!entry.endsWith('.ts')) continue
-      const slug = entry.slice(0, -3)
-      if (!scenarioRe.test(slug)) continue
-      scenarios.push({ name: slug, path: relPath(path.join(dir, entry)) })
+    for (const [index, name] of scenarioIndex.entries()) {
+      if (!scenarioRe.test(name)) continue
+      const abs = scenario.locate?.(name)
+      const p = abs ? relPath(abs) : `content/scenarios/${name}/scenario.ts`
+      scenarios.push({ name, index, path: p })
     }
   }
 
   if (wantMaps) {
-    const dir = path.join(CONTENT_DIR, 'maps')
-    for (const entry of readDirSafe(dir)) {
-      if (!entry.endsWith('.ts')) continue
-      if (entry === 'index.ts') continue
-      const slug = entry.slice(0, -3)
-      if (!mapRe.test(slug)) continue
-      maps.push({ name: slug, path: relPath(path.join(dir, entry)) })
+    for (const { key } of await map.list()) {
+      if (!mapRe.test(key)) continue
+      const abs = map.locate?.(key)
+      const p = abs ? relPath(abs) : `content/maps/${key}/map.ts`
+      maps.push({ name: key, path: p })
     }
   }
 
   if (wantBots) {
-    const botsRoot = path.join(CONTENT_DIR, 'bots')
-    for (const scenarioDir of readDirSafe(botsRoot)) {
-      const abs = path.join(botsRoot, scenarioDir)
-      let stat: fs.Stats
-      try {
-        stat = fs.statSync(abs)
-      } catch {
-        continue
-      }
-      if (!stat.isDirectory()) continue
-      for (const entry of readDirSafe(abs)) {
-        if (!entry.endsWith('.ts')) continue
-        const slug = entry.slice(0, -3)
-        if (!botRe.test(slug)) continue
-        bots.push({
-          name: slug,
-          scenario_id: scenarioDir,
-          path: relPath(path.join(abs, entry)),
-        })
-      }
+    for (const { key } of await bot.list()) {
+      if (!botRe.test(key.bot_id)) continue
+      const abs = bot.locate?.(key)
+      const p = abs ? relPath(abs) : `content/bots/${key.scenario_id}/${key.bot_id}/bot.ts`
+      bots.push({ name: key.bot_id, scenario_id: key.scenario_id, path: p })
     }
   }
 
   if (wantTestSpecs) {
-    for (const entry of readDirSafe(TEST_SPECS_DIR)) {
-      if (!entry.endsWith('.json')) continue
-      const slug = entry.slice(0, -5)
-      if (!testSpecRe.test(slug)) continue
-      const abs = path.join(TEST_SPECS_DIR, entry)
-      let spec: RunScenarioSpec
-      try {
-        spec = JSON.parse(fs.readFileSync(abs, 'utf8')) as RunScenarioSpec
-      } catch {
-        continue
+    for (const scenarioId of scenarioIndex) {
+      testSpecs[scenarioId] = []
+    }
+    for (const scenarioId of scenarioIndex) {
+      const names = await testSpec.listIndex(scenarioId)
+      for (const [index, name] of names.entries()) {
+        if (!testSpecRe.test(name)) continue
+        const key = { scenario_id: scenarioId, test_spec_id: name }
+        const value = await testSpec.get(key)
+        if (value === null) continue
+        const abs = testSpec.locate?.(key)
+        const p = abs ? relPath(abs) : `content/scenarios/${scenarioId}/test_specs/${name}/spec.json`
+        testSpecs[scenarioId].push({
+          name,
+          index,
+          path: p,
+          scenario_id: typeof value.scenario_id === 'string' ? value.scenario_id : scenarioId,
+          map_id: typeof value.map_id === 'string' ? value.map_id : '',
+          bot_count: Array.isArray(value.bots) ? value.bots.length : 0,
+          note_count: Array.isArray(value.notes) ? value.notes.length : 0,
+        })
       }
-      testSpecs.push({
-        name: slug,
-        path: relPath(abs),
-        scenario_id: typeof spec.scenario_id === 'string' ? spec.scenario_id : '',
-        map_id: typeof spec.map_id === 'string' ? spec.map_id : '',
-        bot_count: Array.isArray(spec.bots) ? spec.bots.length : 0,
-        note_count: Array.isArray(spec.notes) ? spec.notes.length : 0,
-      })
     }
   }
 

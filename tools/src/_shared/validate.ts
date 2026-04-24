@@ -1,6 +1,4 @@
 import { spawn } from 'node:child_process'
-import fs from 'node:fs'
-import path from 'node:path'
 import { PROJECT_ROOT } from './paths.js'
 
 // Runs a small tsx child that dynamic-imports the given .ts module and checks
@@ -100,18 +98,16 @@ function runValidator(absPath: string, exportName: string, kind: ValidationKind)
   })
 }
 
-// Write `content` to `absFilePath`, then dynamic-import and shape-check the named export.
-// On validation failure the file is left in place so the caller can inspect it — but
-// the tool returns { success: false, error }.
-export async function writeAndValidate(
-  absFilePath: string,
-  fileContent: string,
+// Dynamic-import the already-written module at `absPath` and shape-check the
+// named export. Storage is a separate concern (done via a backend's put()); this
+// helper only handles validation. On failure the underlying file is left in
+// place so the caller can inspect it — but the tool returns { success: false }.
+export async function validateWrittenFile(
+  absPath: string,
   exportName: string,
   kind: ValidationKind,
 ): Promise<{ success: true } | { success: false; error: string }> {
-  fs.mkdirSync(path.dirname(absFilePath), { recursive: true })
-  fs.writeFileSync(absFilePath, fileContent)
-  const result = await runValidator(absFilePath, exportName, kind)
+  const result = await runValidator(absPath, exportName, kind)
   if (!result.ok) return { success: false, error: result.error ?? 'validation failed' }
   return { success: true }
 }

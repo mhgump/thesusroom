@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { CONTENT_DIR, PROJECT_ROOT, TEST_SPECS_DIR } from '../_shared/paths.js'
+import { getBackends } from '../_shared/backends/index.js'
+import { PROJECT_ROOT } from '../_shared/paths.js'
 import type { RunScenarioSpec, RunScenarioSpecNote } from '../_shared/runScenarioSpec.js'
 import {
   INSERT_RUN_SCENARIO_SPEC_SPEC,
@@ -48,14 +49,19 @@ async function run(rawInput: unknown): Promise<InsertRunScenarioSpecOutput> {
     return { success: false, error: (err as Error).message }
   }
 
-  const mapPath = path.join(CONTENT_DIR, 'maps', `${input.map_id}.ts`)
-  if (!fs.existsSync(mapPath)) {
-    return { success: false, error: `map "${input.map_id}" not found at ${mapPath}` }
+  const { map, scenario, testSpec } = getBackends()
+
+  if ((await map.get(input.map_id)) === null) {
+    const mapLoc = map.locate?.(input.map_id) ?? input.map_id
+    return { success: false, error: `map "${input.map_id}" not found at ${mapLoc}` }
   }
-  const scenarioPath = path.join(CONTENT_DIR, 'scenarios', `${input.scenario_id}.ts`)
-  if (!fs.existsSync(scenarioPath)) {
-    return { success: false, error: `scenario "${input.scenario_id}" not found at ${scenarioPath}` }
+  if ((await scenario.get(input.scenario_id)) === null) {
+    const scenarioLoc = scenario.locate?.(input.scenario_id) ?? input.scenario_id
+    return { success: false, error: `scenario "${input.scenario_id}" not found at ${scenarioLoc}` }
   }
+  // Bot references in RunScenarioSpec use repo-root-relative filesystem paths,
+  // not bot-backend keys. We are NOT reshaping that contract in this change, so
+  // existence is still checked via fs.
   for (const [idx, b] of input.bots.entries()) {
     const abs = path.join(PROJECT_ROOT, b.path)
     if (!fs.existsSync(abs)) {
@@ -109,9 +115,8 @@ async function run(rawInput: unknown): Promise<InsertRunScenarioSpecOutput> {
     last_run_artifact_ids: [],
   }
 
-  fs.mkdirSync(TEST_SPECS_DIR, { recursive: true })
-  const absSpecPath = path.join(TEST_SPECS_DIR, `${input.name}.json`)
-  fs.writeFileSync(absSpecPath, JSON.stringify(spec, null, 2) + '\n')
+  await testSpec.newTestSpec(input.scenario_id, input.name)
+  await testSpec.put({ scenario_id: input.scenario_id, test_spec_id: input.name }, spec)
 
   return { success: true, test_spec_name: input.name }
 }

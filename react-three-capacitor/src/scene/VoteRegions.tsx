@@ -1,5 +1,5 @@
 import { Text } from '@react-three/drei'
-import { CURRENT_MAP } from '../../../content/client/maps'
+import { CURRENT_MAP } from '../../../content/maps'
 
 interface Props { visibleIds: Set<string> }
 

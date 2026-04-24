@@ -1,8 +1,5 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { TEST_SPECS_DIR } from '../_shared/paths.js'
-import type { RunScenarioSpec } from '../_shared/runScenarioSpec.js'
+import { getBackends } from '../_shared/backends/index.js'
 import {
   ADD_NOTES_TO_TEST_SPEC_SPEC,
   type AddNotesToTestSpecInput,
@@ -14,6 +11,10 @@ const SLUG_RE = /^[a-zA-Z0-9_-]+$/
 function validateInput(input: unknown): AddNotesToTestSpecInput {
   if (!input || typeof input !== 'object') throw new Error('input must be an object')
   const i = input as Partial<AddNotesToTestSpecInput>
+  if (typeof i.scenario_id !== 'string' || !i.scenario_id) {
+    throw new Error('scenario_id must be a non-empty string')
+  }
+  if (!SLUG_RE.test(i.scenario_id)) throw new Error('scenario_id must match [a-zA-Z0-9_-]+')
   if (typeof i.test_spec_name !== 'string' || !i.test_spec_name) {
     throw new Error('test_spec_name must be a non-empty string')
   }
@@ -31,21 +32,17 @@ async function run(rawInput: unknown): Promise<AddNotesToTestSpecOutput> {
     return { success: false, error: (err as Error).message }
   }
 
-  const absSpecPath = path.join(TEST_SPECS_DIR, `${input.test_spec_name}.json`)
-  if (!fs.existsSync(absSpecPath)) {
-    return { success: false, error: `test spec not found at ${absSpecPath}` }
-  }
-
-  let spec: RunScenarioSpec
-  try {
-    spec = JSON.parse(fs.readFileSync(absSpecPath, 'utf8')) as RunScenarioSpec
-  } catch (err) {
-    return { success: false, error: `failed to parse test spec: ${(err as Error).message}` }
+  const { testSpec } = getBackends()
+  const key = { scenario_id: input.scenario_id, test_spec_id: input.test_spec_name }
+  const spec = await testSpec.get(key)
+  if (spec === null) {
+    const loc = testSpec.locate?.(key) ?? `${input.scenario_id}/${input.test_spec_name}`
+    return { success: false, error: `test spec not found at ${loc}` }
   }
 
   if (!Array.isArray(spec.notes)) spec.notes = []
   spec.notes.push({ time: Date.now(), author: input.author, text: input.text })
-  fs.writeFileSync(absSpecPath, JSON.stringify(spec, null, 2) + '\n')
+  await testSpec.put(key, spec)
 
   return { success: true, note_count: spec.notes.length }
 }

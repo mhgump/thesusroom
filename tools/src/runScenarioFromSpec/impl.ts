@@ -1,8 +1,5 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { TEST_SPECS_DIR } from '../_shared/paths.js'
-import type { RunScenarioSpec } from '../_shared/runScenarioSpec.js'
+import { getBackends } from '../_shared/backends/index.js'
 import {
   RUN_SCENARIO_WITH_BOTS_TOOL,
   type RunScenarioWithBotsInput,
@@ -18,6 +15,10 @@ const SLUG_RE = /^[a-zA-Z0-9_-]+$/
 function validateInput(input: unknown): RunScenarioFromSpecInput {
   if (!input || typeof input !== 'object') throw new Error('input must be an object')
   const i = input as Partial<RunScenarioFromSpecInput>
+  if (typeof i.scenario_id !== 'string' || !i.scenario_id) {
+    throw new Error('scenario_id must be a non-empty string')
+  }
+  if (!SLUG_RE.test(i.scenario_id)) throw new Error('scenario_id must match [a-zA-Z0-9_-]+')
   if (typeof i.test_spec_name !== 'string' || !i.test_spec_name) {
     throw new Error('test_spec_name must be a non-empty string')
   }
@@ -27,22 +28,19 @@ function validateInput(input: unknown): RunScenarioFromSpecInput {
 
 async function run(rawInput: unknown): Promise<RunScenarioFromSpecOutput> {
   const input = validateInput(rawInput)
-  const absSpecPath = path.join(TEST_SPECS_DIR, `${input.test_spec_name}.json`)
-  if (!fs.existsSync(absSpecPath)) {
-    return { test_spec_name: input.test_spec_name, error: `test spec not found at ${absSpecPath}` }
-  }
-  let spec: RunScenarioSpec
-  try {
-    spec = JSON.parse(fs.readFileSync(absSpecPath, 'utf8')) as RunScenarioSpec
-  } catch (err) {
+  const { testSpec } = getBackends()
+  const key = { scenario_id: input.scenario_id, test_spec_id: input.test_spec_name }
+  const spec = await testSpec.get(key)
+  if (spec === null) {
     return {
       test_spec_name: input.test_spec_name,
-      error: `failed to parse test spec: ${(err as Error).message}`,
+      error: `test spec not found: ${input.scenario_id}/${input.test_spec_name}`,
     }
   }
 
   const runInput: RunScenarioWithBotsInput = {
     scenario_id: spec.scenario_id,
+    test_spec_name: input.test_spec_name,
     bots: spec.bots,
     record_video_bot_index: spec.opts?.record_video_bot_index,
     timeout_ms: spec.opts?.timeout_ms,
@@ -55,7 +53,7 @@ async function run(rawInput: unknown): Promise<RunScenarioFromSpecOutput> {
   if (result.run_artifact_id) {
     if (!Array.isArray(spec.last_run_artifact_ids)) spec.last_run_artifact_ids = []
     spec.last_run_artifact_ids.push(result.run_artifact_id)
-    fs.writeFileSync(absSpecPath, JSON.stringify(spec, null, 2) + '\n')
+    await testSpec.put(key, spec)
   }
 
   return { test_spec_name: input.test_spec_name, ...result }

@@ -80,7 +80,7 @@ export const ALL_TOOLS: Tool[] = [
   RUN_SCENARIO_WITH_BOTS_TOOL as Tool,
   GET_SCENARIO_LOGS_TOOL as Tool,
   GET_BOT_LOGS_TOOL as Tool,
-  // Test-spec lifecycle (persisted run-scenario attempts under content/test_specs/).
+  // Test-spec lifecycle (persisted under content/scenarios/{scenario_id}/test_specs/).
   INSERT_RUN_SCENARIO_SPEC_TOOL as Tool,
   RUN_SCENARIO_FROM_SPEC_TOOL as Tool,
   ADD_NOTES_TO_TEST_SPEC_TOOL as Tool,
