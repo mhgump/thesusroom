@@ -75,6 +75,8 @@ interface GameState {
   addRule: (text: string) => void
   setRulesOpen: (v: boolean) => void
   setGeometryObjects: (objects: WireGeometry[]) => void
+  appendGeometryObjects: (objects: WireGeometry[]) => void
+  removeGeometryForMap: (mapInstanceId: string) => void
   applyGeometryUpdates: (updates: Array<{ id: string; visible: boolean }>) => void
   applyLocalGeometryOverride: (updates: Array<{ id: string; visible: boolean }>) => void
   applyRoomVisibilityUpdates: (updates: Array<{ roomId: string; visible: boolean }>) => void
@@ -175,6 +177,15 @@ export const useGameStore = create<GameState>((set) => ({
   setRulesOpen: (v) => set({ rulesOpen: v }),
 
   setGeometryObjects: (objects) => set({ geometryObjects: objects }),
+
+  appendGeometryObjects: (objects) =>
+    set((s) => ({ geometryObjects: [...s.geometryObjects, ...objects] })),
+
+  removeGeometryForMap: (mapInstanceId) =>
+    set((s) => {
+      const prefix = `${mapInstanceId}_`
+      return { geometryObjects: s.geometryObjects.filter(g => !g.roomId.startsWith(prefix)) }
+    }),
 
   applyGeometryUpdates: (updates) =>
     set((s) => {

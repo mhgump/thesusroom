@@ -1,8 +1,9 @@
-import type { RoomConnection, RoomWorldPos } from './WorldSpec.js'
+import { computeRoomPositions, type RoomConnection, type RoomWorldPos } from './WorldSpec.js'
 import type { RoomSpec } from './RoomSpec.js'
-import type { CameraConstraintShapes } from './CameraConstraint.js'
+import { buildCameraConstraintShapes, type CameraConstraintShapes } from './CameraConstraint.js'
 import type { InstructionEventSpec, VoteRegionSpec, ButtonSpec } from './GameSpec.js'
 import type { NpcSpec } from './NpcSpec.js'
+import { buildMapInstanceArtifacts, scopedRoomId } from './MapInstance.js'
 
 // A GameMap is a static map definition; a world instance instantiates it under
 // a `mapInstanceId` to produce scoped room ids of the form
@@ -60,3 +61,60 @@ export interface GameMap {
   // ── NPCs ─────────────────────────────────────────────────────────────────
   npcs: NpcSpec[]
 }
+
+// Wire-safe subset of a GameMap: topology + authored content only, no derived
+// artifacts (roomPositions / cameraShapes / lookup functions). The client
+// rebuilds those via `reifyGameMap` after receiving the map over the wire.
+export interface SerializedMap {
+  id: string
+  mapInstanceId: string
+  origin?: RoomWorldPos
+  rooms: RoomSpec[]
+  connections: RoomConnection[]
+  voteRegions: VoteRegionSpec[]
+  buttons?: ButtonSpec[]
+  npcs: NpcSpec[]
+  instructionSpecs: InstructionEventSpec[]
+}
+
+export function serializeGameMap(map: GameMap): SerializedMap {
+  return {
+    id: map.id,
+    mapInstanceId: map.mapInstanceId,
+    origin: map.origin,
+    rooms: map.rooms,
+    connections: map.connections,
+    voteRegions: map.voteRegions,
+    buttons: map.buttons,
+    npcs: map.npcs,
+    instructionSpecs: map.instructionSpecs,
+  }
+}
+
+// Rebuild a full GameMap from the wire form by recomputing every derived
+// artifact (roomPositions, cameraShapes, lookup functions). The client calls
+// this on every map received in a `world_reset` or `map_add` message.
+export function reifyGameMap(serialized: SerializedMap): GameMap {
+  const topology = { rooms: serialized.rooms, connections: serialized.connections, origin: serialized.origin }
+  const localPositions = computeRoomPositions(topology)
+  const artifacts = buildMapInstanceArtifacts(topology, serialized.mapInstanceId)
+  const cameraShapes = buildCameraConstraintShapes(topology, localPositions)
+  return {
+    id: serialized.id,
+    mapInstanceId: serialized.mapInstanceId,
+    origin: serialized.origin,
+    rooms: serialized.rooms,
+    connections: serialized.connections,
+    voteRegions: serialized.voteRegions,
+    buttons: serialized.buttons,
+    npcs: serialized.npcs,
+    instructionSpecs: serialized.instructionSpecs,
+    roomPositions: artifacts.roomPositions,
+    cameraShapes,
+    getRoomAtPosition: artifacts.getRoomAtPosition,
+    getAdjacentRoomIds: artifacts.getAdjacentRoomIds,
+    isRoomOverlapping: artifacts.isRoomOverlapping,
+  }
+}
+
+export { scopedRoomId }

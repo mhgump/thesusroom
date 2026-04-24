@@ -5,9 +5,10 @@ import { ContentRegistry } from './ContentRegistry.js'
 import { RoomRouter } from './RoomRouter.js'
 import { createDefaultScenarioResolver } from './orchestration/index.js'
 import { BotManager } from './bot/BotManager.js'
-import type { MultiplayerRoom } from './Room.js'
+import { MultiplayerRoom } from './Room.js'
 import type { ClientMessage, ServerMessage } from './types.js'
 import { PlayerRecordingManager } from './PlayerRecordingManager.js'
+import { MAP as INITIAL_MAP } from '../../../assets/initial/map.js'
 import {
   getDataBackend,
   PlayerRegistry,
@@ -36,13 +37,16 @@ function parseRoutingKey(url: string | undefined): string | null {
   return first
 }
 
-// `/recordings/{index}` — serves as the WebSocket endpoint for replay.
-// Index is the strictly-incrementing PlayerRegistry index, not the browser
-// UUID.
+// `/recordings/{key}/{index}` — WebSocket endpoint for replay. `{key}` is
+// the routing key the recording was originally made on (so the client
+// loads the matching map); `{index}` is the PlayerRegistry index.
+// Older callers that connect to `/recordings/{index}` without a key get
+// null here and are 4004'd — the HTTP route redirects them to the
+// canonical form before the SPA ever dials the WebSocket.
 function parseReplayParams(url: string | undefined): { index: number } | null {
   if (!url) return null
   const path = url.split('?')[0]
-  const m = path.match(/^\/recordings\/(\d+)$/)
+  const m = path.match(/^\/recordings\/[^/]+\/(\d+)$/)
   return m ? { index: parseInt(m[1], 10) } : null
 }
 
@@ -68,6 +72,19 @@ function parseSrUid(req: IncomingMessage): string | null {
   }
   return null
 }
+
+// Hardcoded first-pass hub target: `/` visitors are routed into scenario2
+// via the solo-hallway transfer flow. A future iteration will round-robin
+// across any scenario whose spec declares a `hubConnection`.
+const HUB_TARGET_ROUTING_KEY = 'r_scenario2'
+
+// Initial hallway's authored spawn — the solo MR seeds the player here and
+// the hub transfer translates it into the target MR's world frame.
+const INITIAL_HALLWAY_SPAWN_LOCAL = { x: 0, z: 0.5 }
+
+// Monotonic counter for solo hallway MR ids. Each `/` connection gets a
+// fresh private MR, so these never collide.
+let soloHallwayCounter = 0
 
 export class GameServer {
   private readonly wss: WebSocketServer
@@ -164,6 +181,11 @@ export class GameServer {
 
     const browserUuid = parseSrUid(request)
 
+    if (routingKey === 'hub') {
+      await this.handleHubConnection(ws, browserUuid)
+      return
+    }
+
     let routed: { room: MultiplayerRoom; playerId: string } | null
     try {
       routed = await this.router.routePlayer(routingKey, ws, browserUuid)
@@ -176,18 +198,32 @@ export class GameServer {
       ws.close(4004, 'Unknown routing key')
       return
     }
-    const { room, playerId } = routed
+    this.wireWs(ws, routed.room, routed.playerId)
+  }
+
+  // Bind a WebSocket's message handlers to a (room, playerId) pair. The
+  // binding is mutable — `rebindWs` (called by the hub transfer flow)
+  // updates the captured room/playerId so subsequent client messages route
+  // to the new owning MR.
+  private readonly wsBindings: Map<WebSocket, { room: MultiplayerRoom; playerId: string }> = new Map()
+
+  private wireWs(ws: WebSocket, room: MultiplayerRoom, playerId: string): void {
+    this.wsBindings.set(ws, { room, playerId })
     this.playerRoom.set(playerId, room)
 
     ws.on('message', (data) => {
+      const binding = this.wsBindings.get(ws)
+      if (!binding) return
       try {
         const msg = JSON.parse(data.toString()) as ClientMessage
         if (msg.type === 'move') {
-          room.handleMove(playerId, msg.tick, msg.inputs)
+          binding.room.handleMove(binding.playerId, msg.tick, msg.inputs)
         } else if (msg.type === 'choice') {
           // handled by game script manager via room if needed
         } else if (msg.type === 'ready') {
-          room.handlePlayerReady(playerId)
+          binding.room.handlePlayerReady(binding.playerId)
+        } else if (msg.type === 'world_reset_ack') {
+          binding.room.handleWorldResetAck(binding.playerId)
         }
       } catch {
         // ignore malformed messages
@@ -195,9 +231,79 @@ export class GameServer {
     })
 
     ws.on('close', () => {
-      room.removePlayer(playerId)
-      this.playerRoom.delete(playerId)
+      const binding = this.wsBindings.get(ws)
+      if (!binding) return
+      this.wsBindings.delete(ws)
+      binding.room.removePlayer(binding.playerId)
+      this.playerRoom.delete(binding.playerId)
     })
+  }
+
+  // Update the WebSocket's binding to point at a new (room, playerId).
+  // Called during hub transfer after the player has been released from
+  // their solo MR and seated on the target MR.
+  private rebindWs(ws: WebSocket, room: MultiplayerRoom, playerId: string): void {
+    const prev = this.wsBindings.get(ws)
+    if (prev) this.playerRoom.delete(prev.playerId)
+    this.wsBindings.set(ws, { room, playerId })
+    this.playerRoom.set(playerId, room)
+  }
+
+  // Hub flow: seat the player in a private solo hallway MR immediately
+  // (they can move around inside the closed hallway) while we find or
+  // create a target MR with an open hub slot. On success, release the
+  // player from the solo MR and transfer them into the target MR — the
+  // target MR sends its own world_reset with both maps attached and gates
+  // the reveal on the client's ack.
+  private async handleHubConnection(ws: WebSocket, browserUuid: string | null): Promise<void> {
+    const solo = this.createSoloHallwayRoom()
+    const soloPlayerId = solo.connectPlayer(ws, browserUuid, 'hub')
+    this.wireWs(ws, solo, soloPlayerId)
+
+    // Find or create a target MR with an open hub slot, then transfer the
+    // player over. Any failure tears down the solo MR and closes the
+    // socket — this is a best-effort attempt; the client can reconnect.
+    try {
+      const target = await this.router.findOrCreateHubSlot(HUB_TARGET_ROUTING_KEY)
+      if (!target) throw new Error(`No hub-capable target for ${HUB_TARGET_ROUTING_KEY}`)
+      if (!target.isHubSlotOpen()) throw new Error('Hub slot closed between discovery and transfer')
+      if (ws.readyState !== WebSocket.OPEN) {
+        // Player dropped while we were resolving; just tear down.
+        solo.destroy()
+        return
+      }
+      solo.releasePlayer(soloPlayerId)
+      const newPlayerId = target.acceptHubTransfer(ws, browserUuid, 'hub', INITIAL_MAP, INITIAL_HALLWAY_SPAWN_LOCAL)
+      this.rebindWs(ws, target, newPlayerId)
+      solo.destroy()
+    } catch (err) {
+      console.error('[GameServer] hub transfer failed:', err)
+      // Leave the player in the solo MR; they can at least walk around the
+      // hallway. Next time they reconnect we'll try again. Alternative:
+      // close the socket with an error code.
+    }
+  }
+
+  // Build a one-player-scoped MR whose World contains just the initial
+  // hallway. The router never sees this MR — it's privately owned by the
+  // connection and torn down when the hub transfer completes (or when the
+  // player disconnects before transfer, via the ws close handler calling
+  // removePlayer + the MR's own tick loop stopping after closed + empty).
+  private createSoloHallwayRoom(): MultiplayerRoom {
+    soloHallwayCounter++
+    const room = new MultiplayerRoom({
+      roomId: `solo-hallway-${soloHallwayCounter}`,
+      instanceIndex: soloHallwayCounter,
+      spawnPosition: INITIAL_HALLWAY_SPAWN_LOCAL,
+      recordingManager: this.recordingManager,
+      autoDestroyOnEmpty: true,
+      // onCloseScenario / onRoomDone are not wired: the solo MR lives
+      // outside the router's lifecycle and is torn down explicitly via
+      // `destroy()` after transfer (or auto-destroyed when empty if the
+      // player disconnects before transfer completes).
+    })
+    room.addMap(INITIAL_MAP)
+    return room
   }
 
   private handleObserverConnection(ws: WebSocket, { routingKey, i, j }: { routingKey: string; i: number; j: number }): void {

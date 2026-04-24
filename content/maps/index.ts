@@ -11,15 +11,18 @@ function scenarioFromRoutingKey(key: string): string | null {
   return name.length === 0 ? null : name
 }
 
-// Parses either a direct routing-key path (`/r_scenario1`) or an observer path
-// (`/observe/r_scenario1/0/0`) into the scenario id used to pick the client
-// map. Returns null for `/` so the caller falls back to the bundled initial
-// map without fetching a scenario-specific chunk.
+// Parses a routing-key path (`/r_scenario1`), an observer path
+// (`/observe/r_scenario1/0/0`), or a replay path
+// (`/recordings/r_scenario1/0`) into the scenario id used to pick the
+// client map. Returns null for `/` so the caller falls back to the
+// bundled initial map without fetching a scenario-specific chunk.
 function parseScenarioIdFromPath(pathname: string): string | null {
   const path = pathname.replace(/^\/+/, '').replace(/\/+$/, '')
   if (path.length === 0) return null
   const observer = path.match(/^observe\/([^/]+)\/\d+\/\d+$/)
   if (observer) return scenarioFromRoutingKey(observer[1])
+  const replay = path.match(/^recordings\/([^/]+)\/\d+$/)
+  if (replay) return scenarioFromRoutingKey(replay[1])
   const first = path.split('/')[0]
   return scenarioFromRoutingKey(first)
 }

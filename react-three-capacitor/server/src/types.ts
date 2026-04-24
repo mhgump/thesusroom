@@ -2,6 +2,7 @@ export type { AnimationState, WorldEvent, UpdateAnimationStateEvent, TouchedEven
 
 import type { AnimationState, WorldEvent, MoveInput } from './World.js'
 import type { WireGeometry, ButtonSpec, ButtonConfig, ButtonState, RuleLabel } from './GameSpec.js'
+import type { SerializedMap } from '../../src/game/GameMap.js'
 
 export type ServerMessage =
   | { type: 'welcome'; playerId: string; color: string; x: number; z: number; hp: 0 | 1 | 2; serverTick: number; tickRateHz: number }
@@ -11,7 +12,10 @@ export type ServerMessage =
   | { type: 'player_update'; playerId: string; x: number; z: number; events: WorldEvent[]; serverTick: number }
   | { type: 'instruction'; lines: Array<{ text: string; label: RuleLabel; specId: string }> }
   | { type: 'vote_assignment_change'; assignments: Record<string, string[]> }
-  | { type: 'map_init'; geometry: WireGeometry[] }
+  | { type: 'world_reset'; maps: SerializedMap[]; geometry: WireGeometry[]; connections: Record<string, string[]> }
+  | { type: 'map_add'; map: SerializedMap; geometry: WireGeometry[]; connections: Record<string, string[]> }
+  | { type: 'map_remove'; mapInstanceId: string }
+  | { type: 'connections_state'; connections: Record<string, string[]> }
   | { type: 'geometry_state'; updates: Array<{ id: string; visible: boolean }>; perPlayer?: boolean }
   | { type: 'room_visibility_state'; updates: Array<{ roomId: string; visible: boolean }>; perPlayer?: boolean }
   | { type: 'button_init'; buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }> }
@@ -27,3 +31,4 @@ export type ClientMessage =
   | { type: 'move'; tick: number; inputs: MoveInput[] }
   | { type: 'choice'; eventId: string; optionId: string }
   | { type: 'ready' }
+  | { type: 'world_reset_ack' }

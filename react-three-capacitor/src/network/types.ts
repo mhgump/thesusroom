@@ -2,6 +2,7 @@ export type { AnimationState, WorldEvent, UpdateAnimationStateEvent, TouchedEven
 
 import type { AnimationState, WorldEvent, MoveInput } from '../game/World'
 import type { WireGeometry, ButtonSpec, ButtonConfig, ButtonState, RuleLabel } from '../game/GameSpec'
+import type { SerializedMap } from '../game/GameMap'
 
 export type { RuleLabel }
 
@@ -34,7 +35,10 @@ export type ServerMessage =
   | { type: 'player_update'; playerId: string; x: number; z: number; events: WorldEvent[]; serverTick: number }
   | { type: 'game_event'; event: GlobalGameEvent; serverTick: number }
   | { type: 'instruction'; lines: Array<{ text: string; label: RuleLabel; specId: string }> }
-  | { type: 'map_init'; geometry: WireGeometry[] }
+  | { type: 'world_reset'; maps: SerializedMap[]; geometry: WireGeometry[]; connections: Record<string, string[]> }
+  | { type: 'map_add'; map: SerializedMap; geometry: WireGeometry[]; connections: Record<string, string[]> }
+  | { type: 'map_remove'; mapInstanceId: string }
+  | { type: 'connections_state'; connections: Record<string, string[]> }
   | { type: 'geometry_state'; updates: Array<{ id: string; visible: boolean }>; perPlayer?: boolean }
   | { type: 'button_init'; buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }> }
   | { type: 'button_state'; id: string; state: ButtonState; occupancy: number }
@@ -50,3 +54,4 @@ export type ClientMessage =
   | { type: 'move'; tick: number; inputs: MoveInput[] }
   | { type: 'choice'; eventId: string; optionId: string }
   | { type: 'ready' }
+  | { type: 'world_reset_ack' }

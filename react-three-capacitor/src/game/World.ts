@@ -537,6 +537,31 @@ export class World {
     return instance ? [...instance.scopedRoomIds] : []
   }
 
+  getMapInstanceIds(): string[] {
+    return [...this.mapInstances.keys()]
+  }
+
+  // Snapshot of the current adjacency state, as a plain-JSON record. Bundles
+  // both each map's default connections (seeded by addMap) and any runtime
+  // mutations from `setConnectionEnabled` into one payload the wire can
+  // carry. Clients apply the whole thing verbatim after adding maps.
+  getConnectionsSnapshot(): Record<string, string[]> {
+    const out: Record<string, string[]> = {}
+    for (const [a, neigh] of this.connections) out[a] = [...neigh]
+    return out
+  }
+
+  // Replace the current adjacency with the supplied snapshot. Used by the
+  // client to apply a `world_reset` payload. Callers are responsible for
+  // ensuring `addMap` has been invoked for every map referenced in the
+  // snapshot — otherwise room AABBs will be missing and moves will fail.
+  applyConnectionsSnapshot(snapshot: Record<string, string[]>): void {
+    this.connections.clear()
+    for (const [a, neigh] of Object.entries(snapshot)) {
+      this.connections.set(a, new Set(neigh))
+    }
+  }
+
   // ── Rendering-facing accessors ─────────────────────────────────────────────
   // Everything below is read by client rendering code (GameScene, HUD, etc.)
   // via the `useClientWorld` hook. Server usage should stick to the existing

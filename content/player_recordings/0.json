@@ -1,0 +1,3727 @@
+{
+  "schemaVersion": 1,
+  "browserUuid": "cf147569-cb2a-48e7-85e8-e834c4b11fbf",
+  "playerIndex": 0,
+  "routingKey": "r_scenario2",
+  "inGamePlayerId": "6d267672-f8f3-47b8-a507-d8df9162c09c",
+  "startedAtUnixMs": 1777027025345,
+  "durationMs": 8043,
+  "finalized": true,
+  "events": [
+    {
+      "tOffsetMs": 0,
+      "serverTick": 0,
+      "message": {
+        "type": "welcome",
+        "playerId": "6d267672-f8f3-47b8-a507-d8df9162c09c",
+        "color": "#2b01dc",
+        "x": 0,
+        "z": 0,
+        "hp": 2,
+        "serverTick": 0,
+        "tickRateHz": 20
+      }
+    },
+    {
+      "tOffsetMs": 1,
+      "serverTick": 0,
+      "message": {
+        "type": "world_reset",
+        "maps": [
+          {
+            "id": "scenario2",
+            "mapInstanceId": "scenario2",
+            "rooms": [
+              {
+                "id": "room1",
+                "name": "Room 1",
+                "floorWidth": 0.75,
+                "floorDepth": 0.75,
+                "height": 0.5,
+                "cameraRect": {
+                  "xMin": -0.375,
+                  "xMax": 0.375,
+                  "zMin": -0.375,
+                  "zMax": 0.375
+                },
+                "geometry": [
+                  {
+                    "id": "r1_s",
+                    "cx": 0,
+                    "cy": 0.0125,
+                    "cz": 0.3625,
+                    "width": 0.75,
+                    "height": 0.025,
+                    "depth": 0.025
+                  },
+                  {
+                    "id": "r1_e",
+                    "cx": 0.3625,
+                    "cy": 0.0125,
+                    "cz": -0.0125,
+                    "width": 0.025,
+                    "height": 0.025,
+                    "depth": 0.725
+                  },
+                  {
+                    "id": "r1_w",
+                    "cx": -0.3625,
+                    "cy": 0.0125,
+                    "cz": -0.0125,
+                    "width": 0.025,
+                    "height": 0.025,
+                    "depth": 0.725
+                  }
+                ]
+              },
+              {
+                "id": "room2",
+                "name": "Room 2",
+                "floorWidth": 0.75,
+                "floorDepth": 0.75,
+                "height": 0.5,
+                "cameraRect": {
+                  "xMin": -0.375,
+                  "xMax": 0.375,
+                  "zMin": -0.375,
+                  "zMax": 0.375
+                },
+                "geometry": [
+                  {
+                    "id": "r2_sl",
+                    "cx": -0.2375,
+                    "cy": 0.0125,
+                    "cz": 0.3625,
+                    "width": 0.275,
+                    "height": 0.025,
+                    "depth": 0.025
+                  },
+                  {
+                    "id": "r2_sr",
+                    "cx": 0.2375,
+                    "cy": 0.0125,
+                    "cz": 0.3625,
+                    "width": 0.275,
+                    "height": 0.025,
+                    "depth": 0.025
+                  },
+                  {
+                    "id": "r2_e",
+                    "cx": 0.3625,
+                    "cy": 0.0125,
+                    "cz": -0.0125,
+                    "width": 0.025,
+                    "height": 0.025,
+                    "depth": 0.725
+                  },
+                  {
+                    "id": "r2_w",
+                    "cx": -0.3625,
+                    "cy": 0.0125,
+                    "cz": -0.0125,
+                    "width": 0.025,
+                    "height": 0.025,
+                    "depth": 0.725
+                  },
+                  {
+                    "id": "north_door",
+                    "cx": 0,
+                    "cy": 0.0125,
+                    "cz": 0.3625,
+                    "width": 0.2,
+                    "height": 0.025,
+                    "depth": 0.025,
+                    "color": "#555555"
+                  },
+                  {
+                    "id": "room2_north_wall",
+                    "cx": 0,
+                    "cy": 0.0125,
+                    "cz": -0.3625,
+                    "width": 0.7,
+                    "height": 0.025,
+                    "depth": 0.025
+                  }
+                ]
+              },
+              {
+                "id": "room3",
+                "name": "Room 3",
+                "floorWidth": 0.75,
+                "floorDepth": 0.75,
+                "height": 0.5,
+                "cameraRect": {
+                  "xMin": -0.375,
+                  "xMax": 0.375,
+                  "zMin": 0.125,
+                  "zMax": 0.375
+                },
+                "geometry": [
+                  {
+                    "id": "r3_n",
+                    "cx": 0,
+                    "cy": 0.0125,
+                    "cz": -0.3625,
+                    "width": 0.75,
+                    "height": 0.025,
+                    "depth": 0.025
+                  },
+                  {
+                    "id": "r3_e",
+                    "cx": 0.3625,
+                    "cy": 0.0125,
+                    "cz": 0.0125,
+                    "width": 0.025,
+                    "height": 0.025,
+                    "depth": 0.725
+                  },
+                  {
+                    "id": "r3_w",
+                    "cx": -0.3625,
+                    "cy": 0.0125,
+                    "cz": 0.0125,
+                    "width": 0.025,
+                    "height": 0.025,
+                    "depth": 0.725
+                  }
+                ]
+              }
+            ],
+            "connections": [
+              {
+                "roomIdA": "room1",
+                "wallA": "north",
+                "positionA": 0.5,
+                "roomIdB": "room2",
+                "wallB": "south",
+                "positionB": 0.5,
+                "width": 0.25,
+                "cameraTransition": {
+                  "corners": [
+                    {
+                      "x": 0,
+                      "z": 0
+                    },
+                    {
+                      "x": 0.05,
+                      "z": -0.375
+                    },
+                    {
+                      "x": -0.05,
+                      "z": -0.375
+                    }
+                  ]
+                }
+              },
+              {
+                "roomIdA": "room2",
+                "wallA": "north",
+                "positionA": 0.5,
+                "roomIdB": "room3",
+                "wallB": "south",
+                "positionB": 0.5,
+                "width": 0.25,
+                "cameraTransition": {
+                  "corners": [
+                    {
+                      "x": 0,
+                      "z": 0
+                    },
+                    {
+                      "x": 0.05,
+                      "z": -0.375
+                    },
+                    {
+                      "x": -0.05,
+                      "z": -0.375
+                    }
+                  ]
+                }
+              }
+            ],
+            "voteRegions": [],
+            "npcs": [],
+            "instructionSpecs": [
+              {
+                "id": "rule_move",
+                "text": "Players that do not continue will be eliminated",
+                "label": "RULE"
+              },
+              {
+                "id": "fact_1",
+                "text": "1 player survived",
+                "label": "FACT"
+              },
+              {
+                "id": "fact_2",
+                "text": "2 players survived",
+                "label": "FACT"
+              },
+              {
+                "id": "fact_3",
+                "text": "3 players survived",
+                "label": "FACT"
+              },
+              {
+                "id": "fact_4",
+                "text": "4 players survived",
+                "label": "FACT"
+              }
+            ]
+          }
+        ],
+        "geometry": [
+          {
+            "id": "r1_s",
+            "roomId": "scenario2_room1",
+            "cx": 0,
+            "cy": 0.0125,
+            "cz": 0.3625,
+            "width": 0.75,
+            "height": 0.025,
+            "depth": 0.025
+          },
+          {
+            "id": "r1_e",
+            "roomId": "scenario2_room1",
+            "cx": 0.3625,
+            "cy": 0.0125,
+            "cz": -0.0125,
+            "width": 0.025,
+            "height": 0.025,
+            "depth": 0.725
+          },
+          {
+            "id": "r1_w",
+            "roomId": "scenario2_room1",
+            "cx": -0.3625,
+            "cy": 0.0125,
+            "cz": -0.0125,
+            "width": 0.025,
+            "height": 0.025,
+            "depth": 0.725
+          },
+          {
+            "id": "r2_sl",
+            "roomId": "scenario2_room2",
+            "cx": -0.2375,
+            "cy": 0.0125,
+            "cz": -0.3875,
+            "width": 0.275,
+            "height": 0.025,
+            "depth": 0.025
+          },
+          {
+            "id": "r2_sr",
+            "roomId": "scenario2_room2",
+            "cx": 0.2375,
+            "cy": 0.0125,
+            "cz": -0.3875,
+            "width": 0.275,
+            "height": 0.025,
+            "depth": 0.025
+          },
+          {
+            "id": "r2_e",
+            "roomId": "scenario2_room2",
+            "cx": 0.3625,
+            "cy": 0.0125,
+            "cz": -0.7625,
+            "width": 0.025,
+            "height": 0.025,
+            "depth": 0.725
+          },
+          {
+            "id": "r2_w",
+            "roomId": "scenario2_room2",
+            "cx": -0.3625,
+            "cy": 0.0125,
+            "cz": -0.7625,
+            "width": 0.025,
+            "height": 0.025,
+            "depth": 0.725
+          },
+          {
+            "id": "north_door",
+            "roomId": "scenario2_room2",
+            "cx": 0,
+            "cy": 0.0125,
+            "cz": -0.3875,
+            "width": 0.2,
+            "height": 0.025,
+            "depth": 0.025,
+            "color": "#555555"
+          },
+          {
+            "id": "room2_north_wall",
+            "roomId": "scenario2_room2",
+            "cx": 0,
+            "cy": 0.0125,
+            "cz": -1.1125,
+            "width": 0.7,
+            "height": 0.025,
+            "depth": 0.025
+          },
+          {
+            "id": "r3_n",
+            "roomId": "scenario2_room3",
+            "cx": 0,
+            "cy": 0.0125,
+            "cz": -1.8625,
+            "width": 0.75,
+            "height": 0.025,
+            "depth": 0.025
+          },
+          {
+            "id": "r3_e",
+            "roomId": "scenario2_room3",
+            "cx": 0.3625,
+            "cy": 0.0125,
+            "cz": -1.4875,
+            "width": 0.025,
+            "height": 0.025,
+            "depth": 0.725
+          },
+          {
+            "id": "r3_w",
+            "roomId": "scenario2_room3",
+            "cx": -0.3625,
+            "cy": 0.0125,
+            "cz": -1.4875,
+            "width": 0.025,
+            "height": 0.025,
+            "depth": 0.725
+          }
+        ],
+        "connections": {
+          "scenario2_room1": [
+            "scenario2_room2"
+          ],
+          "scenario2_room2": [
+            "scenario2_room1",
+            "scenario2_room3"
+          ],
+          "scenario2_room3": [
+            "scenario2_room2"
+          ]
+        }
+      }
+    },
+    {
+      "tOffsetMs": 1,
+      "serverTick": 0,
+      "message": {
+        "type": "room_visibility_state",
+        "updates": [
+          {
+            "roomId": "scenario2_room3",
+            "visible": false
+          }
+        ]
+      }
+    },
+    {
+      "tOffsetMs": 254,
+      "serverTick": 5,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 0,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 5
+      }
+    },
+    {
+      "tOffsetMs": 293,
+      "serverTick": 6,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 1,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 6
+      }
+    },
+    {
+      "tOffsetMs": 342,
+      "serverTick": 7,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 2,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 7
+      }
+    },
+    {
+      "tOffsetMs": 443,
+      "serverTick": 9,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 3,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 9
+      }
+    },
+    {
+      "tOffsetMs": 492,
+      "serverTick": 10,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 4,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 10
+      }
+    },
+    {
+      "tOffsetMs": 542,
+      "serverTick": 11,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 5,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 11
+      }
+    },
+    {
+      "tOffsetMs": 592,
+      "serverTick": 12,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 6,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 12
+      }
+    },
+    {
+      "tOffsetMs": 642,
+      "serverTick": 13,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 7,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 13
+      }
+    },
+    {
+      "tOffsetMs": 827,
+      "serverTick": 16,
+      "message": {
+        "type": "player_joined",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "color": "#fdf912",
+        "x": 0,
+        "z": 0,
+        "animState": "IDLE",
+        "hp": 2,
+        "serverTick": 16
+      }
+    },
+    {
+      "tOffsetMs": 1044,
+      "serverTick": 21,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [
+          {
+            "type": "touched",
+            "playerIdA": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+            "playerIdB": "6d267672-f8f3-47b8-a507-d8df9162c09c"
+          }
+        ],
+        "serverTick": 21
+      }
+    },
+    {
+      "tOffsetMs": 1093,
+      "serverTick": 22,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 22
+      }
+    },
+    {
+      "tOffsetMs": 1143,
+      "serverTick": 23,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 23
+      }
+    },
+    {
+      "tOffsetMs": 1192,
+      "serverTick": 24,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 24
+      }
+    },
+    {
+      "tOffsetMs": 1242,
+      "serverTick": 25,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 25
+      }
+    },
+    {
+      "tOffsetMs": 1343,
+      "serverTick": 27,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 27
+      }
+    },
+    {
+      "tOffsetMs": 1392,
+      "serverTick": 28,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 28
+      }
+    },
+    {
+      "tOffsetMs": 1441,
+      "serverTick": 29,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 29
+      }
+    },
+    {
+      "tOffsetMs": 1493,
+      "serverTick": 30,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 30
+      }
+    },
+    {
+      "tOffsetMs": 2030,
+      "serverTick": 40,
+      "message": {
+        "type": "player_joined",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "color": "#21f0f9",
+        "x": 0,
+        "z": 0,
+        "animState": "IDLE",
+        "hp": 2,
+        "serverTick": 40
+      }
+    },
+    {
+      "tOffsetMs": 2040,
+      "serverTick": 40,
+      "message": {
+        "type": "player_joined",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "color": "#ed0b04",
+        "x": 0,
+        "z": 0,
+        "animState": "IDLE",
+        "hp": 2,
+        "serverTick": 40
+      }
+    },
+    {
+      "tOffsetMs": 2044,
+      "serverTick": 41,
+      "message": {
+        "type": "add_rule",
+        "text": "Players that do not continue will be eliminated."
+      }
+    },
+    {
+      "tOffsetMs": 2045,
+      "serverTick": 41,
+      "message": {
+        "type": "geometry_state",
+        "updates": [
+          {
+            "id": "north_door",
+            "visible": false
+          }
+        ]
+      }
+    },
+    {
+      "tOffsetMs": 2091,
+      "serverTick": 42,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [
+          {
+            "type": "touched",
+            "playerIdA": "8a6a295b-067f-4156-a080-5081720c6716",
+            "playerIdB": "6d267672-f8f3-47b8-a507-d8df9162c09c"
+          }
+        ],
+        "serverTick": 42
+      }
+    },
+    {
+      "tOffsetMs": 2141,
+      "serverTick": 43,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [
+          {
+            "type": "touched",
+            "playerIdA": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+            "playerIdB": "6d267672-f8f3-47b8-a507-d8df9162c09c"
+          }
+        ],
+        "serverTick": 43
+      }
+    },
+    {
+      "tOffsetMs": 2141,
+      "serverTick": 43,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 43
+      }
+    },
+    {
+      "tOffsetMs": 2193,
+      "serverTick": 44,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 44
+      }
+    },
+    {
+      "tOffsetMs": 2193,
+      "serverTick": 44,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 44
+      }
+    },
+    {
+      "tOffsetMs": 2249,
+      "serverTick": 45,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 45
+      }
+    },
+    {
+      "tOffsetMs": 2250,
+      "serverTick": 45,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 45
+      }
+    },
+    {
+      "tOffsetMs": 2292,
+      "serverTick": 46,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 8,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 46
+      }
+    },
+    {
+      "tOffsetMs": 2293,
+      "serverTick": 46,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 46
+      }
+    },
+    {
+      "tOffsetMs": 2293,
+      "serverTick": 46,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 46
+      }
+    },
+    {
+      "tOffsetMs": 2341,
+      "serverTick": 47,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 47
+      }
+    },
+    {
+      "tOffsetMs": 2341,
+      "serverTick": 47,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 9,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 47
+      }
+    },
+    {
+      "tOffsetMs": 2341,
+      "serverTick": 47,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 47
+      }
+    },
+    {
+      "tOffsetMs": 2392,
+      "serverTick": 48,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 48
+      }
+    },
+    {
+      "tOffsetMs": 2392,
+      "serverTick": 48,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 10,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 48
+      }
+    },
+    {
+      "tOffsetMs": 2392,
+      "serverTick": 48,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 48
+      }
+    },
+    {
+      "tOffsetMs": 2441,
+      "serverTick": 49,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 49
+      }
+    },
+    {
+      "tOffsetMs": 2441,
+      "serverTick": 49,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 11,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 49
+      }
+    },
+    {
+      "tOffsetMs": 2441,
+      "serverTick": 49,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 49
+      }
+    },
+    {
+      "tOffsetMs": 2492,
+      "serverTick": 50,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 50
+      }
+    },
+    {
+      "tOffsetMs": 2492,
+      "serverTick": 50,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 12,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 50
+      }
+    },
+    {
+      "tOffsetMs": 2492,
+      "serverTick": 50,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 50
+      }
+    },
+    {
+      "tOffsetMs": 2541,
+      "serverTick": 51,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 51
+      }
+    },
+    {
+      "tOffsetMs": 2541,
+      "serverTick": 51,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 13,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 51
+      }
+    },
+    {
+      "tOffsetMs": 2542,
+      "serverTick": 51,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 51
+      }
+    },
+    {
+      "tOffsetMs": 2592,
+      "serverTick": 52,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 52
+      }
+    },
+    {
+      "tOffsetMs": 2592,
+      "serverTick": 52,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 14,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 52
+      }
+    },
+    {
+      "tOffsetMs": 2593,
+      "serverTick": 52,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 52
+      }
+    },
+    {
+      "tOffsetMs": 2641,
+      "serverTick": 53,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 53
+      }
+    },
+    {
+      "tOffsetMs": 2641,
+      "serverTick": 53,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 53
+      }
+    },
+    {
+      "tOffsetMs": 2641,
+      "serverTick": 53,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 15,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 53
+      }
+    },
+    {
+      "tOffsetMs": 2691,
+      "serverTick": 54,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 54
+      }
+    },
+    {
+      "tOffsetMs": 2692,
+      "serverTick": 54,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 54
+      }
+    },
+    {
+      "tOffsetMs": 2741,
+      "serverTick": 55,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 16,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 55
+      }
+    },
+    {
+      "tOffsetMs": 2741,
+      "serverTick": 55,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 55
+      }
+    },
+    {
+      "tOffsetMs": 2742,
+      "serverTick": 55,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 55
+      }
+    },
+    {
+      "tOffsetMs": 2793,
+      "serverTick": 56,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 56
+      }
+    },
+    {
+      "tOffsetMs": 2793,
+      "serverTick": 56,
+      "message": {
+        "type": "move_ack",
+        "clientTick": 17,
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 56
+      }
+    },
+    {
+      "tOffsetMs": 2793,
+      "serverTick": 56,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 56
+      }
+    },
+    {
+      "tOffsetMs": 2841,
+      "serverTick": 57,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 57
+      }
+    },
+    {
+      "tOffsetMs": 2841,
+      "serverTick": 57,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 57
+      }
+    },
+    {
+      "tOffsetMs": 2895,
+      "serverTick": 58,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 58
+      }
+    },
+    {
+      "tOffsetMs": 2895,
+      "serverTick": 58,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 58
+      }
+    },
+    {
+      "tOffsetMs": 2941,
+      "serverTick": 59,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 59
+      }
+    },
+    {
+      "tOffsetMs": 2941,
+      "serverTick": 59,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 59
+      }
+    },
+    {
+      "tOffsetMs": 2991,
+      "serverTick": 60,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 60
+      }
+    },
+    {
+      "tOffsetMs": 2991,
+      "serverTick": 60,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 60
+      }
+    },
+    {
+      "tOffsetMs": 3043,
+      "serverTick": 61,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 61
+      }
+    },
+    {
+      "tOffsetMs": 3043,
+      "serverTick": 61,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 61
+      }
+    },
+    {
+      "tOffsetMs": 3094,
+      "serverTick": 62,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 62
+      }
+    },
+    {
+      "tOffsetMs": 3144,
+      "serverTick": 63,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 63
+      }
+    },
+    {
+      "tOffsetMs": 3145,
+      "serverTick": 63,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 63
+      }
+    },
+    {
+      "tOffsetMs": 3190,
+      "serverTick": 64,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 64
+      }
+    },
+    {
+      "tOffsetMs": 3191,
+      "serverTick": 64,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 64
+      }
+    },
+    {
+      "tOffsetMs": 3243,
+      "serverTick": 65,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 65
+      }
+    },
+    {
+      "tOffsetMs": 3243,
+      "serverTick": 65,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 65
+      }
+    },
+    {
+      "tOffsetMs": 3291,
+      "serverTick": 66,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 66
+      }
+    },
+    {
+      "tOffsetMs": 3291,
+      "serverTick": 66,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 66
+      }
+    },
+    {
+      "tOffsetMs": 3291,
+      "serverTick": 66,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 66
+      }
+    },
+    {
+      "tOffsetMs": 3342,
+      "serverTick": 67,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 67
+      }
+    },
+    {
+      "tOffsetMs": 3342,
+      "serverTick": 67,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 67
+      }
+    },
+    {
+      "tOffsetMs": 3393,
+      "serverTick": 68,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 68
+      }
+    },
+    {
+      "tOffsetMs": 3393,
+      "serverTick": 68,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 68
+      }
+    },
+    {
+      "tOffsetMs": 3393,
+      "serverTick": 68,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 68
+      }
+    },
+    {
+      "tOffsetMs": 3442,
+      "serverTick": 69,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 69
+      }
+    },
+    {
+      "tOffsetMs": 3442,
+      "serverTick": 69,
+      "message": {
+        "type": "player_update",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 69
+      }
+    },
+    {
+      "tOffsetMs": 3442,
+      "serverTick": 69,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 69
+      }
+    },
+    {
+      "tOffsetMs": 3469,
+      "serverTick": 69,
+      "message": {
+        "type": "player_left",
+        "playerId": "5a17616e-0586-47d9-bbcc-c784d5e4fee3"
+      }
+    },
+    {
+      "tOffsetMs": 3492,
+      "serverTick": 70,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 70
+      }
+    },
+    {
+      "tOffsetMs": 3492,
+      "serverTick": 70,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 70
+      }
+    },
+    {
+      "tOffsetMs": 3541,
+      "serverTick": 71,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 71
+      }
+    },
+    {
+      "tOffsetMs": 3541,
+      "serverTick": 71,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 71
+      }
+    },
+    {
+      "tOffsetMs": 3591,
+      "serverTick": 72,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 72
+      }
+    },
+    {
+      "tOffsetMs": 3592,
+      "serverTick": 72,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 72
+      }
+    },
+    {
+      "tOffsetMs": 3641,
+      "serverTick": 73,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 73
+      }
+    },
+    {
+      "tOffsetMs": 3642,
+      "serverTick": 73,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 73
+      }
+    },
+    {
+      "tOffsetMs": 3692,
+      "serverTick": 74,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 74
+      }
+    },
+    {
+      "tOffsetMs": 3692,
+      "serverTick": 74,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 74
+      }
+    },
+    {
+      "tOffsetMs": 3741,
+      "serverTick": 75,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 75
+      }
+    },
+    {
+      "tOffsetMs": 3741,
+      "serverTick": 75,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 75
+      }
+    },
+    {
+      "tOffsetMs": 3790,
+      "serverTick": 76,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 76
+      }
+    },
+    {
+      "tOffsetMs": 3790,
+      "serverTick": 76,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 76
+      }
+    },
+    {
+      "tOffsetMs": 3841,
+      "serverTick": 77,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 77
+      }
+    },
+    {
+      "tOffsetMs": 3841,
+      "serverTick": 77,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 77
+      }
+    },
+    {
+      "tOffsetMs": 3892,
+      "serverTick": 78,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 78
+      }
+    },
+    {
+      "tOffsetMs": 3893,
+      "serverTick": 78,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 78
+      }
+    },
+    {
+      "tOffsetMs": 3941,
+      "serverTick": 79,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 79
+      }
+    },
+    {
+      "tOffsetMs": 3941,
+      "serverTick": 79,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 79
+      }
+    },
+    {
+      "tOffsetMs": 3990,
+      "serverTick": 80,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 80
+      }
+    },
+    {
+      "tOffsetMs": 3991,
+      "serverTick": 80,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 80
+      }
+    },
+    {
+      "tOffsetMs": 4042,
+      "serverTick": 81,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 81
+      }
+    },
+    {
+      "tOffsetMs": 4042,
+      "serverTick": 81,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 81
+      }
+    },
+    {
+      "tOffsetMs": 4043,
+      "serverTick": 81,
+      "message": {
+        "type": "instruction",
+        "lines": [
+          {
+            "text": "Players that do not continue will be eliminated",
+            "label": "RULE",
+            "specId": "rule_move"
+          }
+        ]
+      }
+    },
+    {
+      "tOffsetMs": 4091,
+      "serverTick": 82,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 82
+      }
+    },
+    {
+      "tOffsetMs": 4091,
+      "serverTick": 82,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 82
+      }
+    },
+    {
+      "tOffsetMs": 4142,
+      "serverTick": 83,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 83
+      }
+    },
+    {
+      "tOffsetMs": 4143,
+      "serverTick": 83,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.032249998301267624,
+        "events": [
+          {
+            "type": "update_animation_state",
+            "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+            "animState": "WALKING"
+          }
+        ],
+        "serverTick": 83
+      }
+    },
+    {
+      "tOffsetMs": 4192,
+      "serverTick": 84,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 84
+      }
+    },
+    {
+      "tOffsetMs": 4192,
+      "serverTick": 84,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.06449999660253525,
+        "events": [],
+        "serverTick": 84
+      }
+    },
+    {
+      "tOffsetMs": 4241,
+      "serverTick": 85,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 85
+      }
+    },
+    {
+      "tOffsetMs": 4241,
+      "serverTick": 85,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.09674999490380287,
+        "events": [],
+        "serverTick": 85
+      }
+    },
+    {
+      "tOffsetMs": 4292,
+      "serverTick": 86,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": 0,
+        "events": [],
+        "serverTick": 86
+      }
+    },
+    {
+      "tOffsetMs": 4294,
+      "serverTick": 86,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.1289999932050705,
+        "events": [],
+        "serverTick": 86
+      }
+    },
+    {
+      "tOffsetMs": 4342,
+      "serverTick": 87,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.032249998301267624,
+        "events": [
+          {
+            "type": "update_animation_state",
+            "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+            "animState": "WALKING"
+          }
+        ],
+        "serverTick": 87
+      }
+    },
+    {
+      "tOffsetMs": 4343,
+      "serverTick": 87,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.16124999150633812,
+        "events": [],
+        "serverTick": 87
+      }
+    },
+    {
+      "tOffsetMs": 4391,
+      "serverTick": 88,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.06449999660253525,
+        "events": [],
+        "serverTick": 88
+      }
+    },
+    {
+      "tOffsetMs": 4391,
+      "serverTick": 88,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.19349998980760574,
+        "events": [],
+        "serverTick": 88
+      }
+    },
+    {
+      "tOffsetMs": 4441,
+      "serverTick": 89,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.09674999490380287,
+        "events": [],
+        "serverTick": 89
+      }
+    },
+    {
+      "tOffsetMs": 4441,
+      "serverTick": 89,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.22574998810887337,
+        "events": [],
+        "serverTick": 89
+      }
+    },
+    {
+      "tOffsetMs": 4491,
+      "serverTick": 90,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.1289999932050705,
+        "events": [],
+        "serverTick": 90
+      }
+    },
+    {
+      "tOffsetMs": 4491,
+      "serverTick": 90,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.257999986410141,
+        "events": [],
+        "serverTick": 90
+      }
+    },
+    {
+      "tOffsetMs": 4541,
+      "serverTick": 91,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.16124999150633812,
+        "events": [],
+        "serverTick": 91
+      }
+    },
+    {
+      "tOffsetMs": 4541,
+      "serverTick": 91,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.2902499847114086,
+        "events": [],
+        "serverTick": 91
+      }
+    },
+    {
+      "tOffsetMs": 4590,
+      "serverTick": 92,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.19349998980760574,
+        "events": [],
+        "serverTick": 92
+      }
+    },
+    {
+      "tOffsetMs": 4590,
+      "serverTick": 92,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.32249998301267624,
+        "events": [],
+        "serverTick": 92
+      }
+    },
+    {
+      "tOffsetMs": 4641,
+      "serverTick": 93,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.22574998810887337,
+        "events": [],
+        "serverTick": 93
+      }
+    },
+    {
+      "tOffsetMs": 4641,
+      "serverTick": 93,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.35474998131394386,
+        "events": [],
+        "serverTick": 93
+      }
+    },
+    {
+      "tOffsetMs": 4712,
+      "serverTick": 94,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.257999986410141,
+        "events": [],
+        "serverTick": 94
+      }
+    },
+    {
+      "tOffsetMs": 4712,
+      "serverTick": 94,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.3869999796152115,
+        "events": [],
+        "serverTick": 94
+      }
+    },
+    {
+      "tOffsetMs": 4740,
+      "serverTick": 95,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.2902499847114086,
+        "events": [],
+        "serverTick": 95
+      }
+    },
+    {
+      "tOffsetMs": 4740,
+      "serverTick": 95,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.4192499779164791,
+        "events": [],
+        "serverTick": 95
+      }
+    },
+    {
+      "tOffsetMs": 4797,
+      "serverTick": 96,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.32249998301267624,
+        "events": [],
+        "serverTick": 96
+      }
+    },
+    {
+      "tOffsetMs": 4844,
+      "serverTick": 97,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.48374997451901436,
+        "events": [],
+        "serverTick": 97
+      }
+    },
+    {
+      "tOffsetMs": 4844,
+      "serverTick": 97,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.35474998131394386,
+        "events": [],
+        "serverTick": 97
+      }
+    },
+    {
+      "tOffsetMs": 4892,
+      "serverTick": 98,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.3869999796152115,
+        "events": [],
+        "serverTick": 98
+      }
+    },
+    {
+      "tOffsetMs": 4892,
+      "serverTick": 98,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.515999972820282,
+        "events": [],
+        "serverTick": 98
+      }
+    },
+    {
+      "tOffsetMs": 4940,
+      "serverTick": 99,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.4192499779164791,
+        "events": [],
+        "serverTick": 99
+      }
+    },
+    {
+      "tOffsetMs": 4941,
+      "serverTick": 99,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.5482499711215496,
+        "events": [],
+        "serverTick": 99
+      }
+    },
+    {
+      "tOffsetMs": 4991,
+      "serverTick": 100,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.45149997621774673,
+        "events": [],
+        "serverTick": 100
+      }
+    },
+    {
+      "tOffsetMs": 4991,
+      "serverTick": 100,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.5804999694228172,
+        "events": [],
+        "serverTick": 100
+      }
+    },
+    {
+      "tOffsetMs": 5042,
+      "serverTick": 101,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.48374997451901436,
+        "events": [],
+        "serverTick": 101
+      }
+    },
+    {
+      "tOffsetMs": 5042,
+      "serverTick": 101,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6127499677240849,
+        "events": [],
+        "serverTick": 101
+      }
+    },
+    {
+      "tOffsetMs": 5092,
+      "serverTick": 102,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.515999972820282,
+        "events": [],
+        "serverTick": 102
+      }
+    },
+    {
+      "tOffsetMs": 5092,
+      "serverTick": 102,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6449999660253525,
+        "events": [],
+        "serverTick": 102
+      }
+    },
+    {
+      "tOffsetMs": 5140,
+      "serverTick": 103,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.5482499711215496,
+        "events": [],
+        "serverTick": 103
+      }
+    },
+    {
+      "tOffsetMs": 5141,
+      "serverTick": 103,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 103
+      }
+    },
+    {
+      "tOffsetMs": 5192,
+      "serverTick": 104,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.5804999694228172,
+        "events": [],
+        "serverTick": 104
+      }
+    },
+    {
+      "tOffsetMs": 5193,
+      "serverTick": 104,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [
+          {
+            "type": "update_animation_state",
+            "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+            "animState": "IDLE"
+          }
+        ],
+        "serverTick": 104
+      }
+    },
+    {
+      "tOffsetMs": 5241,
+      "serverTick": 105,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6127499677240849,
+        "events": [],
+        "serverTick": 105
+      }
+    },
+    {
+      "tOffsetMs": 5241,
+      "serverTick": 105,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 105
+      }
+    },
+    {
+      "tOffsetMs": 5291,
+      "serverTick": 106,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6449999660253525,
+        "events": [],
+        "serverTick": 106
+      }
+    },
+    {
+      "tOffsetMs": 5291,
+      "serverTick": 106,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 106
+      }
+    },
+    {
+      "tOffsetMs": 5341,
+      "serverTick": 107,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 107
+      }
+    },
+    {
+      "tOffsetMs": 5341,
+      "serverTick": 107,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 107
+      }
+    },
+    {
+      "tOffsetMs": 5398,
+      "serverTick": 108,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [
+          {
+            "type": "update_animation_state",
+            "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+            "animState": "IDLE"
+          }
+        ],
+        "serverTick": 108
+      }
+    },
+    {
+      "tOffsetMs": 5398,
+      "serverTick": 108,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 108
+      }
+    },
+    {
+      "tOffsetMs": 5479,
+      "serverTick": 109,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 109
+      }
+    },
+    {
+      "tOffsetMs": 5492,
+      "serverTick": 110,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 110
+      }
+    },
+    {
+      "tOffsetMs": 5492,
+      "serverTick": 110,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 110
+      }
+    },
+    {
+      "tOffsetMs": 5544,
+      "serverTick": 111,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 111
+      }
+    },
+    {
+      "tOffsetMs": 5544,
+      "serverTick": 111,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 111
+      }
+    },
+    {
+      "tOffsetMs": 5592,
+      "serverTick": 112,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 112
+      }
+    },
+    {
+      "tOffsetMs": 5602,
+      "serverTick": 112,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 112
+      }
+    },
+    {
+      "tOffsetMs": 5641,
+      "serverTick": 113,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 113
+      }
+    },
+    {
+      "tOffsetMs": 5641,
+      "serverTick": 113,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 113
+      }
+    },
+    {
+      "tOffsetMs": 5691,
+      "serverTick": 114,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 114
+      }
+    },
+    {
+      "tOffsetMs": 5691,
+      "serverTick": 114,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 114
+      }
+    },
+    {
+      "tOffsetMs": 5740,
+      "serverTick": 115,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 115
+      }
+    },
+    {
+      "tOffsetMs": 5744,
+      "serverTick": 115,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 115
+      }
+    },
+    {
+      "tOffsetMs": 5791,
+      "serverTick": 116,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 116
+      }
+    },
+    {
+      "tOffsetMs": 5791,
+      "serverTick": 116,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 116
+      }
+    },
+    {
+      "tOffsetMs": 5842,
+      "serverTick": 117,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 117
+      }
+    },
+    {
+      "tOffsetMs": 5842,
+      "serverTick": 117,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 117
+      }
+    },
+    {
+      "tOffsetMs": 5893,
+      "serverTick": 118,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 118
+      }
+    },
+    {
+      "tOffsetMs": 5893,
+      "serverTick": 118,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 118
+      }
+    },
+    {
+      "tOffsetMs": 5942,
+      "serverTick": 119,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 119
+      }
+    },
+    {
+      "tOffsetMs": 5942,
+      "serverTick": 119,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 119
+      }
+    },
+    {
+      "tOffsetMs": 5992,
+      "serverTick": 120,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 120
+      }
+    },
+    {
+      "tOffsetMs": 5992,
+      "serverTick": 120,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 120
+      }
+    },
+    {
+      "tOffsetMs": 6042,
+      "serverTick": 121,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 121
+      }
+    },
+    {
+      "tOffsetMs": 6042,
+      "serverTick": 121,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 121
+      }
+    },
+    {
+      "tOffsetMs": 6091,
+      "serverTick": 122,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 122
+      }
+    },
+    {
+      "tOffsetMs": 6091,
+      "serverTick": 122,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 122
+      }
+    },
+    {
+      "tOffsetMs": 6142,
+      "serverTick": 123,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 123
+      }
+    },
+    {
+      "tOffsetMs": 6142,
+      "serverTick": 123,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 123
+      }
+    },
+    {
+      "tOffsetMs": 6190,
+      "serverTick": 124,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 124
+      }
+    },
+    {
+      "tOffsetMs": 6190,
+      "serverTick": 124,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 124
+      }
+    },
+    {
+      "tOffsetMs": 6242,
+      "serverTick": 125,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 125
+      }
+    },
+    {
+      "tOffsetMs": 6242,
+      "serverTick": 125,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 125
+      }
+    },
+    {
+      "tOffsetMs": 6291,
+      "serverTick": 126,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 126
+      }
+    },
+    {
+      "tOffsetMs": 6291,
+      "serverTick": 126,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 126
+      }
+    },
+    {
+      "tOffsetMs": 6342,
+      "serverTick": 127,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 127
+      }
+    },
+    {
+      "tOffsetMs": 6342,
+      "serverTick": 127,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 127
+      }
+    },
+    {
+      "tOffsetMs": 6391,
+      "serverTick": 128,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 128
+      }
+    },
+    {
+      "tOffsetMs": 6391,
+      "serverTick": 128,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 128
+      }
+    },
+    {
+      "tOffsetMs": 6441,
+      "serverTick": 129,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 129
+      }
+    },
+    {
+      "tOffsetMs": 6441,
+      "serverTick": 129,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 129
+      }
+    },
+    {
+      "tOffsetMs": 6491,
+      "serverTick": 130,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 130
+      }
+    },
+    {
+      "tOffsetMs": 6491,
+      "serverTick": 130,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 130
+      }
+    },
+    {
+      "tOffsetMs": 6541,
+      "serverTick": 131,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 131
+      }
+    },
+    {
+      "tOffsetMs": 6541,
+      "serverTick": 131,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 131
+      }
+    },
+    {
+      "tOffsetMs": 6591,
+      "serverTick": 132,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 132
+      }
+    },
+    {
+      "tOffsetMs": 6591,
+      "serverTick": 132,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 132
+      }
+    },
+    {
+      "tOffsetMs": 6641,
+      "serverTick": 133,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 133
+      }
+    },
+    {
+      "tOffsetMs": 6641,
+      "serverTick": 133,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 133
+      }
+    },
+    {
+      "tOffsetMs": 6691,
+      "serverTick": 134,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 134
+      }
+    },
+    {
+      "tOffsetMs": 6691,
+      "serverTick": 134,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 134
+      }
+    },
+    {
+      "tOffsetMs": 6741,
+      "serverTick": 135,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 135
+      }
+    },
+    {
+      "tOffsetMs": 6741,
+      "serverTick": 135,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 135
+      }
+    },
+    {
+      "tOffsetMs": 6793,
+      "serverTick": 136,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 136
+      }
+    },
+    {
+      "tOffsetMs": 6841,
+      "serverTick": 137,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 137
+      }
+    },
+    {
+      "tOffsetMs": 6841,
+      "serverTick": 137,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 137
+      }
+    },
+    {
+      "tOffsetMs": 6891,
+      "serverTick": 138,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 138
+      }
+    },
+    {
+      "tOffsetMs": 6891,
+      "serverTick": 138,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 138
+      }
+    },
+    {
+      "tOffsetMs": 6942,
+      "serverTick": 139,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 139
+      }
+    },
+    {
+      "tOffsetMs": 6942,
+      "serverTick": 139,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 139
+      }
+    },
+    {
+      "tOffsetMs": 6991,
+      "serverTick": 140,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 140
+      }
+    },
+    {
+      "tOffsetMs": 6991,
+      "serverTick": 140,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 140
+      }
+    },
+    {
+      "tOffsetMs": 7042,
+      "serverTick": 141,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 141
+      }
+    },
+    {
+      "tOffsetMs": 7042,
+      "serverTick": 141,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 141
+      }
+    },
+    {
+      "tOffsetMs": 7090,
+      "serverTick": 142,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 142
+      }
+    },
+    {
+      "tOffsetMs": 7090,
+      "serverTick": 142,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 142
+      }
+    },
+    {
+      "tOffsetMs": 7141,
+      "serverTick": 143,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 143
+      }
+    },
+    {
+      "tOffsetMs": 7142,
+      "serverTick": 143,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 143
+      }
+    },
+    {
+      "tOffsetMs": 7191,
+      "serverTick": 144,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 144
+      }
+    },
+    {
+      "tOffsetMs": 7191,
+      "serverTick": 144,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 144
+      }
+    },
+    {
+      "tOffsetMs": 7258,
+      "serverTick": 145,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 145
+      }
+    },
+    {
+      "tOffsetMs": 7292,
+      "serverTick": 146,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 146
+      }
+    },
+    {
+      "tOffsetMs": 7292,
+      "serverTick": 146,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 146
+      }
+    },
+    {
+      "tOffsetMs": 7340,
+      "serverTick": 147,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 147
+      }
+    },
+    {
+      "tOffsetMs": 7341,
+      "serverTick": 147,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 147
+      }
+    },
+    {
+      "tOffsetMs": 7392,
+      "serverTick": 148,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 148
+      }
+    },
+    {
+      "tOffsetMs": 7392,
+      "serverTick": 148,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 148
+      }
+    },
+    {
+      "tOffsetMs": 7441,
+      "serverTick": 149,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 149
+      }
+    },
+    {
+      "tOffsetMs": 7441,
+      "serverTick": 149,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 149
+      }
+    },
+    {
+      "tOffsetMs": 7491,
+      "serverTick": 150,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 150
+      }
+    },
+    {
+      "tOffsetMs": 7491,
+      "serverTick": 150,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 150
+      }
+    },
+    {
+      "tOffsetMs": 7541,
+      "serverTick": 151,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 151
+      }
+    },
+    {
+      "tOffsetMs": 7541,
+      "serverTick": 151,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 151
+      }
+    },
+    {
+      "tOffsetMs": 7592,
+      "serverTick": 152,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 152
+      }
+    },
+    {
+      "tOffsetMs": 7592,
+      "serverTick": 152,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 152
+      }
+    },
+    {
+      "tOffsetMs": 7641,
+      "serverTick": 153,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 153
+      }
+    },
+    {
+      "tOffsetMs": 7641,
+      "serverTick": 153,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 153
+      }
+    },
+    {
+      "tOffsetMs": 7691,
+      "serverTick": 154,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 154
+      }
+    },
+    {
+      "tOffsetMs": 7691,
+      "serverTick": 154,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 154
+      }
+    },
+    {
+      "tOffsetMs": 7741,
+      "serverTick": 155,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 155
+      }
+    },
+    {
+      "tOffsetMs": 7741,
+      "serverTick": 155,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 155
+      }
+    },
+    {
+      "tOffsetMs": 7791,
+      "serverTick": 156,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 156
+      }
+    },
+    {
+      "tOffsetMs": 7791,
+      "serverTick": 156,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 156
+      }
+    },
+    {
+      "tOffsetMs": 7842,
+      "serverTick": 157,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 157
+      }
+    },
+    {
+      "tOffsetMs": 7842,
+      "serverTick": 157,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 157
+      }
+    },
+    {
+      "tOffsetMs": 7891,
+      "serverTick": 158,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 158
+      }
+    },
+    {
+      "tOffsetMs": 7891,
+      "serverTick": 158,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 158
+      }
+    },
+    {
+      "tOffsetMs": 7941,
+      "serverTick": 159,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 159
+      }
+    },
+    {
+      "tOffsetMs": 7941,
+      "serverTick": 159,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 159
+      }
+    },
+    {
+      "tOffsetMs": 7992,
+      "serverTick": 160,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 160
+      }
+    },
+    {
+      "tOffsetMs": 7992,
+      "serverTick": 160,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 160
+      }
+    },
+    {
+      "tOffsetMs": 8041,
+      "serverTick": 161,
+      "message": {
+        "type": "player_update",
+        "playerId": "fb82e0c5-beaf-4d4f-b83c-aba389007a74",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 161
+      }
+    },
+    {
+      "tOffsetMs": 8041,
+      "serverTick": 161,
+      "message": {
+        "type": "player_update",
+        "playerId": "8a6a295b-067f-4156-a080-5081720c6716",
+        "x": 0,
+        "z": -0.6772499643266201,
+        "events": [],
+        "serverTick": 161
+      }
+    },
+    {
+      "tOffsetMs": 8041,
+      "serverTick": 161,
+      "message": {
+        "type": "player_left",
+        "playerId": "6d267672-f8f3-47b8-a507-d8df9162c09c"
+      }
+    }
+  ]
+}

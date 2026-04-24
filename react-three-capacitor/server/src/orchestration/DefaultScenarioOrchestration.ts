@@ -43,6 +43,7 @@ export class DefaultScenarioOrchestration implements RoomOrchestration {
       spawnPosition: scenario.spawn,
       onScenarioTerminate: this.options?.onScenarioTerminate,
       recordingManager: ctx.recordingManager,
+      hubConnection: scenario.hubConnection,
     })
 
     const attachedRoomIds = room.addMap(map)

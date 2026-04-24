@@ -38,7 +38,7 @@ export class RoomRouter {
     const orch = await this.resolveOrchestration(routingKey)
     if (!orch) return null
     const room = this.pickOpenRoomForKey(routingKey, orch) ?? this.ensureRoomForKey(routingKey, orch)
-    const playerId = room.connectPlayer(ws, browserUuid)
+    const playerId = room.connectPlayer(ws, browserUuid, routingKey)
     return { room, playerId }
   }
 
@@ -57,6 +57,22 @@ export class RoomRouter {
   // subsequent routePlayer call.
   async canRouteKey(routingKey: string): Promise<boolean> {
     return (await this.resolveOrchestration(routingKey)) !== null
+  }
+
+  // Find (or create) a hub-capable room for `routingKey` that currently has
+  // an open hub slot. Used by the hub transfer flow: the server picks a
+  // target MR for a waiting solo-hallway player. If no open room exists,
+  // creates a fresh one and returns it.
+  async findOrCreateHubSlot(routingKey: string): Promise<MultiplayerRoom | null> {
+    const orch = await this.resolveOrchestration(routingKey)
+    if (!orch) return null
+    const open = this.openRooms.get(routingKey)
+    if (open) {
+      for (const room of open) {
+        if (orch.isOpen(room) && room.isHubSlotOpen()) return room
+      }
+    }
+    return this.ensureRoomForKey(routingKey, orch)
   }
 
   private async resolveOrchestration(routingKey: string): Promise<RoomOrchestration | null> {

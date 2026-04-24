@@ -9,8 +9,11 @@ import { ScenarioManager } from './ScenarioManager.js'
 import { Scenario } from './Scenario.js'
 import type { ScenarioConfig, ScenarioDeps } from './Scenario.js'
 import type { GameMap } from '../../src/game/GameMap.js'
+import { serializeGameMap } from '../../src/game/GameMap.js'
 import type { BotSpec } from './bot/BotTypes.js'
 import type { PlayerRecordingManager } from './PlayerRecordingManager.js'
+import type { ScenarioSpec } from './ContentRegistry.js'
+import { computeHubAttachment, shiftMapToOrigin, type HubAttachment } from './orchestration/hubAttachment.js'
 
 const NPC_COLOR = '#888888'
 const SIM_MS_PER_TICK = 1000 / TICK_RATE_HZ
@@ -83,6 +86,14 @@ export interface MultiplayerRoomOptions {
   // Captures outgoing messages per human player for first-minute replay.
   // Optional: tests and harnesses that don't care about recording can omit.
   recordingManager?: PlayerRecordingManager
+  // When set, the room advertises a hub slot: one incoming player can be
+  // transferred in from a solo hallway via `acceptHubTransfer`. The
+  // orchestration populates this from the scenario's `hubConnection` field.
+  hubConnection?: NonNullable<ScenarioSpec['hubConnection']>
+  // When true, the room tears itself down as soon as its player count
+  // reaches zero (used by solo hallway MRs, which are per-connection).
+  // Default false: rooms normally linger while their scenario runs.
+  autoDestroyOnEmpty?: boolean
 }
 
 // A MultiplayerRoom owns one World, one ScenarioManager, the tick loop, and
@@ -122,9 +133,33 @@ export class MultiplayerRoom {
   private getRoomAtPositionFn: (x: number, z: number) => string | null = () => null
   private scheduledCbs: Array<{ targetTick: number; cb: () => void; cancelled: boolean }> = []
   private readonly readyPlayerIds: Set<string> = new Set()
+  // Per-player waiters fired on the next `world_reset_ack`. The hub transfer
+  // flow enqueues its reveal step here so walls drop only after the client
+  // has rebuilt its local world from the reset snapshot.
+  private readonly worldResetAckWaiters: Map<string, Array<() => void>> = new Map()
+
+  // Hub attach declaration from the scenario, or undefined if this room is
+  // not hub-capable. `hubSlotOpen` starts true iff hubConnection is present,
+  // and flips to false while a transferred player is still inside the
+  // hallway segment. Reopens when the player crosses into the main scenario
+  // rooms (handled in the tick loop).
+  private readonly hubConnection?: NonNullable<ScenarioSpec['hubConnection']>
+  private hubSlotOpen: boolean
+  // Player id currently occupying the hub slot (waiting in the hallway after
+  // transfer). Null outside transfer windows.
+  private hubTransferPlayerId: string | null = null
+  // Attachment placement cache for the in-flight transfer. Used by the
+  // ack-gated reveal and the slot-release path.
+  private hubTransferAttachment: HubAttachment | null = null
+  // Map-instance id of the temporarily attached hallway, cleared when the
+  // hallway is released.
+  private hubTransferHallwayInstanceId: string | null = null
+  // Timer that reopens the slot if the ack never arrives.
+  private hubTransferTimeoutCancel: (() => void) | null = null
+  private readonly autoDestroyOnEmpty: boolean
 
   constructor(opts: MultiplayerRoomOptions) {
-    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn, spawnPosition, onScenarioTerminate, recordingManager } = opts
+    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn, spawnPosition, onScenarioTerminate, recordingManager, hubConnection, autoDestroyOnEmpty } = opts
     this.roomId = roomId
     this.instanceIndex = instanceIndex
     this.onCloseScenario = onCloseScenario
@@ -133,6 +168,9 @@ export class MultiplayerRoom {
     this.recordingManager = recordingManager
     this.spawnBotFn = spawnBotFn ?? (() => {})
     this.spawnPosition = spawnPosition ?? { x: 0, z: 0 }
+    this.hubConnection = hubConnection
+    this.hubSlotOpen = hubConnection !== undefined
+    this.autoDestroyOnEmpty = autoDestroyOnEmpty ?? false
     this.tickRateHz = tickRateHz ?? TICK_RATE_HZ
     this.world = new World([], {
       scheduleSimMs: (ms, cb) => this.scheduleSimMs(ms, cb),
@@ -160,7 +198,10 @@ export class MultiplayerRoom {
 
   // Register a map with this room's world (builds the scoped room ids,
   // default adjacency, and Rapier colliders) and spawn the map's NPCs.
-  // Returns the scoped room ids contributed by the map.
+  // Returns the scoped room ids contributed by the map. Does NOT broadcast a
+  // wire message; callers decide whether the addition is per-player (hub
+  // transfer) or room-wide (mid-session scenario addition) and use
+  // `sendMapAddToPlayer` / `broadcastMapAdd` accordingly.
   addMap(map: GameMap): string[] {
     const instance = this.world.addMap(map)
     this.attachedMaps.push(map)
@@ -169,6 +210,59 @@ export class MultiplayerRoom {
     const mapLookup = map.getRoomAtPosition
     this.getRoomAtPositionFn = (x, z) => mapLookup(x, z) ?? prev(x, z)
     return [...instance.scopedRoomIds]
+  }
+
+  // Remove a previously-added map. Tears down all Rapier colliders, room
+  // bounds, and adjacency edges the map introduced. Does NOT broadcast;
+  // callers use `sendMapRemoveToPlayer` / `broadcastMapRemove` explicitly.
+  removeMap(mapInstanceId: string): void {
+    const map = this.attachedMaps.find(m => m.mapInstanceId === mapInstanceId)
+    if (!map) return
+    this.world.removeMap(mapInstanceId)
+    this.attachedMaps.splice(this.attachedMaps.indexOf(map), 1)
+    // Recompute the fallback-chain for getRoomAtPositionFn from scratch — the
+    // removed map's lookup needs to drop out of the chain, and maintaining an
+    // opaque closure chain makes that awkward. Rebuild deterministically.
+    this.getRoomAtPositionFn = () => null
+    for (const m of this.attachedMaps) {
+      const prev = this.getRoomAtPositionFn
+      const lookup = m.getRoomAtPosition
+      this.getRoomAtPositionFn = (x, z) => lookup(x, z) ?? prev(x, z)
+    }
+  }
+
+  // Send a `map_add` carrying a specific map's topology + flattened geometry
+  // + current connections snapshot to a single player. Used by the hub
+  // transfer so the arriving player's client picks up the hallway without
+  // leaking it to other players in the target MR.
+  sendMapAddToPlayer(playerId: string, mapInstanceId: string): void {
+    const map = this.attachedMaps.find(m => m.mapInstanceId === mapInstanceId)
+    if (!map) return
+    this.sendToPlayer(playerId, {
+      type: 'map_add',
+      map: serializeGameMap(map),
+      geometry: this.collectWireGeometryForMap(map),
+      connections: this.world.getConnectionsSnapshot(),
+    })
+  }
+
+  sendMapRemoveToPlayer(playerId: string, mapInstanceId: string): void {
+    this.sendToPlayer(playerId, { type: 'map_remove', mapInstanceId })
+  }
+
+  broadcastMapAdd(mapInstanceId: string): void {
+    const map = this.attachedMaps.find(m => m.mapInstanceId === mapInstanceId)
+    if (!map) return
+    this.broadcast({
+      type: 'map_add',
+      map: serializeGameMap(map),
+      geometry: this.collectWireGeometryForMap(map),
+      connections: this.world.getConnectionsSnapshot(),
+    })
+  }
+
+  broadcastMapRemove(mapInstanceId: string): void {
+    this.broadcast({ type: 'map_remove', mapInstanceId })
   }
 
   // Construct a Scenario that will attach to this room, without adding it.
@@ -228,9 +322,43 @@ export class MultiplayerRoom {
     this.scenarios.forPlayer(playerId)?.onPlayerReady(playerId)
   }
 
+  // Fires when the client confirms it has rebuilt its local World from a
+  // `world_reset`. Per-player callbacks registered via
+  // `onceWorldResetAcked` are invoked, then cleared. Used by the hub flow to
+  // gate the reveal (drop walls + enable the cross-instance adjacency edge)
+  // behind the client being ready to see the target scenario.
+  handleWorldResetAck(playerId: string): void {
+    const cbs = this.worldResetAckWaiters.get(playerId)
+    if (!cbs) return
+    this.worldResetAckWaiters.delete(playerId)
+    for (const cb of cbs) cb()
+  }
+
+  // Register a one-shot callback for the next `world_reset_ack` from this
+  // player. Returns a cancel function. Multiple waiters for the same player
+  // are queued and all fire on the next ack.
+  onceWorldResetAcked(playerId: string, cb: () => void): () => void {
+    let list = this.worldResetAckWaiters.get(playerId)
+    if (!list) { list = []; this.worldResetAckWaiters.set(playerId, list) }
+    list.push(cb)
+    return () => {
+      const arr = this.worldResetAckWaiters.get(playerId)
+      if (!arr) return
+      const i = arr.indexOf(cb)
+      if (i >= 0) arr.splice(i, 1)
+    }
+  }
+
   private runTick(): void {
     if (this.closed && this.players.size === 0) {
       this.scenarios.destroyAll()
+      return
+    }
+    if (this.autoDestroyOnEmpty && !this.closed && this.players.size === 0 && this.serverTick > 0) {
+      // Per-connection MR emptied out — tear down. The `serverTick > 0`
+      // guard lets the first tick run even before the initial player has
+      // been seated, in case construction schedules any work before connect.
+      this.destroy()
       return
     }
 
@@ -294,6 +422,11 @@ export class MultiplayerRoom {
       }
     }
 
+    // Hub slot release: if the transferred player has moved out of the
+    // hallway's scoped room into one of the target scenario's rooms, tear
+    // down the hallway and reopen the slot.
+    this.maybeReleaseHubTransfer()
+
     this.pendingMoves.clear()
 
     this.drainScheduled()
@@ -303,6 +436,33 @@ export class MultiplayerRoom {
     // so the broadcast fires this tick rather than next.
     const lateGlobal = this.world.drainPendingGlobalEvents()
     for (const event of lateGlobal) this.dispatchGlobalEvent(event)
+  }
+
+  // Per-tick check: if the hub-transferred player's current room has
+  // transitioned out of the hallway and into a scenario-owned room, tear
+  // down the temporarily-attached hallway and reopen this room's hub slot
+  // so the next `/` arrival can be seated here.
+  private maybeReleaseHubTransfer(): void {
+    const pid = this.hubTransferPlayerId
+    const hallwayId = this.hubTransferHallwayInstanceId
+    if (!pid || !hallwayId) return
+    if (!this.players.has(pid)) {
+      // Player disappeared (disconnect/elimination) mid-transfer; still
+      // want to clear the hallway so a new hub player can try again.
+      this.releaseHubTransferState()
+      return
+    }
+    const player = this.world.getPlayer(pid)
+    if (!player) return
+    const scopedId = this.getRoomAtPositionFn(player.x, player.z)
+    if (!scopedId) return
+    // Any room outside the hallway's scope counts as "entered scenario" —
+    // hub transfer only attaches one hallway at a time, so there are no
+    // other non-target rooms the player could be in.
+    if (!scopedId.startsWith(`${hallwayId}_`)) {
+      console.log(`[MultiplayerRoom:${this.roomId}] hub transferred player entered ${scopedId} — releasing hallway`)
+      this.releaseHubTransferState()
+    }
   }
 
   // Fan a World global event out to (a) every scenario for handler dispatch
@@ -364,18 +524,28 @@ export class MultiplayerRoom {
     this.scheduledCbs = remaining
   }
 
-  connectPlayer(ws: WebSocket, browserUuid: string | null = null): string {
+  connectPlayer(ws: WebSocket, browserUuid: string | null = null, routingKey: string = this.roomId): string {
+    const playerId = this.seatPlayer(ws, browserUuid, routingKey, this.spawnPosition)
+    this.scenarios.attachPlayerToDefault(playerId)
+    console.log(`[MultiplayerRoom:${this.roomId}] +player ${playerId} (total:${this.players.size})`)
+    return playerId
+  }
+
+  // Shared plumbing between normal `connectPlayer` and `acceptHubTransfer`:
+  // allocate an id, add to the world at a given spawn, register recording,
+  // send welcome + world_reset, and exchange player_joined fan-outs (plus
+  // NPC notifications). Does NOT attach the player to a scenario; the caller
+  // chooses whether to call `scenarios.attachPlayerToDefault(playerId)` so
+  // hub transfers can skip the attach until after reveal if needed.
+  private seatPlayer(ws: WebSocket, browserUuid: string | null, routingKey: string, spawn: { x: number; z: number }): string {
     const playerId = crypto.randomUUID()
     const color = this.pickColor()
     const index = this.nextPlayerIndex++
     this.players.set(playerId, { id: playerId, ws, color, index, browserUuid })
-    this.world.addPlayer(playerId, this.spawnPosition.x, this.spawnPosition.z)
+    this.world.addPlayer(playerId, spawn.x, spawn.z)
 
     if (browserUuid && this.recordingManager) {
-      // Synchronous registration so the welcome message (fired below) is
-      // captured. The manager serializes its own DataBackend I/O in the
-      // background.
-      this.recordingManager.onPlayerConnected({ browserUuid, inGamePlayerId: playerId, routingKey: this.roomId })
+      this.recordingManager.onPlayerConnected({ browserUuid, inGamePlayerId: playerId, routingKey })
     }
 
     const wp = this.world.getPlayer(playerId)!
@@ -390,10 +560,12 @@ export class MultiplayerRoom {
       tickRateHz: this.tickRateHz,
     })
 
-    const geometry = this.collectWireGeometry()
-    if (geometry.length > 0) {
-      this.sendToPlayer(playerId, { type: 'map_init', geometry })
-    }
+    this.sendToPlayer(playerId, {
+      type: 'world_reset',
+      maps: this.attachedMaps.map(serializeGameMap),
+      geometry: this.collectWireGeometry(),
+      connections: this.world.getConnectionsSnapshot(),
+    })
 
     for (const [id, p] of this.players) {
       if (id === playerId) continue
@@ -436,10 +608,180 @@ export class MultiplayerRoom {
       })
     }
 
+    return playerId
+  }
+
+  // Whether this room can accept an incoming hub transfer. Used by the hub
+  // routing code to find a target MR for a waiting solo-hallway player.
+  isHubSlotOpen(): boolean {
+    return this.hubSlotOpen && this.hubConnection !== undefined && !this.closed
+  }
+
+  hasHubConnection(): boolean {
+    return this.hubConnection !== undefined
+  }
+
+  // Transfer an arriving hub player into this room. The WebSocket is the
+  // same connection the player held on their private solo-hallway MR — the
+  // caller is expected to have called `releasePlayer` on the solo MR to
+  // detach without closing. Adds the initial hallway at the computed
+  // attachment origin, seats the player at the hallway's spawn (translated
+  // into this room's world frame), sends world_reset, and arms the reveal
+  // to fire on `world_reset_ack`. Closes the hub slot until the player
+  // crosses into the scenario's main rooms.
+  acceptHubTransfer(
+    ws: WebSocket,
+    browserUuid: string | null,
+    routingKey: string,
+    initialMap: GameMap,
+    initialSpawnLocal: { x: number; z: number },
+  ): string {
+    if (!this.hubConnection) {
+      throw new Error(`[MultiplayerRoom:${this.roomId}] acceptHubTransfer called on a non-hub-capable room`)
+    }
+    if (!this.hubSlotOpen) {
+      throw new Error(`[MultiplayerRoom:${this.roomId}] acceptHubTransfer called while hub slot is closed`)
+    }
+    // Need a reference scenario spec to feed computeHubAttachment. We only
+    // need its hubConnection field — the attachment math doesn't touch the
+    // script, timeout, etc. Construct a minimal stand-in.
+    const scenarioStand: ScenarioSpec = {
+      id: this.roomId,
+      script: { initialState: () => ({}) } as unknown as ScenarioSpec['script'],
+      timeoutMs: 0,
+      hubConnection: this.hubConnection,
+    }
+    const targetMap = this.attachedMaps[0]
+    if (!targetMap) throw new Error(`[MultiplayerRoom:${this.roomId}] acceptHubTransfer with no attached target map`)
+    const attachment = computeHubAttachment(initialMap, targetMap, scenarioStand)
+
+    const shiftedHallway = shiftMapToOrigin(initialMap, attachment.hallwayOrigin)
+    this.addMap(shiftedHallway)
+
+    const spawnWorld = {
+      x: attachment.hallwayOrigin.x + initialSpawnLocal.x,
+      z: attachment.hallwayOrigin.z + initialSpawnLocal.z,
+    }
+    const playerId = this.seatPlayer(ws, browserUuid, routingKey, spawnWorld)
     this.scenarios.attachPlayerToDefault(playerId)
 
-    console.log(`[MultiplayerRoom:${this.roomId}] +player ${playerId} color:${color} (total:${this.players.size})`)
+    this.hubSlotOpen = false
+    this.hubTransferPlayerId = playerId
+    this.hubTransferAttachment = attachment
+    this.hubTransferHallwayInstanceId = shiftedHallway.mapInstanceId
+
+    // Arm the reveal, gated on the client confirming it rebuilt its local
+    // World from the world_reset snapshot. Also arm a timeout in case the
+    // ack never arrives — we don't want the slot stuck closed on a broken
+    // client.
+    const cancelWaiter = this.onceWorldResetAcked(playerId, () => {
+      this.hubTransferTimeoutCancel?.()
+      this.hubTransferTimeoutCancel = null
+      this.revealHubForPlayer(playerId)
+    })
+    this.hubTransferTimeoutCancel = this.scheduleSimMs(5000, () => {
+      cancelWaiter()
+      this.hubTransferTimeoutCancel = null
+      console.warn(`[MultiplayerRoom:${this.roomId}] hub transfer ack timeout for player ${playerId} — releasing slot`)
+      // Ack never came. Best-effort recover: disconnect the player, tear
+      // down the hallway, reopen the slot for someone else.
+      this.releaseHubTransferState()
+      if (this.players.has(playerId)) this.removePlayer(playerId)
+    })
+
+    console.log(`[MultiplayerRoom:${this.roomId}] hub transfer in: player=${playerId}`)
     return playerId
+  }
+
+  // Drop the walls and enable the cross-instance adjacency for the
+  // transferred player's client. Sends to that player only — other MR
+  // occupants don't have the hallway in their local world, so broadcasting
+  // would spray state updates for geometry they can't render.
+  private revealHubForPlayer(playerId: string): void {
+    const attachment = this.hubTransferAttachment
+    if (!attachment) return
+    this.world.toggleGeometryOff(attachment.initialWallIdToDrop)
+    this.world.toggleGeometryOff(attachment.targetWallIdToDrop)
+    this.world.setConnectionEnabled(attachment.crossInstanceEdge.a, attachment.crossInstanceEdge.b, true)
+    this.sendToPlayer(playerId, {
+      type: 'geometry_state',
+      updates: [
+        { id: attachment.initialWallIdToDrop, visible: false },
+        { id: attachment.targetWallIdToDrop, visible: false },
+      ],
+    })
+    this.sendToPlayer(playerId, {
+      type: 'connections_state',
+      connections: this.world.getConnectionsSnapshot(),
+    })
+  }
+
+  // Detach the hub-transferred player's hallway: remove the map, clear the
+  // cross-instance edge, restore the target's south wall (so other players
+  // arriving later still see room1 as enclosed), reopen the slot.
+  private releaseHubTransferState(): void {
+    const attachment = this.hubTransferAttachment
+    const hallwayId = this.hubTransferHallwayInstanceId
+    const transferredPid = this.hubTransferPlayerId
+    if (attachment && hallwayId) {
+      // Tell the transferred player to drop the hallway from their local
+      // world. Target wall is restored (turned solid again) for both the
+      // world and the player's view so the next hub transfer starts clean.
+      this.world.toggleGeometryOn(attachment.targetWallIdToDrop)
+      this.world.setConnectionEnabled(attachment.crossInstanceEdge.a, attachment.crossInstanceEdge.b, false)
+      if (transferredPid && this.players.has(transferredPid)) {
+        this.sendToPlayer(transferredPid, {
+          type: 'geometry_state',
+          updates: [{ id: attachment.targetWallIdToDrop, visible: true }],
+        })
+        this.sendMapRemoveToPlayer(transferredPid, hallwayId)
+        this.sendToPlayer(transferredPid, {
+          type: 'connections_state',
+          connections: this.world.getConnectionsSnapshot(),
+        })
+      }
+      this.removeMap(hallwayId)
+    }
+    this.hubTransferAttachment = null
+    this.hubTransferHallwayInstanceId = null
+    this.hubTransferPlayerId = null
+    this.hubTransferTimeoutCancel?.()
+    this.hubTransferTimeoutCancel = null
+    if (this.hubConnection !== undefined && !this.closed) this.hubSlotOpen = true
+  }
+
+  // Detach a player from this room without broadcasting a `player_left` and
+  // without closing the WebSocket. Used by the hub flow to move a player
+  // off their private solo-hallway MR before seating them on the target MR.
+  // The returned id is the one the room had assigned; the caller typically
+  // discards it (the target MR allocates a new id).
+  releasePlayer(playerId: string): void {
+    const player = this.players.get(playerId)
+    if (!player) return
+    this.scenarios.detachPlayer(playerId)
+    this.players.delete(playerId)
+    this.world.removePlayer(playerId)
+    this.pendingMoves.delete(playerId)
+    this.readyPlayerIds.delete(playerId)
+    this.worldResetAckWaiters.delete(playerId)
+    // No `player_left` broadcast — the WS is being handed off to another
+    // MR, not closed. The recording manager should also stop tracking this
+    // player on this MR; downstream calls on the target MR will re-register
+    // under the new id.
+    this.recordingManager?.onPlayerDisconnected(playerId)
+  }
+
+  // Tear down this room deterministically. Used for short-lived solo
+  // hallway MRs after their player has been transferred out. Stops the
+  // tick loop and destroys scenario state. Safe to call when there are no
+  // players.
+  destroy(): void {
+    this.closed = true
+    this.scenarios.destroyAll()
+    if (this.tickTimer) {
+      clearTimeout(this.tickTimer)
+      this.tickTimer = null
+    }
   }
 
   removePlayer(playerId: string, eliminated = false): void {
@@ -460,6 +802,7 @@ export class MultiplayerRoom {
     this.world.removePlayer(playerId)
     this.pendingMoves.delete(playerId)
     this.readyPlayerIds.delete(playerId)
+    this.worldResetAckWaiters.delete(playerId)
     this.broadcast({ type: 'player_left', playerId })
     // Finalize the player's recording now (if any) — captures partial
     // sessions shorter than the configured duration. The manager's own
@@ -492,24 +835,30 @@ export class MultiplayerRoom {
   private collectWireGeometry(): WireGeometry[] {
     const out: WireGeometry[] = []
     for (const map of this.attachedMaps) {
-      for (const room of map.rooms) {
-        const scopedId = `${map.mapInstanceId}_${room.id}`
-        const pos = map.roomPositions.get(scopedId)
-        if (!pos) continue
-        for (const g of room.geometry ?? []) {
-          out.push({
-            id: g.id,
-            roomId: scopedId,
-            cx: pos.x + g.cx,
-            cy: g.cy,
-            cz: pos.z + g.cz,
-            width: g.width,
-            height: g.height,
-            depth: g.depth,
-            color: g.color,
-            imageUrl: g.imageUrl,
-          })
-        }
+      for (const g of this.collectWireGeometryForMap(map)) out.push(g)
+    }
+    return out
+  }
+
+  private collectWireGeometryForMap(map: GameMap): WireGeometry[] {
+    const out: WireGeometry[] = []
+    for (const room of map.rooms) {
+      const scopedId = `${map.mapInstanceId}_${room.id}`
+      const pos = map.roomPositions.get(scopedId)
+      if (!pos) continue
+      for (const g of room.geometry ?? []) {
+        out.push({
+          id: g.id,
+          roomId: scopedId,
+          cx: pos.x + g.cx,
+          cy: g.cy,
+          cz: pos.z + g.cz,
+          width: g.width,
+          height: g.height,
+          depth: g.depth,
+          color: g.color,
+          imageUrl: g.imageUrl,
+        })
       }
     }
     return out
@@ -581,10 +930,12 @@ export class MultiplayerRoom {
       tickRateHz: this.tickRateHz,
     })
 
-    const geometry = this.collectWireGeometry()
-    if (geometry.length > 0) {
-      msgs.push({ type: 'map_init', geometry })
-    }
+    msgs.push({
+      type: 'world_reset',
+      maps: this.attachedMaps.map(serializeGameMap),
+      geometry: this.collectWireGeometry(),
+      connections: this.world.getConnectionsSnapshot(),
+    })
 
     for (const [id, other] of this.players) {
       if (id === playerId) continue

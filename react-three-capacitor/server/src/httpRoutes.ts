@@ -51,19 +51,48 @@ export function attachValidationRoutes(
     onValid(res)
   })
 
+  // Short form: `/recordings/:index`. Redirect to the canonical
+  // `/recordings/:key/:index` where `:key` is the routing key the recording
+  // was made on — the client URL parser keys the statically-imported map
+  // off the routing key (same mechanism as `/observe/...`), so the replay
+  // page must advertise the key in its path to render the correct map and
+  // camera bounds.
   app.get('/recordings/:index', async (req, res) => {
     const idx = parseInt(req.params.index, 10)
     if (!Number.isInteger(idx) || idx < 0) {
       notFound(res)
       return
     }
+    let doc
     try {
-      if (!(await gameServer.getRecordings().hasRecording(idx))) {
+      doc = await gameServer.getRecordings().loadRecording(idx)
+    } catch (err) {
+      console.error(`[httpRoutes] /recordings/${idx} lookup failed:`, err)
+      res.status(500).send('<html><body><p>error</p></body></html>')
+      return
+    }
+    if (!doc) {
+      notFound(res)
+      return
+    }
+    res.redirect(302, `/recordings/${encodeURIComponent(doc.routingKey)}/${idx}`)
+  })
+
+  // Canonical form: `/recordings/:key/:index`. Mirrors `/observe/:key/...`.
+  app.get('/recordings/:key/:index', async (req, res) => {
+    const idx = parseInt(req.params.index, 10)
+    if (!Number.isInteger(idx) || idx < 0) {
+      notFound(res)
+      return
+    }
+    try {
+      const doc = await gameServer.getRecordings().loadRecording(idx)
+      if (!doc || doc.routingKey !== req.params.key) {
         notFound(res)
         return
       }
     } catch (err) {
-      console.error(`[httpRoutes] /recordings/${idx} lookup failed:`, err)
+      console.error(`[httpRoutes] /recordings/${req.params.key}/${idx} lookup failed:`, err)
       res.status(500).send('<html><body><p>error</p></body></html>')
       return
     }

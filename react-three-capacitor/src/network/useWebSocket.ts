@@ -14,6 +14,8 @@ import {
 } from './positionBuffer'
 import type { ServerMessage } from './types'
 import { localWorld } from '../game/localWorld'
+import { reifyGameMap } from '../game/GameMap'
+import { ensureClientWorld } from '../game/clientWorld'
 
 function getWsPath(): string {
   const path = window.location.pathname.replace(/^\/+/, '').replace(/\/+$/, '')
@@ -21,7 +23,7 @@ function getWsPath(): string {
   // observer handler rather than the player handler.
   if (/^observe\/[^/]+\/\d+\/\d+$/.test(path)) return path
   // Replay paths likewise route to the replay handler by exact path.
-  if (/^recordings\/\d+$/.test(path)) return path
+  if (/^recordings\/[^/]+\/\d+$/.test(path)) return path
   // Everything else must be an `r_{scenario}` routing key. An empty path
   // (root URL) resolves to `hub` — the combined hub world fronting the
   // default target scenario with a solo initial hallway.
@@ -58,10 +60,18 @@ export function useWebSocket(): void {
   const store = useGameStore()
 
   useEffect(() => {
-    const client = getClient()
-    client.connect()
+    let disposed = false
+    let cleanup: (() => void) | null = null
+    // Wait for the client World to finish initializing before opening the WS.
+    // The very first server message is `world_reset`, which the client can
+    // only apply once `localWorld.current` exists. Deferring the connect
+    // avoids a race where the reset arrives before physics/world init.
+    ensureClientWorld().then(() => {
+      if (disposed) return
+      const client = getClient()
+      client.connect()
 
-    const removeClose = client.addCloseHandler(() => {
+      const removeClose = client.addCloseHandler(() => {
       // Only set disconnected if the server didn't already send an explicit observer_player_left.
       const s = useGameStore.getState()
       if (s.observerMode && s.observerEndReason === 'none') {
@@ -148,9 +158,43 @@ export function useWebSocket(): void {
           }
           break
 
-        case 'map_init':
+        case 'world_reset': {
+          const w = localWorld.current
+          if (w) {
+            for (const id of w.getMapInstanceIds()) w.removeMap(id)
+            for (const serialized of msg.maps) w.addMap(reifyGameMap(serialized))
+            w.applyConnectionsSnapshot(msg.connections)
+          }
           store.setGeometryObjects(msg.geometry)
+          // Ack the reset so the server can proceed with post-transfer state
+          // changes (e.g. the hub reveal that drops walls + enables the
+          // cross-instance adjacency edge).
+          getClient().send({ type: 'world_reset_ack' })
           break
+        }
+
+        case 'map_add': {
+          const w = localWorld.current
+          if (w) {
+            w.addMap(reifyGameMap(msg.map))
+            w.applyConnectionsSnapshot(msg.connections)
+          }
+          store.appendGeometryObjects(msg.geometry)
+          break
+        }
+
+        case 'map_remove': {
+          const w = localWorld.current
+          if (w) w.removeMap(msg.mapInstanceId)
+          store.removeGeometryForMap(msg.mapInstanceId)
+          break
+        }
+
+        case 'connections_state': {
+          const w = localWorld.current
+          if (w) w.applyConnectionsSnapshot(msg.connections)
+          break
+        }
 
         case 'geometry_state': {
           const world = localWorld.current
@@ -215,7 +259,12 @@ export function useWebSocket(): void {
       }
     })
 
-    return () => { remove(); removeClose() }
+      cleanup = () => { remove(); removeClose() }
+    })
+    return () => {
+      disposed = true
+      cleanup?.()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

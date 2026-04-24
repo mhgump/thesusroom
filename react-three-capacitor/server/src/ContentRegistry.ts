@@ -1,4 +1,5 @@
 import type { GameMap } from '../../src/game/GameMap.js'
+import type { Wall } from '../../src/game/RoomSpec.js'
 import type { GameScript } from './GameScript.js'
 import { getBackends } from '../../../tools/src/_shared/backends/index.js'
 
@@ -33,6 +34,21 @@ export interface ScenarioSpec {
   // to bound a test run and detect early termination. Not consulted by the
   // production server or by any orchestration.
   timeoutMs: number
+  // Optional hub-attach declaration. When present, this scenario can receive
+  // an incoming hub player through the initial hallway. The orchestration
+  // uses these fields (plus the initial hallway's geometry) to compute the
+  // hallway's world placement and the cross-instance adjacency edge, without
+  // any scenario-specific constants in the hub code.
+  //   `mainRoomId`        — local room id of the scenario's entry room.
+  //   `wallSide`          — which wall of that room the hallway docks against.
+  //   `wallGeometryId`    — the toggleable wall segment that opens on reveal.
+  //   `positionOnWall`    — 0..1 along the wall where the hallway centres.
+  hubConnection?: {
+    mainRoomId: string
+    wallSide: Wall
+    wallGeometryId: string
+    positionOnWall: number
+  }
 }
 
 export type ContentEntry = { map: GameMap; scenario: ScenarioSpec }

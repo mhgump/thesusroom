@@ -124,4 +124,10 @@ export const SCENARIO: ScenarioSpec = {
     'scenario2_room3': false,
   },
   requiredRoomIds: ['scenario2_room1', 'scenario2_room2', 'scenario2_room3'],
+  hubConnection: {
+    mainRoomId: 'room1',
+    wallSide: 'south',
+    wallGeometryId: 'r1_s',
+    positionOnWall: 0.5,
+  },
 }
