@@ -1,5 +1,5 @@
 import type { Tool } from '../framework.js'
-import { getDataBackend } from '../_shared/backends/index.js'
+import { getBackends } from '../_shared/backends/index.js'
 import { validateWrittenFile } from '../_shared/validate.js'
 import { INSERT_MAP_SPEC, type InsertMapInput, type InsertMapOutput } from './spec.js'
 
@@ -15,7 +15,7 @@ function validateInput(input: unknown): InsertMapInput {
 
 async function run(rawInput: unknown): Promise<InsertMapOutput> {
   const input = validateInput(rawInput)
-  const { map } = getDataBackend()
+  const { map } = getBackends()
 
   await map.put(input.map_id, { source: input.file_content })
 

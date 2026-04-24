@@ -1,5 +1,10 @@
 import type { Tool } from '../framework.js'
-import { getDataBackend } from '../_shared/backends/index.js'
+import {
+  ScenarioList,
+  VettedScenarios,
+  getBackends,
+  getDataBackend,
+} from '../_shared/backends/index.js'
 import { validateWrittenFile } from '../_shared/validate.js'
 import {
   INSERT_SCENARIO_SPEC,
@@ -21,15 +26,16 @@ function validateInput(input: unknown): InsertScenarioInput {
 
 async function run(rawInput: unknown): Promise<InsertScenarioOutput> {
   const input = validateInput(rawInput)
-  const data = getDataBackend()
-  const { map, scenario } = data
+  const { map, scenario } = getBackends()
+  const db = getDataBackend()
+  const scenarios = new ScenarioList(db, new VettedScenarios(db))
 
   if ((await map.get(input.map_id)) === null) {
     const mapLoc = map.locate?.(input.map_id) ?? input.map_id
     return { success: false, error: `map "${input.map_id}" not found at ${mapLoc}` }
   }
 
-  const scenario_index = await data.addScenario(input.scenario_id)
+  const scenario_index = await scenarios.addScenario(input.scenario_id)
   await scenario.put(input.scenario_id, { source: input.file_content })
 
   const abs = scenario.locate?.(input.scenario_id)

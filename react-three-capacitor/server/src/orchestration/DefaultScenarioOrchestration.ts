@@ -48,7 +48,9 @@ export class DefaultScenarioOrchestration implements RoomOrchestration {
     const scenarioInstance = room.buildScenario(attachedRoomIds, {
       id: scenario.id,
       script: scenario.script,
-      gameSpec: map.gameSpec,
+      instructionSpecs: map.instructionSpecs,
+      voteRegions: map.voteRegions,
+      buttons: map.buttons,
       initialVisibility: scenario.initialVisibility ?? {},
       initialRoomVisibility: scenario.initialRoomVisibility ?? {},
       requiredRoomIds: scenario.requiredRoomIds,

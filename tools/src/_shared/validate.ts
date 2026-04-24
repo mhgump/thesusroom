@@ -16,12 +16,15 @@ const VALIDATOR_SNIPPETS: Record<ValidationKind, string> = {
     if (!v || typeof v !== 'object') throw new Error('export is not an object')
     const m = v
     if (typeof m.id !== 'string' || !m.id) throw new Error('missing string id')
-    if (!m.worldSpec || typeof m.worldSpec !== 'object') throw new Error('missing worldSpec')
+    if (typeof m.mapInstanceId !== 'string' || !m.mapInstanceId) throw new Error('missing mapInstanceId')
+    if (!Array.isArray(m.rooms)) throw new Error('missing rooms array')
+    if (!Array.isArray(m.connections)) throw new Error('missing connections array')
     if (!(m.roomPositions instanceof Map)) throw new Error('roomPositions must be a Map')
     if (!m.cameraShapes || typeof m.cameraShapes !== 'object') throw new Error('missing cameraShapes')
     if (typeof m.getRoomAtPosition !== 'function') throw new Error('getRoomAtPosition must be a function')
-    if (!m.walkable || !Array.isArray(m.walkable.rects)) throw new Error('missing walkable.rects')
-    if (!m.gameSpec || typeof m.gameSpec !== 'object') throw new Error('missing gameSpec')
+    if (!Array.isArray(m.instructionSpecs)) throw new Error('missing instructionSpecs array')
+    if (!Array.isArray(m.voteRegions)) throw new Error('missing voteRegions array')
+    if (m.buttons !== undefined && !Array.isArray(m.buttons)) throw new Error('buttons must be an array when present')
     if (!Array.isArray(m.npcs)) throw new Error('npcs must be an array')
   `,
   scenario: `

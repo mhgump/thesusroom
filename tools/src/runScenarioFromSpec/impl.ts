@@ -1,5 +1,5 @@
 import type { Tool } from '../framework.js'
-import { getDataBackend } from '../_shared/backends/index.js'
+import { getBackends } from '../_shared/backends/index.js'
 import {
   RUN_SCENARIO_WITH_BOTS_TOOL,
   type RunScenarioWithBotsInput,
@@ -28,7 +28,7 @@ function validateInput(input: unknown): RunScenarioFromSpecInput {
 
 async function run(rawInput: unknown): Promise<RunScenarioFromSpecOutput> {
   const input = validateInput(rawInput)
-  const { testSpec } = getDataBackend()
+  const { testSpec } = getBackends()
   const key = { scenario_id: input.scenario_id, test_spec_id: input.test_spec_name }
   const spec = await testSpec.get(key)
   if (spec === null) {

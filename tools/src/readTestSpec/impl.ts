@@ -1,5 +1,5 @@
 import type { Tool } from '../framework.js'
-import { getDataBackend } from '../_shared/backends/index.js'
+import { getBackends } from '../_shared/backends/index.js'
 import {
   READ_TEST_SPEC_SPEC,
   type ReadTestSpecInput,
@@ -29,7 +29,7 @@ async function run(rawInput: unknown): Promise<ReadTestSpecOutput> {
   } catch (err) {
     return { error: (err as Error).message }
   }
-  const { testSpec } = getDataBackend()
+  const { testSpec } = getBackends()
   const key = { scenario_id: input.scenario_id, test_spec_id: input.test_spec_name }
   const spec = await testSpec.get(key)
   if (spec === null) {

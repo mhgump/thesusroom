@@ -1,7 +1,8 @@
 import WebSocket from 'ws'
 import type { ServerMessage, MoveInput } from './types.js'
 import { World, TICK_RATE_HZ } from './World.js'
-import type { TouchedEvent, DamageEvent } from './World.js'
+import type { TouchedEvent, DamageEvent, WorldDump, WorldEvent } from './World.js'
+import type { ScenarioDump } from './Scenario.js'
 import type { WireGeometry } from './GameSpec.js'
 import { NpcManager } from './npc/NpcManager.js'
 import { ScenarioManager } from './ScenarioManager.js'
@@ -42,6 +43,18 @@ function rgbDist(a: [number, number, number], b: [number, number, number]): numb
 
 interface PlayerState { id: string; ws: WebSocket; color: string; index: number }
 interface PendingMove { clientTick: number; inputs: MoveInput[] }
+
+// A point-in-time snapshot of a MultiplayerRoom, combining its World's dump
+// with a per-scenario dump keyed by scenario id. Round-trips through
+// JSON.stringify. Restore is caller-orchestrated: the caller constructs a
+// fresh Room, addMap's every map from the dump (supplying the GameMap
+// instances), calls `world.restoreState(dump.world, mapsByInstance)`, then
+// rebuilds each scenario and calls `scenario.restoreState(dump.scenarios[id])`
+// before any `startScenario` call.
+export interface RoomDump {
+  world: WorldDump
+  scenarios: Record<string, ScenarioDump>
+}
 
 export interface MultiplayerRoomOptions {
   roomId: string
@@ -115,7 +128,11 @@ export class MultiplayerRoom {
     this.spawnBotFn = spawnBotFn ?? (() => {})
     this.spawnPosition = spawnPosition ?? { x: 0, z: 0 }
     this.tickRateHz = tickRateHz ?? TICK_RATE_HZ
-    this.world = new World()
+    this.world = new World([], {
+      scheduleSimMs: (ms, cb) => this.scheduleSimMs(ms, cb),
+      getServerTick: () => this.serverTick,
+      getSimMsPerTick: () => SIM_MS_PER_TICK,
+    })
     this.npcManager = new NpcManager(
       this.world,
       (npcId, x, z, events) => {
@@ -179,6 +196,17 @@ export class MultiplayerRoom {
     return !this.closed
   }
 
+  // Produce a JSON-serializable snapshot of this room's World plus the
+  // per-scenario script state + pending registrations. Contains no function
+  // references or class instances. See `RoomDump` for the restore protocol.
+  dumpState(): RoomDump {
+    const scenarios: Record<string, ScenarioDump> = {}
+    for (const scenario of this.scenarios.all()) {
+      scenarios[scenario.id] = scenario.dumpState()
+    }
+    return { world: this.world.dumpState(), scenarios }
+  }
+
   handleMove(playerId: string, clientTick: number, inputs: MoveInput[]): void {
     if (!this.players.has(playerId)) return
     let arr = this.pendingMoves.get(playerId)
@@ -209,7 +237,11 @@ export class MultiplayerRoom {
       this.world.queueMove(playerId, flat)
     }
 
-    const eventsPerPlayer = this.world.processTick()
+    const { perPlayer: eventsPerPlayer, global: globalEvents } = this.world.processTick()
+
+    // Dispatch world-level events to every scenario (they drive script
+    // handlers) and broadcast the wire-facing events.
+    for (const event of globalEvents) this.dispatchGlobalEvent(event)
 
     for (const [playerId, moves] of this.pendingMoves) {
       const playerEvents = eventsPerPlayer.get(playerId) ?? []
@@ -259,6 +291,50 @@ export class MultiplayerRoom {
     this.pendingMoves.clear()
 
     this.drainScheduled()
+
+    // Cooldown callbacks run inside drainScheduled and may enqueue global
+    // events (e.g. a button transitioning back to `idle`). Drain those now
+    // so the broadcast fires this tick rather than next.
+    const lateGlobal = this.world.drainPendingGlobalEvents()
+    for (const event of lateGlobal) this.dispatchGlobalEvent(event)
+  }
+
+  // Fan a World global event out to (a) every scenario for handler dispatch
+  // and (b) the wire, if the event has a wire representation. Keeps
+  // broadcast logic in one place so Scenario stays script-only.
+  private dispatchGlobalEvent(event: WorldEvent): void {
+    for (const scenario of this.scenarios.all()) scenario.onWorldEvent(event)
+    switch (event.type) {
+      case 'button_state_change':
+        this.broadcast({ type: 'button_state', id: event.buttonId, state: event.state, occupancy: event.occupancy })
+        return
+      case 'button_config_change':
+        this.broadcast({ type: 'button_config', id: event.buttonId, changes: event.changes })
+        return
+      case 'vote_region_change': {
+        const activeRegions = this.world.getActiveVoteRegions()
+        const assignments: Record<string, string[]> = {}
+        for (const rid of activeRegions) assignments[rid] = []
+        for (const [pid, rid] of Object.entries(event.assignments)) {
+          if (rid && rid in assignments) assignments[rid].push(pid)
+        }
+        this.broadcast({ type: 'vote_assignment_change', assignments })
+        return
+      }
+      case 'room_visibility_change': {
+        const updates = event.updates
+        if (event.scope === 'all') {
+          this.broadcast({ type: 'room_visibility_state', updates })
+        } else {
+          for (const pid of event.scope.playerIds) {
+            this.sendToPlayer(pid, { type: 'room_visibility_state', updates, perPlayer: true })
+          }
+        }
+        return
+      }
+      default:
+        return
+    }
   }
 
   scheduleSimMs(simDurationMs: number, cb: () => void): () => void {
@@ -398,7 +474,7 @@ export class MultiplayerRoom {
   private collectWireGeometry(): WireGeometry[] {
     const out: WireGeometry[] = []
     for (const map of this.attachedMaps) {
-      for (const room of map.worldSpec.rooms) {
+      for (const room of map.rooms) {
         const scopedId = `${map.mapInstanceId}_${room.id}`
         const pos = map.roomPositions.get(scopedId)
         if (!pos) continue

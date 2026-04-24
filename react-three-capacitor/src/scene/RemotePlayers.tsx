@@ -36,7 +36,7 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
       const { currentRoomId } = useGameStore.getState()
       const visibleRooms = new Set([currentRoomId, ...CURRENT_MAP.getAdjacentRoomIds(currentRoomId)])
       let visible = true
-      for (const room of CURRENT_MAP.worldSpec.rooms) {
+      for (const room of CURRENT_MAP.rooms) {
         const scopedId = `${CURRENT_MAP.mapInstanceId}_${room.id}`
         if (visibleRooms.has(scopedId)) continue
         const roomPos = CURRENT_MAP.roomPositions.get(scopedId)

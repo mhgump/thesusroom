@@ -8,18 +8,14 @@ import type {
   ButtonPressPayload,
 } from './GameScript.js'
 import type {
-  GameSpec,
   VoteRegionSpec,
   InstructionEventSpec,
   ButtonSpec,
-  ButtonConfig,
   ButtonState,
-  RuleLabel,
 } from './GameSpec.js'
-import type { World } from './World.js'
+import type { World, WorldEvent } from './World.js'
 import type { ServerMessage } from './types.js'
 import type { BotSpec } from './bot/BotTypes.js'
-import { ButtonManager } from './ButtonManager.js'
 
 // The pluggable hooks a MultiplayerRoom provides to a Scenario. The scenario
 // uses these to reach connected players, the world, and the tick scheduler
@@ -48,14 +44,17 @@ export interface ScenarioDeps {
   getSimMsPerTick: () => number
 }
 
-// The per-instance configuration a Scenario is constructed with. Most of it
-// comes from the ScenarioSpec + attached map's GameSpec; the list of attached
-// inner-world rooms is passed in separately so scenarios can be scoped to a
-// subset of a World's map instance.
+// The per-instance configuration a Scenario is constructed with. Map-sourced
+// content (instruction strings, vote regions, buttons) flows in as flat
+// arrays — there is no intermediate `gameSpec` object. Button and vote-region
+// state is owned by World; the scenario only uses `voteRegions` for listener
+// validation and `buttons` as a presence-check.
 export interface ScenarioConfig {
   id: string
   script: GameScript<any> | null
-  gameSpec: GameSpec | null
+  instructionSpecs: InstructionEventSpec[]
+  voteRegions: VoteRegionSpec[]
+  buttons?: ButtonSpec[]
   // Initial globally-visible state for each geometry id the scenario cares
   // about. Unknown keys are allowed — any id not listed here is treated as
   // "on" (solid) by default until the scenario toggles it.
@@ -104,11 +103,8 @@ export class Scenario {
   readonly id: string
   private readonly script: GameScript<any> | null
   private scriptState: unknown = null
-  private readonly voteRegionSpecs: Map<string, VoteRegionSpec>
   private readonly instructionSpecs: Map<string, InstructionEventSpec>
-  private readonly activeRegions: Set<string> = new Set()
-  private readonly globalGeomVisible: Map<string, boolean>
-  private readonly globalRoomVisible: Map<string, boolean>
+  private readonly hasButtons: boolean
   private readonly attachedRoomIds: Set<string>
 
   // Insertion-ordered sets of attached and ready player ids. start() replays
@@ -116,12 +112,10 @@ export class Scenario {
   private readonly attachedPlayerIds: Set<string> = new Set()
   private readonly readyPlayerIds: Set<string> = new Set()
 
-  private readonly playerRegions: Map<string, string | null> = new Map()
-  // Per-player override of geometry visibility. Keys are geometry ids the
-  // scenario has explicitly set for that player.
-  private readonly playerGeometry: Map<string, Map<string, boolean>> = new Map()
+  // Per-player room tracking used to dispatch onPlayerEnterRoom events. The
+  // World already owns setPlayerRoom; scenario mirrors it so it can diff
+  // on every move tick.
   private readonly playerCurrentRoom: Map<string, string | null> = new Map()
-  private readonly playerRoomVisible: Map<string, Map<string, boolean>> = new Map()
 
   // Pending-registrations tables. All registrations go in by id; dispatchers
   // iterate the entries rather than traversing a closure list.
@@ -133,8 +127,6 @@ export class Scenario {
   // Monotonic counter used to mint registration ids. Dumped/restored so
   // post-restore registrations continue the same sequence.
   private nextId = 1
-
-  private readonly buttonManager: ButtonManager | null
 
   private started = false
   private alive = true
@@ -157,19 +149,24 @@ export class Scenario {
 
     this.script = config.script
     this.scriptState = config.script ? config.script.initialState() : null
-    const gameSpec = config.gameSpec
-    this.voteRegionSpecs = new Map((gameSpec?.voteRegions ?? []).map(r => [r.id, r]))
-    this.instructionSpecs = new Map((gameSpec?.instructionSpecs ?? []).map(s => [s.id, s]))
-    this.globalGeomVisible = new Map(Object.entries(config.initialVisibility))
-    this.globalRoomVisible = new Map(Object.entries(config.initialRoomVisibility))
-    for (const [id, visible] of this.globalGeomVisible) {
+    this.instructionSpecs = new Map(config.instructionSpecs.map(s => [s.id, s]))
+    this.hasButtons = (config.buttons?.length ?? 0) > 0
+
+    // Seed World with scenario-level initial state. From here on the World
+    // owns the live values; we don't keep a local mirror.
+    for (const [id, visible] of Object.entries(config.initialVisibility)) {
       if (!visible) this.deps.world.toggleGeometryOff(id)
     }
-
-    const buttons = gameSpec?.buttons ?? []
-    this.buttonManager = buttons.length > 0
-      ? new ButtonManager(buttons, (ms, cb) => this.scheduleScoped(ms, cb))
-      : null
+    const initiallyHiddenRooms = Object.entries(config.initialRoomVisibility)
+      .filter(([, v]) => !v).map(([id]) => id)
+    const initiallyVisibleRooms = Object.entries(config.initialRoomVisibility)
+      .filter(([, v]) => v).map(([id]) => id)
+    if (initiallyHiddenRooms.length > 0) this.deps.world.setRoomVisible(initiallyHiddenRooms, false)
+    if (initiallyVisibleRooms.length > 0) this.deps.world.setRoomVisible(initiallyVisibleRooms, true)
+    // setRoomVisible enqueues global events, but no players are attached at
+    // construction time — drop them so the first tick doesn't broadcast a
+    // phantom change to an empty room.
+    this.deps.world.clearPendingGlobalEvents()
 
     this.ctx = this.makeContext()
   }
@@ -205,29 +202,34 @@ export class Scenario {
     if (!this.alive) return
     if (this.attachedPlayerIds.has(playerId)) return
     this.attachedPlayerIds.add(playerId)
-    this.playerRegions.set(playerId, null)
     this.playerCurrentRoom.set(playerId, null)
-    this.playerGeometry.set(playerId, new Map())
 
-    if (this.globalGeomVisible.size > 0) {
-      this.deps.sendToPlayer(playerId, {
-        type: 'geometry_state',
-        updates: [...this.globalGeomVisible].map(([id, visible]) => ({ id, visible })),
-      })
+    // Initial state snapshot sourced from World. We derive the geometry /
+    // room-visibility payloads from World's current state (global + any
+    // per-player override) so a late-joining player sees the same world as
+    // everyone else.
+    const geomSnapshot = this.deps.world.getGeometryStateSnapshot()
+    const geomUpdates: Array<{ id: string; visible: boolean }> = []
+    for (const [id, visible] of geomSnapshot) {
+      if (!visible) geomUpdates.push({ id, visible })
+    }
+    if (geomUpdates.length > 0) {
+      this.deps.sendToPlayer(playerId, { type: 'geometry_state', updates: geomUpdates })
     }
 
-    const roomVisState = new Map(this.globalRoomVisible)
-    this.playerRoomVisible.set(playerId, roomVisState)
-    if (roomVisState.size > 0) {
+    const roomVis = this.deps.world.getGlobalRoomVisibility()
+    if (roomVis.size > 0) {
       this.deps.sendToPlayer(playerId, {
         type: 'room_visibility_state',
-        updates: [...roomVisState].map(([roomId, visible]) => ({ roomId, visible })),
+        updates: [...roomVis].map(([roomId, visible]) => ({ roomId, visible })),
       })
     }
 
-    const buttonData = this.buttonManager?.getInitData() ?? []
-    if (buttonData.length > 0) {
-      this.deps.sendToPlayer(playerId, { type: 'button_init', buttons: buttonData })
+    if (this.hasButtons) {
+      const buttonData = this.deps.world.getButtonInitData()
+      if (buttonData.length > 0) {
+        this.deps.sendToPlayer(playerId, { type: 'button_init', buttons: buttonData })
+      }
     }
 
     if (this.script && this.started) {
@@ -249,15 +251,9 @@ export class Scenario {
     if (!this.attachedPlayerIds.has(playerId)) return
     this.attachedPlayerIds.delete(playerId)
     this.readyPlayerIds.delete(playerId)
-    this.playerRegions.delete(playerId)
     this.playerCurrentRoom.delete(playerId)
-    this.playerGeometry.delete(playerId)
-    this.playerRoomVisible.delete(playerId)
-    if (this.buttonManager) {
-      const changes = this.buttonManager.removePlayer(playerId)
-      for (const { buttonId } of changes) this.evaluateButton(buttonId)
-    }
-    this.emitVoteAssignments()
+    // World's removePlayer (called by the Room after us) handles clearing
+    // vote assignments and button occupancy, emitting the relevant events.
   }
 
   onPlayerMoved(playerId: string): void {
@@ -266,18 +262,6 @@ export class Scenario {
 
     const p = this.deps.world.getPlayer(playerId)
     if (!p) return
-
-    const oldRegion = this.playerRegions.get(playerId) ?? null
-    const newRegion = this.regionAt(p.x, p.z)
-    if (newRegion !== oldRegion) {
-      this.playerRegions.set(playerId, newRegion)
-      this.notifyVoteListeners(oldRegion, newRegion)
-    }
-
-    if (this.buttonManager) {
-      const changes = this.buttonManager.updatePlayerPosition(playerId, p.x, p.z)
-      for (const { buttonId } of changes) this.evaluateButton(buttonId)
-    }
 
     const getRoomAtPosition = this.deps.getRoomAtPosition
     if (getRoomAtPosition) {
@@ -288,6 +272,42 @@ export class Scenario {
         this.deps.world.setPlayerRoom(playerId, newRoom)
         this.dispatchRoomEnter(playerId, newRoom)
       }
+    }
+  }
+
+  // Called by the Room with each world-level event emitted by processTick.
+  // Routes press/release/vote-change events to the scripts that registered
+  // for them. Other event types (button_state_change / button_config_change /
+  // room_visibility_change) are Room-level concerns and need no scenario
+  // dispatch — the room broadcasts them.
+  onWorldEvent(event: WorldEvent): void {
+    if (!this.alive || !this.script) return
+    switch (event.type) {
+      case 'button_press': {
+        const payload: ButtonPressPayload = { occupants: [...event.occupants] }
+        for (const rec of [...this.buttonPressListeners.values()]) {
+          if (rec.buttonId === event.buttonId) this.invokeHandler(rec.handlerId, payload)
+        }
+        return
+      }
+      case 'button_release': {
+        for (const rec of [...this.buttonReleaseListeners.values()]) {
+          if (rec.buttonId === event.buttonId) this.invokeHandler(rec.handlerId, undefined)
+        }
+        return
+      }
+      case 'vote_region_change': {
+        const changed = new Set(event.changedRegionIds)
+        const payload: VoteChangedPayload = { assignments: { ...event.assignments } }
+        for (const rec of [...this.voteListeners.values()]) {
+          if (rec.regionIds.some(r => changed.has(r))) {
+            this.invokeHandler(rec.handlerId, payload)
+          }
+        }
+        return
+      }
+      default:
+        return
     }
   }
 
@@ -349,29 +369,32 @@ export class Scenario {
     buttonData: Array<ButtonSpec & { state: ButtonState; occupancy: number }>
     voteAssignments: Record<string, string[]> | null
   } {
-    let geometryUpdates: Array<{ id: string; visible: boolean }> | null = null
-    const playerState = this.playerGeometry.get(observedPlayerId)
-    if (this.globalGeomVisible.size > 0 || (playerState && playerState.size > 0)) {
-      const merged = new Map(this.globalGeomVisible)
-      if (playerState) for (const [id, v] of playerState) merged.set(id, v)
-      geometryUpdates = [...merged].map(([id, visible]) => ({ id, visible }))
-    }
+    const world = this.deps.world
+    const geomSnapshot = world.getGeometryStateSnapshot()
+    const playerGeomOverride = world.getPlayerGeometrySnapshot(observedPlayerId)
+    const merged = new Map(geomSnapshot)
+    for (const [id, v] of playerGeomOverride) merged.set(id, v)
+    const geometryUpdates: Array<{ id: string; visible: boolean }> | null =
+      merged.size > 0 ? [...merged].map(([id, visible]) => ({ id, visible })) : null
 
+    const globalRoomVis = world.getGlobalRoomVisibility()
+    const playerRoomVis = world.getPlayerRoomVisibility(observedPlayerId)
     let roomVisibilityUpdates: Array<{ roomId: string; visible: boolean }> | null = null
-    const roomState = this.playerRoomVisible.get(observedPlayerId)
-    if (roomState && roomState.size > 0) {
-      roomVisibilityUpdates = [...roomState].map(([roomId, visible]) => ({ roomId, visible }))
-    } else if (this.globalRoomVisible.size > 0) {
-      roomVisibilityUpdates = [...this.globalRoomVisible].map(([roomId, visible]) => ({ roomId, visible }))
+    if (playerRoomVis.size > 0) {
+      roomVisibilityUpdates = [...playerRoomVis].map(([roomId, visible]) => ({ roomId, visible }))
+    } else if (globalRoomVis.size > 0) {
+      roomVisibilityUpdates = [...globalRoomVis].map(([roomId, visible]) => ({ roomId, visible }))
     }
 
-    const buttonData = this.buttonManager?.getInitData() ?? []
+    const buttonData = this.hasButtons ? world.getButtonInitData() : []
 
     let voteAssignments: Record<string, string[]> | null = null
-    if (this.activeRegions.size > 0) {
+    const assignmentsByPlayer = world.getVoteAssignments()
+    const activeRegions = world.getActiveVoteRegions()
+    if (activeRegions.length > 0) {
       const assignments: Record<string, string[]> = {}
-      for (const regionId of this.activeRegions) assignments[regionId] = []
-      for (const [pid, rid] of this.playerRegions) {
+      for (const rid of activeRegions) assignments[rid] = []
+      for (const [pid, rid] of assignmentsByPlayer) {
         if (rid && rid in assignments) assignments[rid].push(pid)
       }
       voteAssignments = assignments
@@ -416,80 +439,6 @@ export class Scenario {
     }
   }
 
-  private emitVoteAssignments(): void {
-    const assignments: Record<string, string[]> = {}
-    for (const regionId of this.activeRegions) assignments[regionId] = []
-    for (const [pid, rid] of this.playerRegions) {
-      if (rid && rid in assignments) assignments[rid].push(pid)
-    }
-    this.deps.broadcast({ type: 'vote_assignment_change', assignments })
-  }
-
-  private evaluateButton(buttonId: string): void {
-    const bm = this.buttonManager!
-    const state = bm.getState(buttonId)
-    const occupants = bm.getOccupants(buttonId)
-    const config = bm.getConfig(buttonId)
-    if (state === undefined || !occupants || !config) return
-
-    if (state === 'idle' && occupants.size >= config.requiredPlayers) {
-      bm.setState(buttonId, 'pressed')
-      this.deps.broadcast({ type: 'button_state', id: buttonId, state: 'pressed', occupancy: occupants.size })
-      const payload: ButtonPressPayload = { occupants: [...occupants] }
-      for (const rec of [...this.buttonPressListeners.values()]) {
-        if (rec.buttonId === buttonId) this.invokeHandler(rec.handlerId, payload)
-      }
-      return
-    }
-
-    if (state === 'pressed' && !config.holdAfterRelease && occupants.size < config.requiredPlayers) {
-      for (const rec of [...this.buttonReleaseListeners.values()]) {
-        if (rec.buttonId === buttonId) this.invokeHandler(rec.handlerId, undefined)
-      }
-      if (config.cooldownMs > 0) {
-        bm.startCooldown(buttonId, config.cooldownMs, () => {
-          bm.setState(buttonId, 'idle')
-          this.deps.broadcast({
-            type: 'button_state',
-            id: buttonId,
-            state: 'idle',
-            occupancy: bm.getOccupants(buttonId)!.size,
-          })
-        })
-        this.deps.broadcast({ type: 'button_state', id: buttonId, state: 'cooldown', occupancy: occupants.size })
-      } else {
-        bm.setState(buttonId, 'idle')
-        this.deps.broadcast({ type: 'button_state', id: buttonId, state: 'idle', occupancy: occupants.size })
-      }
-      return
-    }
-
-    this.deps.broadcast({ type: 'button_state', id: buttonId, state, occupancy: occupants.size })
-  }
-
-  private regionAt(x: number, z: number): string | null {
-    for (const [id, r] of this.voteRegionSpecs) {
-      if (!this.activeRegions.has(id)) continue
-      if (Math.hypot(x - r.x, z - r.z) <= r.radius) return id
-    }
-    return null
-  }
-
-  private notifyVoteListeners(oldRegion: string | null, newRegion: string | null): void {
-    const changed = new Set<string>()
-    if (oldRegion) changed.add(oldRegion)
-    if (newRegion) changed.add(newRegion)
-    const assignments: Record<string, string | null> = {}
-    for (const [pid, rid] of this.playerRegions) assignments[pid] = rid
-    const payload: VoteChangedPayload = { assignments }
-    for (const rec of [...this.voteListeners.values()]) {
-      if (rec.regionIds.some(r => changed.has(r))) {
-        this.invokeHandler(rec.handlerId, payload)
-      }
-    }
-    this.emitVoteAssignments()
-  }
-
   private makeContext(): GameScriptContext {
     const self = this
     const world = this.deps.world
@@ -509,9 +458,7 @@ export class Scenario {
         if (lines.length > 0) self.deps.sendToPlayer(playerId, { type: 'instruction', lines })
       },
       toggleVoteRegion(regionId, active) {
-        if (active) self.activeRegions.add(regionId)
-        else self.activeRegions.delete(regionId)
-        self.emitVoteAssignments()
+        world.setVoteRegionActive(regionId, active)
       },
       onVoteChanged(regionIds, handlerId) {
         const id = self.mintId('vote_')
@@ -539,7 +486,7 @@ export class Scenario {
         self.buttonReleaseListeners.delete(listenerId)
       },
       getPlayerIds() {
-        return [...self.playerRegions.keys()]
+        return [...self.attachedPlayerIds]
       },
       getPlayerPosition(playerId) {
         const p = world.getPlayer(playerId)
@@ -556,12 +503,9 @@ export class Scenario {
       },
       setGeometryVisible(geometryIds, visible, playerIds) {
         const perPlayer = !!(playerIds && playerIds.length > 0)
+        const updates = geometryIds.map(id => ({ id, visible }))
         if (perPlayer) {
-          const updates = geometryIds.map(id => ({ id, visible }))
           for (const pid of playerIds!) {
-            let m = self.playerGeometry.get(pid)
-            if (!m) { m = new Map(); self.playerGeometry.set(pid, m) }
-            for (const id of geometryIds) m.set(id, visible)
             self.deps.sendToPlayer(pid, { type: 'geometry_state', updates, perPlayer: true })
             for (const id of geometryIds) {
               if (visible) world.toggleGeometryOn(id, pid)
@@ -569,51 +513,36 @@ export class Scenario {
             }
           }
         } else {
-          const updates = geometryIds.map(id => ({ id, visible }))
-          for (const pid of self.playerGeometry.keys()) {
+          for (const pid of self.attachedPlayerIds) {
             self.deps.sendToPlayer(pid, { type: 'geometry_state', updates })
           }
           for (const id of geometryIds) {
-            self.globalGeomVisible.set(id, visible)
             if (visible) world.toggleGeometryOn(id)
             else world.toggleGeometryOff(id)
           }
         }
       },
       getVoteAssignments() {
-        return new Map(self.playerRegions)
+        return world.getVoteAssignments()
       },
       onButtonPress(buttonId, handlerId) {
-        if (!self.buttonManager) return self.mintId('btnp_')
         const id = self.mintId('btnp_')
-        self.buttonPressListeners.set(id, { buttonId, handlerId })
+        if (self.hasButtons) self.buttonPressListeners.set(id, { buttonId, handlerId })
         return id
       },
       onButtonRelease(buttonId, handlerId) {
-        if (!self.buttonManager) return self.mintId('btnr_')
         const id = self.mintId('btnr_')
-        self.buttonReleaseListeners.set(id, { buttonId, handlerId })
+        if (self.hasButtons) self.buttonReleaseListeners.set(id, { buttonId, handlerId })
         return id
       },
       modifyButton(buttonId, changes) {
-        if (!self.buttonManager) return
-        self.buttonManager.patchConfig(buttonId, changes)
-        self.deps.broadcast({ type: 'button_config', id: buttonId, changes })
-        self.evaluateButton(buttonId)
+        world.setButtonConfig(buttonId, changes)
       },
       setButtonState(buttonId, state) {
-        if (!self.buttonManager) return
-        self.buttonManager.setState(buttonId, state)
-        const occupants = self.buttonManager.getOccupants(buttonId)
-        self.deps.broadcast({
-          type: 'button_state',
-          id: buttonId,
-          state,
-          occupancy: occupants?.size ?? 0,
-        })
+        world.setButtonState(buttonId, state)
       },
       sendNotification(text, playerIds) {
-        const targets = playerIds ?? [...self.playerRegions.keys()]
+        const targets = playerIds ?? [...self.attachedPlayerIds]
         for (const pid of targets) self.deps.sendToPlayer(pid, { type: 'notification', text })
       },
       applyDamage(playerId, amount) {
@@ -654,18 +583,7 @@ export class Scenario {
         world.setAccessibleRoomsOverride(playerId, scopedRoomIds)
       },
       setRoomVisible(roomIds, visible, playerIds) {
-        const perPlayer = !!(playerIds && playerIds.length > 0)
-        const targets = perPlayer ? playerIds! : [...self.playerRoomVisible.keys()]
-        const updates = roomIds.map(roomId => ({ roomId, visible }))
-        for (const pid of targets) {
-          const state = self.playerRoomVisible.get(pid)
-          if (!state) continue
-          for (const roomId of roomIds) state.set(roomId, visible)
-          self.deps.sendToPlayer(pid, { type: 'room_visibility_state', updates, perPlayer })
-        }
-        if (!perPlayer) {
-          for (const roomId of roomIds) self.globalRoomVisible.set(roomId, visible)
-        }
+        world.setRoomVisible(roomIds, visible, playerIds)
       },
       addRule(playerId, text) {
         world.addPlayerRule(playerId, text)

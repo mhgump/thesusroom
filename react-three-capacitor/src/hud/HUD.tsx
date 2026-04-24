@@ -21,7 +21,7 @@ export function HUD() {
   const localRoomId = currentRoomId.startsWith(`${CURRENT_MAP.mapInstanceId}_`)
     ? currentRoomId.slice(CURRENT_MAP.mapInstanceId.length + 1)
     : currentRoomId
-  const roomName = CURRENT_MAP.worldSpec.rooms.find(r => r.id === localRoomId)?.name ?? currentRoomId
+  const roomName = CURRENT_MAP.rooms.find(r => r.id === localRoomId)?.name ?? currentRoomId
 
   return (
     <div

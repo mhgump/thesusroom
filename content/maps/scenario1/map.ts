@@ -1,6 +1,9 @@
-import type { WorldSpec } from '../../../react-three-capacitor/src/game/WorldSpec.js'
-import type { GameSpec } from '../../../react-three-capacitor/src/game/GameSpec.js'
 import type { GameMap } from '../../../react-three-capacitor/src/game/GameMap.js'
+import type { RoomSpec } from '../../../react-three-capacitor/src/game/RoomSpec.js'
+import type {
+  InstructionEventSpec,
+  VoteRegionSpec,
+} from '../../../react-three-capacitor/src/game/GameSpec.js'
 import {
   computeRoomPositions,
   validateWorldSpec,
@@ -43,51 +46,50 @@ const cellWalls = VOTE_X.flatMap((vx, i) => {
   ]
 })
 
-const WORLD_SPEC: WorldSpec = {
-  rooms: [
-    {
-      id: 'main', name: 'Scenario 1',
-      floorWidth: ROOM_W,
-      floorDepth: ROOM_D,
-      height: ROOM_H,
-      cameraRect: { xMin: -0.4028, xMax: 0.4028, zMin: 0, zMax: 0 },
-      geometry: [
-        { id: 's1_wn', cx: 0,        cy: BY, cz: -WALL_CZ, width: ROOM_W, height: bh, depth: bt },
-        { id: 's1_ws', cx: 0,        cy: BY, cz:  WALL_CZ, width: ROOM_W, height: bh, depth: bt },
-        { id: 's1_we', cx:  WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
-        { id: 's1_ww', cx: -WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
-        ...cellWalls,
-      ],
-    },
-  ],
-  connections: [],
-}
+const ROOMS: RoomSpec[] = [
+  {
+    id: 'main', name: 'Scenario 1',
+    floorWidth: ROOM_W,
+    floorDepth: ROOM_D,
+    height: ROOM_H,
+    cameraRect: { xMin: -0.4028, xMax: 0.4028, zMin: 0, zMax: 0 },
+    geometry: [
+      { id: 's1_wn', cx: 0,        cy: BY, cz: -WALL_CZ, width: ROOM_W, height: bh, depth: bt },
+      { id: 's1_ws', cx: 0,        cy: BY, cz:  WALL_CZ, width: ROOM_W, height: bh, depth: bt },
+      { id: 's1_we', cx:  WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
+      { id: 's1_ww', cx: -WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
+      ...cellWalls,
+    ],
+  },
+]
 
-const LOCAL_POSITIONS = computeRoomPositions(WORLD_SPEC)
-validateWorldSpec(WORLD_SPEC, LOCAL_POSITIONS)
-const ARTIFACTS = buildMapInstanceArtifacts(WORLD_SPEC, MAP_INSTANCE_ID)
-const CAMERA_SHAPES = buildCameraConstraintShapes(WORLD_SPEC, LOCAL_POSITIONS)
+const TOPOLOGY = { rooms: ROOMS, connections: [] }
+const LOCAL_POSITIONS = computeRoomPositions(TOPOLOGY)
+validateWorldSpec(TOPOLOGY, LOCAL_POSITIONS)
+const ARTIFACTS = buildMapInstanceArtifacts(TOPOLOGY, MAP_INSTANCE_ID)
+const CAMERA_SHAPES = buildCameraConstraintShapes(TOPOLOGY, LOCAL_POSITIONS)
 
-const GAME_SPEC: GameSpec = {
-  instructionSpecs: [
-    { id: 'find_instruction', text: 'Find your circle', label: 'COMMAND' },
-    { id: 'vote_instruction', text: 'Vote called!',     label: 'COMMAND' },
-  ],
-  voteRegions: [
-    { id: 's1_v1', label: '1', color: '#e74c3c', x: VOTE_X[0], z: VOTE_Z, radius: VOTE_R },
-    { id: 's1_v2', label: '2', color: '#3498db', x: VOTE_X[1], z: VOTE_Z, radius: VOTE_R },
-    { id: 's1_v3', label: '3', color: '#2ecc71', x: VOTE_X[2], z: VOTE_Z, radius: VOTE_R },
-    { id: 's1_v4', label: '4', color: '#f1c40f', x: VOTE_X[3], z: VOTE_Z, radius: VOTE_R },
-  ],
-}
+const INSTRUCTION_SPECS: InstructionEventSpec[] = [
+  { id: 'find_instruction', text: 'Find your circle', label: 'COMMAND' },
+  { id: 'vote_instruction', text: 'Vote called!',     label: 'COMMAND' },
+]
+
+const VOTE_REGIONS: VoteRegionSpec[] = [
+  { id: 's1_v1', label: '1', color: '#e74c3c', x: VOTE_X[0], z: VOTE_Z, radius: VOTE_R },
+  { id: 's1_v2', label: '2', color: '#3498db', x: VOTE_X[1], z: VOTE_Z, radius: VOTE_R },
+  { id: 's1_v3', label: '3', color: '#2ecc71', x: VOTE_X[2], z: VOTE_Z, radius: VOTE_R },
+  { id: 's1_v4', label: '4', color: '#f1c40f', x: VOTE_X[3], z: VOTE_Z, radius: VOTE_R },
+]
 
 export const MAP: GameMap = {
   id: 'scenario1',
   mapInstanceId: MAP_INSTANCE_ID,
-  worldSpec: WORLD_SPEC,
+  rooms: ROOMS,
+  connections: [],
   roomPositions: ARTIFACTS.roomPositions,
   cameraShapes: CAMERA_SHAPES,
-  gameSpec: GAME_SPEC,
+  instructionSpecs: INSTRUCTION_SPECS,
+  voteRegions: VOTE_REGIONS,
   npcs: [],
   getRoomAtPosition: ARTIFACTS.getRoomAtPosition,
   getAdjacentRoomIds: ARTIFACTS.getAdjacentRoomIds,

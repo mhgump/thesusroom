@@ -1,3 +1,7 @@
+// Sub-types used to author map-level gameplay content (vote regions, buttons,
+// instruction strings) and to describe wire messages derived from map geometry.
+// These live on `GameMap` directly — there is no aggregated `GameSpec` shape.
+
 export type RuleLabel = 'RULE' | 'COMMAND' | 'FACT'
 
 export type ButtonState = 'idle' | 'pressed' | 'cooldown' | 'disabled'
@@ -47,16 +51,6 @@ export interface VoteRegionSpec {
   radius: number
 }
 
-// Per-scenario gameplay content. Geometry itself is authored per-room on the
-// map (see RoomSpec.geometry); scenarios only reference geometry ids to toggle
-// them on/off, and add their own gameplay overlays (buttons, vote regions,
-// instruction strings).
-export interface GameSpec {
-  instructionSpecs: InstructionEventSpec[]
-  voteRegions: VoteRegionSpec[]
-  buttons?: ButtonSpec[]
-}
-
 // A single geometry piece after the server has flattened the owning map's
 // per-room geometry to global coordinates. Sent to the client via `map_init`
 // so the renderer can place each box without re-deriving room positions.
@@ -69,22 +63,4 @@ export interface WireGeometry {
   width: number; height: number; depth: number
   color?: string
   imageUrl?: string
-}
-
-interface RoomBounds { x: number; z: number; width: number; depth: number }
-
-// Returns error messages for any vote region not fully contained within a room floor.
-export function validateGameSpec(spec: GameSpec, rooms: RoomBounds[]): string[] {
-  const errors: string[] = []
-  for (const region of spec.voteRegions) {
-    const ok = rooms.some(
-      r =>
-        region.x - region.radius >= r.x - r.width / 2 &&
-        region.x + region.radius <= r.x + r.width / 2 &&
-        region.z - region.radius >= r.z - r.depth / 2 &&
-        region.z + region.radius <= r.z + r.depth / 2,
-    )
-    if (!ok) errors.push(`Vote region '${region.id}' is not fully contained within any room`)
-  }
-  return errors
 }

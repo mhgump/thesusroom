@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url'
 import { GameServer } from './GameServer.js'
 import { ContentRegistry } from './ContentRegistry.js'
 import { initPhysics } from './World.js'
+import { attachNumberDisplay, NUMBER_DISPLAY_ROUTES } from './NumberDisplay.js'
 
 const PORT = parseInt(process.env.PORT ?? '8080', 10)
 await initPhysics()
@@ -20,6 +21,8 @@ app.use(express.static(staticDir))
 
 const server = http.createServer(app)
 const gameServer = new GameServer(content, server, PORT)
+
+attachNumberDisplay(server, app, NUMBER_DISPLAY_ROUTES)
 
 // Observer not-found guard: return dummy HTML before the SPA fallback catches it.
 app.get('/observe/:key/:i/:j', (req, res) => {

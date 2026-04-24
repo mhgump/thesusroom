@@ -1,6 +1,7 @@
-import type { WorldSpec } from '../../../react-three-capacitor/src/game/WorldSpec.js'
-import type { GameSpec } from '../../../react-three-capacitor/src/game/GameSpec.js'
 import type { GameMap } from '../../../react-three-capacitor/src/game/GameMap.js'
+import type { RoomSpec } from '../../../react-three-capacitor/src/game/RoomSpec.js'
+import type { InstructionEventSpec } from '../../../react-three-capacitor/src/game/GameSpec.js'
+import type { RoomConnection } from '../../../react-three-capacitor/src/game/WorldSpec.js'
 import {
   computeRoomPositions,
   validateWorldSpec,
@@ -29,107 +30,106 @@ const D_SEG_CX  = (HW + D_HALF) / 2           // 0.2375
 const D_SEG_W   = HW - D_HALF                 // 0.275
 const DOOR_GAP_W = 2 * D_HALF                 // 0.2  width of the gap (and therefore of the door plug)
 
-const WORLD_SPEC: WorldSpec = {
-  rooms: [
-    {
-      id: 'room1', name: 'Room 1',
-      floorWidth: R1W, floorDepth: R1D,
-      height: ROOM_H,
-      cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
-      // south + E/W (E/W extend north so the north-east/west corners are sealed).
-      // North boundary is owned by room2's south wall (authored on room2 below).
-      geometry: [
-        { id: 'r1_s', cx: 0,        cy: BY, cz:  WALL_C, width: R1W, height: BT, depth: BT },
-        { id: 'r1_e', cx:  WALL_C,  cy: BY, cz: -EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
-        { id: 'r1_w', cx: -WALL_C,  cy: BY, cz: -EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
-      ],
-    },
-    {
-      id: 'room2', name: 'Room 2',
-      floorWidth: R2W, floorDepth: R2D,
-      height: ROOM_H,
-      cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
-      // South (split at door gap for room1) + E/W (extend to north edge so
-      // the corners are sealed even when room2_north_wall is absent).
-      // room2_north_wall is the toggleable centre span of the north wall —
-      // when dropped, the corners remain walled by r2_e/r2_w and only the
-      // middle opens up so room3 appears to extend out of room2.
-      // north_door is the toggleable plug in the south gap.
-      geometry: [
-        { id: 'r2_sl',             cx: -D_SEG_CX, cy: BY, cz:  WALL_C, width: D_SEG_W, height: BT, depth: BT },
-        { id: 'r2_sr',             cx:  D_SEG_CX, cy: BY, cz:  WALL_C, width: D_SEG_W, height: BT, depth: BT },
-        { id: 'r2_e',              cx:  WALL_C,   cy: BY, cz: -EW_CZ,  width: BT,      height: BT, depth: EW_EXT },
-        { id: 'r2_w',              cx: -WALL_C,   cy: BY, cz: -EW_CZ,  width: BT,      height: BT, depth: EW_EXT },
-        { id: 'north_door',        cx: 0,         cy: BY, cz:  WALL_C, width: DOOR_GAP_W, height: BT, depth: BT, color: '#555555' },
-        { id: 'room2_north_wall',  cx: 0,         cy: BY, cz: -WALL_C, width: R2W - 2 * BT, height: BT, depth: BT },
-      ],
-    },
-    {
-      id: 'room3', name: 'Room 3',
-      floorWidth: R3W, floorDepth: R3D,
-      height: ROOM_H,
-      cameraRect: { xMin: -0.375, xMax: 0.375, zMin: 0.125, zMax: 0.375 },
-      // North + E/W. South boundary is owned by room2's north wall
-      // (room2_north_wall) — room3 has no south wall of its own so it reads
-      // as open-to-room2 once that toggleable wall drops.
-      geometry: [
-        { id: 'r3_n', cx: 0,       cy: BY, cz: -WALL_C, width: R3W, height: BT, depth: BT },
-        { id: 'r3_e', cx:  WALL_C, cy: BY, cz:  EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
-        { id: 'r3_w', cx: -WALL_C, cy: BY, cz:  EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
-      ],
-    },
-  ],
-  connections: [
-    {
-      roomIdA: 'room1', wallA: 'north', positionA: 0.5,
-      roomIdB: 'room2', wallB: 'south', positionB: 0.5,
-      width: DOOR_WIDTH,
-      cameraTransition: {
-        corners: [
-          { x:  0,    z:  0     },
-          { x:  0.05, z: -0.375 },
-          { x: -0.05, z: -0.375 },
-        ],
-      },
-    },
-    {
-      roomIdA: 'room2', wallA: 'north', positionA: 0.5,
-      roomIdB: 'room3', wallB: 'south', positionB: 0.5,
-      width: DOOR_WIDTH,
-      cameraTransition: {
-        corners: [
-          { x:  0,    z:  0     },
-          { x:  0.05, z: -0.375 },
-          { x: -0.05, z: -0.375 },
-        ],
-      },
-    },
-  ],
-}
+const ROOMS: RoomSpec[] = [
+  {
+    id: 'room1', name: 'Room 1',
+    floorWidth: R1W, floorDepth: R1D,
+    height: ROOM_H,
+    cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
+    // south + E/W (E/W extend north so the north-east/west corners are sealed).
+    // North boundary is owned by room2's south wall (authored on room2 below).
+    geometry: [
+      { id: 'r1_s', cx: 0,        cy: BY, cz:  WALL_C, width: R1W, height: BT, depth: BT },
+      { id: 'r1_e', cx:  WALL_C,  cy: BY, cz: -EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
+      { id: 'r1_w', cx: -WALL_C,  cy: BY, cz: -EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
+    ],
+  },
+  {
+    id: 'room2', name: 'Room 2',
+    floorWidth: R2W, floorDepth: R2D,
+    height: ROOM_H,
+    cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
+    // South (split at door gap for room1) + E/W (extend to north edge so
+    // the corners are sealed even when room2_north_wall is absent).
+    // room2_north_wall is the toggleable centre span of the north wall —
+    // when dropped, the corners remain walled by r2_e/r2_w and only the
+    // middle opens up so room3 appears to extend out of room2.
+    // north_door is the toggleable plug in the south gap.
+    geometry: [
+      { id: 'r2_sl',             cx: -D_SEG_CX, cy: BY, cz:  WALL_C, width: D_SEG_W, height: BT, depth: BT },
+      { id: 'r2_sr',             cx:  D_SEG_CX, cy: BY, cz:  WALL_C, width: D_SEG_W, height: BT, depth: BT },
+      { id: 'r2_e',              cx:  WALL_C,   cy: BY, cz: -EW_CZ,  width: BT,      height: BT, depth: EW_EXT },
+      { id: 'r2_w',              cx: -WALL_C,   cy: BY, cz: -EW_CZ,  width: BT,      height: BT, depth: EW_EXT },
+      { id: 'north_door',        cx: 0,         cy: BY, cz:  WALL_C, width: DOOR_GAP_W, height: BT, depth: BT, color: '#555555' },
+      { id: 'room2_north_wall',  cx: 0,         cy: BY, cz: -WALL_C, width: R2W - 2 * BT, height: BT, depth: BT },
+    ],
+  },
+  {
+    id: 'room3', name: 'Room 3',
+    floorWidth: R3W, floorDepth: R3D,
+    height: ROOM_H,
+    cameraRect: { xMin: -0.375, xMax: 0.375, zMin: 0.125, zMax: 0.375 },
+    // North + E/W. South boundary is owned by room2's north wall
+    // (room2_north_wall) — room3 has no south wall of its own so it reads
+    // as open-to-room2 once that toggleable wall drops.
+    geometry: [
+      { id: 'r3_n', cx: 0,       cy: BY, cz: -WALL_C, width: R3W, height: BT, depth: BT },
+      { id: 'r3_e', cx:  WALL_C, cy: BY, cz:  EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
+      { id: 'r3_w', cx: -WALL_C, cy: BY, cz:  EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
+    ],
+  },
+]
 
-const LOCAL_POSITIONS = computeRoomPositions(WORLD_SPEC)
-validateWorldSpec(WORLD_SPEC, LOCAL_POSITIONS)
-const ARTIFACTS = buildMapInstanceArtifacts(WORLD_SPEC, MAP_INSTANCE_ID)
-const CAMERA_SHAPES = buildCameraConstraintShapes(WORLD_SPEC, LOCAL_POSITIONS)
+const CONNECTIONS: RoomConnection[] = [
+  {
+    roomIdA: 'room1', wallA: 'north', positionA: 0.5,
+    roomIdB: 'room2', wallB: 'south', positionB: 0.5,
+    width: DOOR_WIDTH,
+    cameraTransition: {
+      corners: [
+        { x:  0,    z:  0     },
+        { x:  0.05, z: -0.375 },
+        { x: -0.05, z: -0.375 },
+      ],
+    },
+  },
+  {
+    roomIdA: 'room2', wallA: 'north', positionA: 0.5,
+    roomIdB: 'room3', wallB: 'south', positionB: 0.5,
+    width: DOOR_WIDTH,
+    cameraTransition: {
+      corners: [
+        { x:  0,    z:  0     },
+        { x:  0.05, z: -0.375 },
+        { x: -0.05, z: -0.375 },
+      ],
+    },
+  },
+]
 
-const GAME_SPEC: GameSpec = {
-  instructionSpecs: [
-    { id: 'rule_move', text: 'Players that do not continue will be eliminated', label: 'RULE' },
-    { id: 'fact_1',   text: '1 player survived',  label: 'FACT' },
-    { id: 'fact_2',   text: '2 players survived', label: 'FACT' },
-    { id: 'fact_3',   text: '3 players survived', label: 'FACT' },
-    { id: 'fact_4',   text: '4 players survived', label: 'FACT' },
-  ],
-  voteRegions: [],
-}
+const TOPOLOGY = { rooms: ROOMS, connections: CONNECTIONS }
+const LOCAL_POSITIONS = computeRoomPositions(TOPOLOGY)
+validateWorldSpec(TOPOLOGY, LOCAL_POSITIONS)
+const ARTIFACTS = buildMapInstanceArtifacts(TOPOLOGY, MAP_INSTANCE_ID)
+const CAMERA_SHAPES = buildCameraConstraintShapes(TOPOLOGY, LOCAL_POSITIONS)
+
+const INSTRUCTION_SPECS: InstructionEventSpec[] = [
+  { id: 'rule_move', text: 'Players that do not continue will be eliminated', label: 'RULE' },
+  { id: 'fact_1',   text: '1 player survived',  label: 'FACT' },
+  { id: 'fact_2',   text: '2 players survived', label: 'FACT' },
+  { id: 'fact_3',   text: '3 players survived', label: 'FACT' },
+  { id: 'fact_4',   text: '4 players survived', label: 'FACT' },
+]
 
 export const MAP: GameMap = {
   id: 'scenario2',
   mapInstanceId: MAP_INSTANCE_ID,
-  worldSpec: WORLD_SPEC,
+  rooms: ROOMS,
+  connections: CONNECTIONS,
   roomPositions: ARTIFACTS.roomPositions,
   cameraShapes: CAMERA_SHAPES,
-  gameSpec: GAME_SPEC,
+  instructionSpecs: INSTRUCTION_SPECS,
+  voteRegions: [],
   npcs: [],
   getRoomAtPosition: ARTIFACTS.getRoomAtPosition,
   getAdjacentRoomIds: ARTIFACTS.getAdjacentRoomIds,

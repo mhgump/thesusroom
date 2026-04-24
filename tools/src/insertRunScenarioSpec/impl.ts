@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { getDataBackend } from '../_shared/backends/index.js'
+import { TestSpecList, getBackends, getDataBackend } from '../_shared/backends/index.js'
 import { PROJECT_ROOT } from '../_shared/paths.js'
 import type { RunScenarioSpec, RunScenarioSpecNote } from '../_shared/runScenarioSpec.js'
 import {
@@ -49,8 +49,8 @@ async function run(rawInput: unknown): Promise<InsertRunScenarioSpecOutput> {
     return { success: false, error: (err as Error).message }
   }
 
-  const data = getDataBackend()
-  const { map, scenario, testSpec } = data
+  const { map, scenario, testSpec } = getBackends()
+  const testSpecs = new TestSpecList(getDataBackend())
 
   if ((await map.get(input.map_id)) === null) {
     const mapLoc = map.locate?.(input.map_id) ?? input.map_id
@@ -116,7 +116,7 @@ async function run(rawInput: unknown): Promise<InsertRunScenarioSpecOutput> {
     last_run_artifact_ids: [],
   }
 
-  await data.addTestSpec(input.scenario_id, input.name)
+  await testSpecs.addTestSpec(input.scenario_id, input.name)
   await testSpec.put({ scenario_id: input.scenario_id, test_spec_id: input.name }, spec)
 
   return { success: true, test_spec_name: input.name }

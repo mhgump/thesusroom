@@ -1,6 +1,6 @@
 import type { GameMap } from '../../src/game/GameMap.js'
 import type { GameScript } from './GameScript.js'
-import { getDataBackend } from '../../../tools/src/_shared/backends/index.js'
+import { getBackends } from '../../../tools/src/_shared/backends/index.js'
 
 export type { GameMap }
 
@@ -58,7 +58,7 @@ export class ContentRegistry {
   }
 
   private async loadEntry(scenarioId: string): Promise<ContentEntry | undefined> {
-    const { scenario, map } = getDataBackend()
+    const { scenario, map } = getBackends()
     const [s, m] = await Promise.all([scenario.load(scenarioId), map.load(scenarioId)])
     if (!s || !m) return undefined
     return { map: m, scenario: s }

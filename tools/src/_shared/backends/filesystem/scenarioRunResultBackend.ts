@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { SCENARIO_RUNS_DIR } from '../../paths.js'
-import type { ScenarioRunBackend } from '../dataBackend.js'
+import type { ScenarioRunBackend } from '../backends.js'
 import type { RunResultKey, ScenarioRunResult } from '../types.js'
 
 // Filesystem layout:

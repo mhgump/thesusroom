@@ -96,7 +96,7 @@ export function GameScene() {
   const visibleIds = new Set(
     [currentRoomId, ...CURRENT_MAP.getAdjacentRoomIds(currentRoomId)].filter(isRoomVisible)
   );
-  const roomsToRender = CURRENT_MAP.worldSpec.rooms.filter(r =>
+  const roomsToRender = CURRENT_MAP.rooms.filter(r =>
     visibleIds.has(`${CURRENT_MAP.mapInstanceId}_${r.id}`),
   );
 

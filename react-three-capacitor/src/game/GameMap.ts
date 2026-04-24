@@ -1,6 +1,7 @@
-import type { WorldSpec, RoomWorldPos } from './WorldSpec.js'
+import type { RoomConnection, RoomWorldPos } from './WorldSpec.js'
+import type { RoomSpec } from './RoomSpec.js'
 import type { CameraConstraintShapes } from './CameraConstraint.js'
-import type { GameSpec } from './GameSpec.js'
+import type { InstructionEventSpec, VoteRegionSpec, ButtonSpec } from './GameSpec.js'
 import type { NpcSpec } from './NpcSpec.js'
 
 // A GameMap is a static map definition; a world instance instantiates it under
@@ -14,13 +15,33 @@ import type { NpcSpec } from './NpcSpec.js'
 // concept: Rapier treats each GeometrySpec as a solid XZ-projected collider
 // and the World enforces "stay in rooms" by checking the player's post-move
 // position against the AABB union of the player's currently accessible rooms.
+//
+// All map-authored content lives flat on this interface. There is no
+// intermediate `worldSpec` / `gameSpec` aggregation — the rooms + connections
+// + buttons + vote regions + instruction strings are top-level map fields.
 export interface GameMap {
   id: string
   // The map instance id used to scope room ids. For the current deployment
   // (one world, one map instance) this is equal to `id`.
   mapInstanceId: string
-  // Client rendering
-  worldSpec: WorldSpec
+
+  // ── Room topology ────────────────────────────────────────────────────────
+  rooms: RoomSpec[]
+  // Connections are the *sole* source of both physical adjacency (which rooms
+  // a player may walk between) and the world-space placement of rooms: a BFS
+  // over `connections` starting at `rooms[0]` (placed at `origin`) assigns
+  // each room a world-space centre.
+  connections: RoomConnection[]
+  // Optional world-space anchor for rooms[0]. When omitted, rooms[0] is
+  // placed at the world origin.
+  origin?: RoomWorldPos
+
+  // ── Map-authored gameplay content ────────────────────────────────────────
+  instructionSpecs: InstructionEventSpec[]
+  voteRegions: VoteRegionSpec[]
+  buttons?: ButtonSpec[]
+
+  // ── Derived artifacts (built once via MapInstance.buildMapInstanceArtifacts) ─
   // Scoped-id keyed map from scoped room id → world-space room centre.
   roomPositions: Map<string, RoomWorldPos>
   cameraShapes: CameraConstraintShapes
@@ -35,7 +56,7 @@ export interface GameMap {
   // default on the client unless the player is inside them or the server has
   // explicitly toggled them visible for that player.
   isRoomOverlapping: (scopedRoomId: string) => boolean
-  // Game content
-  gameSpec: GameSpec
+
+  // ── NPCs ─────────────────────────────────────────────────────────────────
   npcs: NpcSpec[]
 }

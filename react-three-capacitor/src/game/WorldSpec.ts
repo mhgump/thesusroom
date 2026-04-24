@@ -24,13 +24,15 @@ export interface RoomConnection {
   }
 }
 
+// The subset of a `GameMap` the topology helpers in this module need: the
+// rooms list, the connections that place them in world space, and an optional
+// origin for rooms[0]. A `GameMap` satisfies this shape directly — callers
+// pass the whole map where a `WorldSpec` parameter is declared.
 export interface WorldSpec {
   rooms: RoomSpec[]
   connections: RoomConnection[]
   // Optional world-space anchor for rooms[0]. When omitted, rooms[0] is placed
-  // at the world origin for backward compatibility. Scenarios / maps that need
-  // their rooms positioned elsewhere set this explicitly instead of relying on
-  // the old hardcoded (0, 0) default.
+  // at the world origin.
   origin?: RoomWorldPos
 }
 

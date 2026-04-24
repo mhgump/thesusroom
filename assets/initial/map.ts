@@ -1,6 +1,5 @@
-import type { WorldSpec } from '../../react-three-capacitor/src/game/WorldSpec.js'
-import type { GameSpec } from '../../react-three-capacitor/src/game/GameSpec.js'
 import type { GameMap } from '../../react-three-capacitor/src/game/GameMap.js'
+import type { RoomSpec } from '../../react-three-capacitor/src/game/RoomSpec.js'
 import {
   computeRoomPositions,
   validateWorldSpec,
@@ -23,42 +22,37 @@ const WALL_CZ  = HD_Z - bt / 2
 const WALL_CX  = HD_X - bt / 2
 const EW_DEPTH = 2 * (HD_Z - bt)
 
-const WORLD_SPEC: WorldSpec = {
-  rooms: [
-    {
-      id: 'hall', name: 'Initial',
-      floorWidth: HALL_W,
-      floorDepth: HALL_D,
-      height: ROOM_H,
-      cameraRect: { xMin: -HD_X, xMax: HD_X, zMin: -HD_Z, zMax: HD_Z },
-      geometry: [
-        { id: 'initial_wn', cx: 0,        cy: BY, cz: -WALL_CZ, width: HALL_W, height: bh, depth: bt },
-        { id: 'initial_ws', cx: 0,        cy: BY, cz:  WALL_CZ, width: HALL_W, height: bh, depth: bt },
-        { id: 'initial_we', cx:  WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
-        { id: 'initial_ww', cx: -WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
-      ],
-    },
-  ],
-  connections: [],
-}
+const ROOMS: RoomSpec[] = [
+  {
+    id: 'hall', name: 'Initial',
+    floorWidth: HALL_W,
+    floorDepth: HALL_D,
+    height: ROOM_H,
+    cameraRect: { xMin: -HD_X, xMax: HD_X, zMin: -HD_Z, zMax: HD_Z },
+    geometry: [
+      { id: 'initial_wn', cx: 0,        cy: BY, cz: -WALL_CZ, width: HALL_W, height: bh, depth: bt },
+      { id: 'initial_ws', cx: 0,        cy: BY, cz:  WALL_CZ, width: HALL_W, height: bh, depth: bt },
+      { id: 'initial_we', cx:  WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
+      { id: 'initial_ww', cx: -WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
+    ],
+  },
+]
 
-const LOCAL_POSITIONS = computeRoomPositions(WORLD_SPEC)
-validateWorldSpec(WORLD_SPEC, LOCAL_POSITIONS)
-const ARTIFACTS = buildMapInstanceArtifacts(WORLD_SPEC, MAP_INSTANCE_ID)
-const CAMERA_SHAPES = buildCameraConstraintShapes(WORLD_SPEC, LOCAL_POSITIONS)
-
-const GAME_SPEC: GameSpec = {
-  instructionSpecs: [],
-  voteRegions: [],
-}
+const TOPOLOGY = { rooms: ROOMS, connections: [] }
+const LOCAL_POSITIONS = computeRoomPositions(TOPOLOGY)
+validateWorldSpec(TOPOLOGY, LOCAL_POSITIONS)
+const ARTIFACTS = buildMapInstanceArtifacts(TOPOLOGY, MAP_INSTANCE_ID)
+const CAMERA_SHAPES = buildCameraConstraintShapes(TOPOLOGY, LOCAL_POSITIONS)
 
 export const MAP: GameMap = {
   id: 'initial',
   mapInstanceId: MAP_INSTANCE_ID,
-  worldSpec: WORLD_SPEC,
+  rooms: ROOMS,
+  connections: [],
   roomPositions: ARTIFACTS.roomPositions,
   cameraShapes: CAMERA_SHAPES,
-  gameSpec: GAME_SPEC,
+  instructionSpecs: [],
+  voteRegions: [],
   npcs: [],
   getRoomAtPosition: ARTIFACTS.getRoomAtPosition,
   getAdjacentRoomIds: ARTIFACTS.getAdjacentRoomIds,

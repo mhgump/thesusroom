@@ -6,7 +6,7 @@ interface Props { visibleIds: Set<string> }
 export function VoteRegions({ visibleIds }: Props) {
   return (
     <>
-      {CURRENT_MAP.gameSpec.voteRegions.filter(region =>
+      {CURRENT_MAP.voteRegions.filter(region =>
         visibleIds.has(CURRENT_MAP.getRoomAtPosition(region.x, region.z) ?? '')
       ).map(region => (
         <group key={region.id} position={[region.x, 0, region.z]}>

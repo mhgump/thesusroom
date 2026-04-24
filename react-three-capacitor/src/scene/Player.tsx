@@ -92,7 +92,7 @@ export function Player() {
       // Apply any geometry state already received before World was ready.
       const vis = useGameStore.getState().geometryVisibility
       const localOverride = useGameStore.getState().localGeometryOverride
-      for (const room of CURRENT_MAP.worldSpec.rooms) {
+      for (const room of CURRENT_MAP.rooms) {
         for (const geom of room.geometry ?? []) {
           if (vis[geom.id] === false) w.toggleGeometryOff(geom.id)
           const ov = localOverride[geom.id]
