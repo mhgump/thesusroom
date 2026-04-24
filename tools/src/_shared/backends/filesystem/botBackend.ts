@@ -1,12 +1,12 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { CONTENT_DIR } from '../../paths.js'
-import type { DataBackend } from '../dataBackend.js'
+import type { KeyValueBackend } from '../keyValueBackend.js'
 import type { BotKey, TsSource } from '../types.js'
 
 const BOTS_DIR = path.join(CONTENT_DIR, 'bots')
 
-export class FilesystemBotBackend implements DataBackend<BotKey, TsSource> {
+export class FilesystemBotBackend implements KeyValueBackend<BotKey, TsSource> {
   private botDir(key: BotKey): string {
     return path.join(BOTS_DIR, key.scenario_id, key.bot_id)
   }

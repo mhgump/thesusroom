@@ -28,11 +28,14 @@ const VALIDATOR_SNIPPETS: Record<ValidationKind, string> = {
     if (!v || typeof v !== 'object') throw new Error('export is not an object')
     const s = v
     if (typeof s.id !== 'string' || !s.id) throw new Error('missing string id')
-    if (typeof s.scriptFactory !== 'function') throw new Error('scriptFactory must be a function')
     if (typeof s.timeoutMs !== 'number' || !(s.timeoutMs > 0)) throw new Error('timeoutMs must be a positive number')
-    if (typeof s.onTerminate !== 'function') throw new Error('onTerminate must be a function')
-    const script = s.scriptFactory()
-    if (!script || typeof script !== 'object') throw new Error('scriptFactory() did not return an object')
+    if (!s.script || typeof s.script !== 'object') throw new Error('script must be a GameScript object')
+    if (typeof s.script.initialState !== 'function') throw new Error('script.initialState must be a function')
+    const initial = s.script.initialState()
+    if (initial === undefined) throw new Error('script.initialState() returned undefined')
+    if (s.script.handlers !== undefined && (s.script.handlers === null || typeof s.script.handlers !== 'object')) {
+      throw new Error('script.handlers must be an object when present')
+    }
   `,
   bot: `
     if (!v || typeof v !== 'object') throw new Error('export is not an object')

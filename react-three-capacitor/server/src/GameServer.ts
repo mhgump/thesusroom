@@ -19,14 +19,14 @@ function parseObserverParams(url: string | undefined): { routingKey: string; i: 
   return { routingKey: match[1], i: parseInt(match[2], 10), j: parseInt(match[3], 10) }
 }
 
-// The non-observer URL path is always exactly the routing key, e.g. `/r_demo`.
-// The empty path (`/` or no path) routes to `r_demo` for legacy convenience
-// so visiting the server root still drops the player into the demo scenario.
+// The non-observer URL path is always exactly the routing key, e.g. `/r_scenario1`.
+// The empty path (`/` or no path) routes to `r_initial` — the bundled initial
+// scenario that gives every `/` visitor their own solo room.
 function parseRoutingKey(url: string | undefined): string | null {
-  if (!url) return 'r_demo'
+  if (!url) return 'r_initial'
   const path = url.split('?')[0]
   const first = path.replace(/^\/+/, '').split('/')[0]
-  if (first.length === 0) return 'r_demo'
+  if (first.length === 0) return 'r_initial'
   return first
 }
 
@@ -42,7 +42,13 @@ export class GameServer {
     content: ContentRegistry,
     portOrServer: number | http.Server,
     httpServerPort?: number,
-    options?: { tickRateHz?: number; autoStartScenario?: boolean },
+    options?: {
+      tickRateHz?: number
+      autoStartScenario?: boolean
+      // Fires when any scenario in any room built by this server invokes
+      // `ctx.terminate()`. Production leaves this unset.
+      onScenarioTerminate?: (scenarioId: string) => void
+    },
   ) {
     let botServerUrl: string
     if (typeof portOrServer === 'number') {

@@ -1,33 +1,61 @@
-import type { GameScript, GameScriptContext } from '../GameScript.js'
+import type {
+  GameScript,
+  GameScriptContext,
+  VoteChangedPayload,
+} from '../GameScript.js'
 
 const VOTE_TIMEOUT_MS = 30_000
 
-export class DemoGameScript implements GameScript {
-  private readonly voted = new Set<string>()
-  private readonly cancelTimers = new Map<string, () => void>()
+interface DemoState {
+  voted: Record<string, true>
+  // Per-player pending-eliminate timer id, so we can cancel when the player
+  // votes in time. Stored as data so it survives a dump/restore cycle.
+  pendingEliminateByPlayer: Record<string, string>
+  voteListenerRegistered: boolean
+}
 
-  onPlayerConnect(ctx: GameScriptContext, playerId: string): void {
+export const demoGameScript: GameScript<DemoState> = {
+  initialState: () => ({
+    voted: {},
+    pendingEliminateByPlayer: {},
+    voteListenerRegistered: false,
+  }),
+
+  onPlayerConnect(state, ctx, playerId) {
     ctx.toggleVoteRegion('vote_yes', true)
     ctx.toggleVoteRegion('vote_no', true)
     ctx.sendInstruction(playerId, 'vote_instruction')
 
-    const cancelTimer = ctx.after(VOTE_TIMEOUT_MS, () => {
-      if (this.voted.has(playerId)) return
-      if (!ctx.getPlayerIds().includes(playerId)) return
-      this.voted.add(playerId)
-      this.cancelTimers.delete(playerId)
-      ctx.eliminatePlayer(playerId)
-    })
-    this.cancelTimers.set(playerId, cancelTimer)
+    const timerId = ctx.after(VOTE_TIMEOUT_MS, 'voteTimeout', playerId)
+    state.pendingEliminateByPlayer[playerId] = timerId
 
-    ctx.onVoteChanged(['vote_yes', 'vote_no'], (assignments) => {
-      if (this.voted.has(playerId)) return
-      const region = assignments.get(playerId)
-      if (region !== 'vote_yes' && region !== 'vote_no') return
-      this.voted.add(playerId)
-      const cancel = this.cancelTimers.get(playerId)
-      if (cancel) { cancel(); this.cancelTimers.delete(playerId) }
-      if (region === 'vote_no') ctx.eliminatePlayer(playerId)
-    })
-  }
+    if (!state.voteListenerRegistered) {
+      state.voteListenerRegistered = true
+      ctx.onVoteChanged(['vote_yes', 'vote_no'], 'voteChanged')
+    }
+  },
+
+  handlers: {
+    voteTimeout(state, ctx, playerId: string) {
+      if (state.voted[playerId]) return
+      if (!ctx.getPlayerIds().includes(playerId)) return
+      state.voted[playerId] = true
+      delete state.pendingEliminateByPlayer[playerId]
+      ctx.eliminatePlayer(playerId)
+    },
+
+    voteChanged(state, ctx, payload: VoteChangedPayload) {
+      for (const [playerId, region] of Object.entries(payload.assignments)) {
+        if (state.voted[playerId]) continue
+        if (region !== 'vote_yes' && region !== 'vote_no') continue
+        state.voted[playerId] = true
+        const timerId = state.pendingEliminateByPlayer[playerId]
+        if (timerId) {
+          ctx.cancelAfter(timerId)
+          delete state.pendingEliminateByPlayer[playerId]
+        }
+        if (region === 'vote_no') ctx.eliminatePlayer(playerId)
+      }
+    },
+  },
 }

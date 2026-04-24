@@ -1,16 +1,14 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { SCENARIO_RUNS_DIR } from '../../paths.js'
-import type { DataBackend } from '../dataBackend.js'
+import type { ScenarioRunBackend } from '../dataBackend.js'
 import type { RunResultKey, ScenarioRunResult } from '../types.js'
 
 // Filesystem layout:
 //   content/scenario_runs/<scenario>/<test_spec>/<index>/response.json
 //   content/scenario_runs/<scenario>/<test_spec>/<index>/<N>.mp4       (optional)
 //   content/scenario_runs/<scenario>/<test_spec>/<index>/<N>-screenshot.png
-export class FilesystemScenarioRunResultBackend
-  implements DataBackend<RunResultKey, ScenarioRunResult>
-{
+export class FilesystemScenarioRunResultBackend implements ScenarioRunBackend {
   private runDir(key: RunResultKey): string {
     return path.join(SCENARIO_RUNS_DIR, key.scenario, key.test_spec, String(key.index))
   }

@@ -57,11 +57,11 @@ export const RUN_SCENARIO_WITH_BOTS_SPEC: ToolSpec = {
           properties: {
             path: {
               type: 'string',
-              description: 'Path relative to repo root, e.g. "content/bots/demo/demoBot/bot.ts".',
+              description: 'Path relative to repo root, e.g. "content/bots/scenario2/filler/bot.ts".',
             },
             export: {
               type: 'string',
-              description: 'Exported BotSpec name, e.g. "DEMO_BOT".',
+              description: 'Exported BotSpec name, e.g. "SCENARIO2_BOT".',
             },
           },
         },

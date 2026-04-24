@@ -11,7 +11,10 @@ export interface ActiveVoteRegionChangeEvent {
   activeIds: string[]
 }
 
-// All capabilities available to a game script.
+// All capabilities available to a game script. Every registration (after, on*)
+// takes a handler id (a key into `GameScript.handlers`) plus a serializable
+// payload — never a closure. This keeps the script's "what will fire next"
+// purely as data so `Scenario.dumpState()` can round-trip.
 export interface GameScriptContext {
   // Send an instruction (looked up by spec id) to a specific player.
   sendInstruction(playerId: string, specId: string): void
@@ -19,13 +22,18 @@ export interface GameScriptContext {
   sendInstructions(playerId: string, specIds: string[]): void
   // Enable or disable a vote region for position-tracking purposes.
   toggleVoteRegion(regionId: string, active: boolean): void
-  // Register a callback that fires whenever the player→vote-region assignment
-  // changes for any of the specified region ids.
-  // assignments: every tracked player mapped to their current region id or null.
-  onVoteChanged(regionIds: string[], callback: (assignments: Map<string, string | null>) => void): void
-  // Schedule a one-shot callback after durationMs milliseconds.
-  // Returns a cancel function that prevents the callback if called before it fires.
-  after(durationMs: number, callback: () => void): () => void
+  // Register a named handler to fire on vote-region assignment changes for any
+  // of `regionIds`. Returns a listener id usable with `off()`.
+  onVoteChanged(regionIds: string[], handlerId: string): string
+  // Schedule a one-shot named handler to fire after `durationMs` of sim time.
+  // `payload` must be JSON-serializable; it is passed to the handler on fire.
+  // Returns a timer id usable with `cancelAfter()`.
+  after(durationMs: number, handlerId: string, payload?: unknown): string
+  // Cancel a pending timer. No-op if already fired or unknown.
+  cancelAfter(timerId: string): void
+  // Remove any listener (vote / room-enter / button-press / button-release) by
+  // the id returned from its registration. No-op if unknown.
+  off(listenerId: string): void
   // Returns ids of all currently connected human players.
   getPlayerIds(): string[]
   // Returns the current world-space position of a player, or null if not found.
@@ -35,16 +43,23 @@ export interface GameScriptContext {
   // Remove this scenario from the open registry so no new players can join.
   // Connected players continue until they all disconnect, then the room is destroyed.
   closeScenario(): void
+  // Signal that this scenario has reached its terminal success condition.
+  // The enclosing room forwards this to any registered listener (e.g. the
+  // run-scenario CLI). Does not end the scenario on its own — pair with
+  // `closeScenario()` if needed.
+  terminate(): void
   // Show or hide geometry objects for the specified players (all players if playerIds is omitted).
   setGeometryVisible(geometryIds: string[], visible: boolean, playerIds?: string[]): void
   // Returns the current player → vote-region-id mapping for all tracked players.
   getVoteAssignments(): Map<string, string | null>
-  // Register a callback that fires when a button transitions to pressed.
-  // Returns a cancel function to deregister the listener.
-  onButtonPress(buttonId: string, callback: (occupants: string[]) => void): () => void
-  // Register a callback that fires when a pressed button is released (occupants drop below threshold).
-  // Returns a cancel function to deregister the listener.
-  onButtonRelease(buttonId: string, callback: () => void): () => void
+  // Register a named handler to fire when a button transitions to pressed.
+  // Handler receives the list of occupant player ids as its payload.
+  // Returns a listener id usable with `off()`.
+  onButtonPress(buttonId: string, handlerId: string): string
+  // Register a named handler to fire when a pressed button is released
+  // (occupants drop below threshold). Handler receives an empty payload.
+  // Returns a listener id usable with `off()`.
+  onButtonRelease(buttonId: string, handlerId: string): string
   // Patch mutable button config at runtime (e.g. change requiredPlayers, cooldownMs).
   // Broadcasts a button_config message to all clients and re-evaluates press criteria immediately.
   modifyButton(buttonId: string, changes: Partial<ButtonConfig>): void
@@ -54,8 +69,10 @@ export interface GameScriptContext {
   sendNotification(text: string, playerIds?: string[]): void
   // Apply damage to a player. Eliminates the player if HP reaches 0.
   applyDamage(playerId: string, amount: number): void
-  // Register a callback that fires whenever a player transitions into a new room.
-  onPlayerEnterRoom(callback: (playerId: string, roomId: string) => void): void
+  // Register a named handler to fire whenever a player transitions into a new
+  // room. Handler receives `{ playerId, roomId }` as payload. Returns a
+  // listener id usable with `off()`.
+  onPlayerEnterRoom(handlerId: string): string
   // Spawn a bot that connects to this scenario as a player, driven by the given spec.
   spawnBot(spec: BotSpec): void
   // Enable or disable a physical adjacency link between two rooms. Symmetric.
@@ -72,11 +89,49 @@ export interface GameScriptContext {
   addRule(playerId: string, text: string): void
 }
 
-// Interface that a game script must implement.
-// At most one game script runs per world at a time.
-export interface GameScript {
+// Signature for every named handler and for top-level `onPlayerConnect` /
+// `onPlayerReady`. The `this: void` guard forbids `this.foo = x` inside the
+// body — all mutable state must be written through `state`.
+export type GameScriptHandler<S, P = unknown> = (
+  this: void,
+  state: S,
+  ctx: GameScriptContext,
+  payload: P,
+) => void
+
+// A game script is a stateless behavior definition. `initialState()` produces
+// the per-scenario state object (the one surface the Scenario dumps to JSON).
+// `handlers` is the catalog of named functions that `ctx.after` and `ctx.on*`
+// dispatch to; the lookup key is the handler id passed at registration.
+//
+// At most one game script runs per scenario; state is owned by the Scenario,
+// not the script. Scripts must therefore not hold instance fields, module-
+// scope mutable bindings, or closures over per-scenario data — anything
+// mutable has to live on `state`.
+export interface GameScript<S = unknown> {
+  // Produce a fresh state object for a new scenario instance.
+  initialState(): S
   // Called whenever a new human player connects to the room.
-  onPlayerConnect(ctx: GameScriptContext, playerId: string): void
+  onPlayerConnect?: GameScriptHandler<S, string>
   // Called when a connected player signals client-side readiness.
-  onPlayerReady?(ctx: GameScriptContext, playerId: string): void
+  onPlayerReady?: GameScriptHandler<S, string>
+  // Catalog of named handlers. Keys are handler ids; values receive the
+  // scenario state, the ctx, and whatever payload was passed at registration
+  // time (`undefined` for `onButtonRelease`, etc.).
+  handlers?: Record<string, GameScriptHandler<S, any>>
+}
+
+// ── Payloads passed to framework-dispatched handlers ─────────────────────────
+
+export interface VoteChangedPayload {
+  assignments: Record<string, string | null>
+}
+
+export interface PlayerEnterRoomPayload {
+  playerId: string
+  roomId: string
+}
+
+export interface ButtonPressPayload {
+  occupants: string[]
 }

@@ -7,9 +7,9 @@
 // ids of every run produced against this spec.
 
 export interface RunScenarioSpecBot {
-  // Path relative to repo root, e.g. "content/bots/demo/demoBot/bot.ts".
+  // Path relative to repo root, e.g. "content/bots/scenario2/filler/bot.ts".
   path: string
-  // Exported BotSpec name, e.g. "DEMO_BOT".
+  // Exported BotSpec name, e.g. "SCENARIO2_BOT".
   export: string
 }
 

@@ -1,5 +1,5 @@
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
+import { getDataBackend } from '../_shared/backends/index.js'
 import { validateWrittenFile } from '../_shared/validate.js'
 import { INSERT_BOT_SPEC, type InsertBotInput, type InsertBotOutput } from './spec.js'
 
@@ -17,7 +17,7 @@ function validateInput(input: unknown): InsertBotInput {
 
 async function run(rawInput: unknown): Promise<InsertBotOutput> {
   const input = validateInput(rawInput)
-  const { bot, scenario } = getBackends()
+  const { bot, scenario } = getDataBackend()
 
   if ((await scenario.get(input.scenario_id)) === null) {
     const scenarioLoc = scenario.locate?.(input.scenario_id) ?? input.scenario_id

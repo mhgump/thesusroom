@@ -1,6 +1,6 @@
 import type { GameMap } from '../../src/game/GameMap.js'
 import type { GameScript } from './GameScript.js'
-import { getBackends } from '../../../tools/src/_shared/backends/index.js'
+import { getDataBackend } from '../../../tools/src/_shared/backends/index.js'
 
 export type { GameMap }
 
@@ -8,9 +8,16 @@ export type { GameMap }
 // visibility overrides, and content-level assertions. Orchestration policy
 // (when to open/close the room, how many are allowed at once) lives outside
 // this type — see `server/src/orchestration/`.
+//
+// `script` is a single shared `GameScript<S>` object (no factory). The
+// per-scenario mutable state lives inside the `Scenario` class — produced by
+// `script.initialState()` — so scripts must be pure behavior definitions
+// with no instance fields or module-scope mutable bindings. Scripts signal
+// "I succeeded" by calling `ctx.terminate()`; the enclosing room forwards
+// that to any listener wired through `MultiplayerRoomOptions.onScenarioTerminate`.
 export interface ScenarioSpec {
   id: string
-  scriptFactory: () => GameScript
+  script: GameScript<any>
   initialVisibility?: Record<string, boolean>
   // Keyed by scoped room id (`{mapInstanceId}_{localRoomId}`).
   initialRoomVisibility?: Record<string, boolean>
@@ -18,11 +25,14 @@ export interface ScenarioSpec {
   // Asserted when the scenario is attached to a world — a missing id fails
   // construction so content bugs surface immediately.
   requiredRoomIds?: string[]
+  // World-space spawn position for players attached to this scenario. When
+  // omitted, players spawn at the world origin (legacy default). Orchestrations
+  // read this and thread it through to `MultiplayerRoom.connectPlayer`.
+  spawn?: { x: number; z: number }
   // Used only by the `run-scenario` CLI harness (`server/scripts/run-scenario.ts`)
   // to bound a test run and detect early termination. Not consulted by the
   // production server or by any orchestration.
   timeoutMs: number
-  onTerminate(cb: () => void): void
 }
 
 export type ContentEntry = { map: GameMap; scenario: ScenarioSpec }
@@ -48,7 +58,7 @@ export class ContentRegistry {
   }
 
   private async loadEntry(scenarioId: string): Promise<ContentEntry | undefined> {
-    const { scenario, map } = getBackends()
+    const { scenario, map } = getDataBackend()
     const [s, m] = await Promise.all([scenario.load(scenarioId), map.load(scenarioId)])
     if (!s || !m) return undefined
     return { map: m, scenario: s }

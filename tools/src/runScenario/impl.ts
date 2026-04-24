@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getBackends } from '../_shared/backends/index.js'
+import { getDataBackend } from '../_shared/backends/index.js'
 import { ADHOC_TEST_SPEC, formatRunResultKey } from '../_shared/backends/types.js'
 import type { Tool } from '../framework.js'
 import {
@@ -86,7 +86,7 @@ async function runChild(args: string[]): Promise<{ code: number; stdout: string;
 
 async function run(rawInput: unknown): Promise<ScenarioRunResult> {
   const input = validateInput(rawInput)
-  const { scenarioRunResult } = getBackends()
+  const { scenarioRunResult } = getDataBackend()
 
   const scenario = input.scenario_id
   const test_spec = input.test_spec_name ?? ADHOC_TEST_SPEC

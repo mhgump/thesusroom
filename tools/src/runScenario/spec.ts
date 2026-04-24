@@ -8,7 +8,7 @@ export interface RunScenarioInput {
   // not driven by a named spec — '_adhoc' is substituted.
   test_spec_name?: string
   // Bot specs to connect, in order. Each is a reference into content/ resolved as
-  //   {path}:{export_name}   e.g. "content/bots/demo/demoBot/bot.ts:DEMO_BOT"
+  //   {path}:{export_name}   e.g. "content/bots/scenario2/filler/bot.ts:SCENARIO2_BOT"
   bots: { path: string; export: string }[]
   // Optional bot index to record video for. Must be < bots.length when set.
   record_video_bot_index?: number
@@ -66,8 +66,8 @@ export const RUN_SCENARIO_SPEC: ToolSpec = {
       scenario_id: {
         type: 'string',
         description:
-          'Scenario to load from content/scenarios/. One of: demo, scenario1, ' +
-          'scenario2, scenario3, scenario4, scenario5.',
+          'Scenario to load from content/scenarios/. One of: scenario1, ' +
+          'scenario2, scenario3, scenario4.',
       },
       test_spec_name: {
         type: 'string',
@@ -89,11 +89,11 @@ export const RUN_SCENARIO_SPEC: ToolSpec = {
               type: 'string',
               description:
                 'Path (relative to repo root) to a .ts module that exports a ' +
-                'BotSpec, e.g. "content/bots/demo/demoBot/bot.ts".',
+                'BotSpec, e.g. "content/bots/scenario2/filler/bot.ts".',
             },
             export: {
               type: 'string',
-              description: 'Name of the exported BotSpec, e.g. "DEMO_BOT".',
+              description: 'Name of the exported BotSpec, e.g. "SCENARIO2_BOT".',
             },
           },
         },

@@ -1,39 +1,49 @@
 import type { ScenarioSpec } from '../../../react-three-capacitor/server/src/ContentRegistry.js'
-import type { GameScript, GameScriptContext } from '../../../react-three-capacitor/server/src/GameScript.js'
+import type {
+  GameScript,
+  VoteChangedPayload,
+} from '../../../react-three-capacitor/server/src/GameScript.js'
 
-let _terminateCb: (() => void) | null = null
+interface S3State {
+  listenersRegistered: boolean
+}
 
-class Scenario3Script implements GameScript {
-  private listenersRegistered = false
+const script: GameScript<S3State> = {
+  initialState: () => ({ listenersRegistered: false }),
 
-  onPlayerConnect(ctx: GameScriptContext, _playerId: string): void {
+  onPlayerConnect(state, ctx) {
     ctx.toggleVoteRegion('s3_rzone', true)
 
-    if (this.listenersRegistered) return
-    this.listenersRegistered = true
+    if (state.listenersRegistered) return
+    state.listenersRegistered = true
 
-    ctx.onButtonPress('btn_left', () => {
+    ctx.onButtonPress('btn_left', 'onLeftPress')
+    ctx.onButtonPress('btn_right', 'onRightPress')
+    ctx.onVoteChanged(['s3_rzone'], 'onVoteChanged')
+  },
+
+  handlers: {
+    onLeftPress(_state, ctx) {
       ctx.sendNotification('Left pressed')
-    })
+    },
 
-    ctx.onButtonPress('btn_right', () => {
+    onRightPress(_state, ctx) {
       ctx.sendNotification('Right pressed')
-    })
+    },
 
-    ctx.onVoteChanged(['s3_rzone'], (assignments) => {
-      const count = [...assignments.values()].filter(r => r === 's3_rzone').length
+    onVoteChanged(_state, ctx, payload: VoteChangedPayload) {
+      const count = Object.values(payload.assignments).filter(r => r === 's3_rzone').length
       if (count === 1) {
         ctx.modifyButton('btn_right', { enableClientPress: true })
       } else {
         ctx.modifyButton('btn_right', { enableClientPress: false })
       }
-    })
-  }
+    },
+  },
 }
 
 export const SCENARIO: ScenarioSpec = {
   id: 'scenario3',
   timeoutMs: 60_000,
-  onTerminate(cb) { _terminateCb = cb },
-  scriptFactory: () => new Scenario3Script(),
+  script,
 }

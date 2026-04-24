@@ -1,5 +1,5 @@
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
+import { getDataBackend } from '../_shared/backends/index.js'
 import { parseRunResultKey } from '../_shared/backends/types.js'
 import { parseLogs } from '../_shared/logFormat.js'
 import type { LogLine } from '../getScenarioLogs/index.js'
@@ -47,7 +47,7 @@ async function run(rawInput: unknown): Promise<GetBotLogsOutput> {
       bot_script_logs: [],
     }
   }
-  const { scenarioRunResult } = getBackends()
+  const { scenarioRunResult } = getDataBackend()
   const artifact = await scenarioRunResult.get(key)
   if (artifact === null) {
     return {

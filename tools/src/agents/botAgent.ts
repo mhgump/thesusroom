@@ -1,7 +1,7 @@
 import type { Tool } from '../framework.js'
 import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
 import { INSERT_BOT_TOOL } from '../insertBot/index.js'
-import { loadPrompt } from './_loadPrompt.js'
+import { loadSkill } from './_loadPrompt.js'
 
 export interface BotAgentResponse {
   bot_name: string
@@ -41,7 +41,7 @@ export async function runBotAgent(
   opts: { verbose?: boolean; maxIterations?: number } = {},
 ): Promise<AgentRunResult<BotAgentResponse>> {
   return runAgent<BotAgentResponse>({
-    systemPrompt: loadPrompt('bot-agent.md'),
+    systemPrompt: loadSkill('bot-agent'),
     userPrompt,
     tools: [INSERT_BOT_TOOL as Tool],
     responseSpec: BOT_RESPONSE_SPEC,

@@ -13,12 +13,20 @@ import type { OrchestrationContext, RoomOrchestration } from './RoomOrchestratio
 // inside the scenario until `room.startScenario(id)` is called. Used by the
 // run-scenario harness so the scenario only begins once the observer browser
 // is recording.
+export interface DefaultScenarioOrchestrationOptions {
+  tickRateHz?: number
+  autoStartScenario?: boolean
+  // Forwarded to every room built by this orchestration. Fired when a
+  // scenario invokes `ctx.terminate()`.
+  onScenarioTerminate?: (scenarioId: string) => void
+}
+
 export class DefaultScenarioOrchestration implements RoomOrchestration {
   constructor(
     private readonly map: GameMap,
     private readonly scenario: ScenarioSpec,
     private readonly spawnBotFn: (routingKey: string, spec: BotSpec) => void,
-    private readonly options?: { tickRateHz?: number; autoStartScenario?: boolean },
+    private readonly options?: DefaultScenarioOrchestrationOptions,
   ) {}
 
   createRoom(ctx: OrchestrationContext): MultiplayerRoom {
@@ -32,12 +40,14 @@ export class DefaultScenarioOrchestration implements RoomOrchestration {
       onCloseScenario: ctx.onClose,
       onRoomDone: ctx.onDestroy,
       spawnBotFn: (spec) => this.spawnBotFn(ctx.routingKey, spec),
+      spawnPosition: scenario.spawn,
+      onScenarioTerminate: this.options?.onScenarioTerminate,
     })
 
     const attachedRoomIds = room.addMap(map)
     const scenarioInstance = room.buildScenario(attachedRoomIds, {
       id: scenario.id,
-      script: scenario.scriptFactory(),
+      script: scenario.script,
       gameSpec: map.gameSpec,
       initialVisibility: scenario.initialVisibility ?? {},
       initialRoomVisibility: scenario.initialRoomVisibility ?? {},

@@ -21,8 +21,8 @@ function getWsPath(): string {
   // observer handler rather than the player handler.
   if (/^observe\/[^/]+\/\d+\/\d+$/.test(path)) return path
   // Everything else must be an `r_{scenario}` routing key. An empty path
-  // (root URL) defaults to `r_demo` so visiting `/` still loads the demo.
-  if (path.length === 0) return 'r_demo'
+  // (root URL) resolves to `r_initial` — the bundled initial scenario.
+  if (path.length === 0) return 'r_initial'
   return path.split('/')[0]
 }
 

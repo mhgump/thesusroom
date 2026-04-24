@@ -27,18 +27,25 @@ export interface RoomConnection {
 export interface WorldSpec {
   rooms: RoomSpec[]
   connections: RoomConnection[]
+  // Optional world-space anchor for rooms[0]. When omitted, rooms[0] is placed
+  // at the world origin for backward compatibility. Scenarios / maps that need
+  // their rooms positioned elsewhere set this explicitly instead of relying on
+  // the old hardcoded (0, 0) default.
+  origin?: RoomWorldPos
 }
 
 export interface RoomWorldPos { x: number; z: number }
 
-// BFS from rooms[0] (placed at origin) to derive world-space centres for all
-// rooms by walking `connections`. Every room reachable from rooms[0] gets a
-// position; unreachable rooms are omitted (validateWorldSpec rejects this).
+// BFS from rooms[0] (placed at `spec.origin`, defaulting to the world origin)
+// to derive world-space centres for all rooms by walking `connections`. Every
+// room reachable from rooms[0] gets a position; unreachable rooms are omitted
+// (validateWorldSpec rejects this).
 export function computeRoomPositions(spec: WorldSpec): Map<string, RoomWorldPos> {
   const pos = new Map<string, RoomWorldPos>()
   if (!spec.rooms.length) return pos
 
-  pos.set(spec.rooms[0].id, { x: 0, z: 0 })
+  const origin = spec.origin ?? { x: 0, z: 0 }
+  pos.set(spec.rooms[0].id, { x: origin.x, z: origin.z })
   const visited = new Set([spec.rooms[0].id])
   const queue = [spec.rooms[0].id]
   const byId = new Map(spec.rooms.map(r => [r.id, r]))

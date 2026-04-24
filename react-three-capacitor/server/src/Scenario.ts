@@ -1,4 +1,12 @@
-import type { GameScript, GameScriptContext, ActiveVoteRegionChangeEvent } from './GameScript.js'
+import type {
+  GameScript,
+  GameScriptContext,
+  GameScriptHandler,
+  ActiveVoteRegionChangeEvent,
+  VoteChangedPayload,
+  PlayerEnterRoomPayload,
+  ButtonPressPayload,
+} from './GameScript.js'
 import type {
   GameSpec,
   VoteRegionSpec,
@@ -25,11 +33,19 @@ export interface ScenarioDeps {
   // Fired once when `ctx.closeScenario()` is invoked. Typically the room
   // removes this scenario from the default-open slot.
   onClose: () => void
+  // Fired when `ctx.terminate()` is invoked. Optional — production servers
+  // leave this unset; the run-scenario CLI wires it to resolve its done
+  // promise. Not related to `onClose`: terminate signals "success reached",
+  // close signals "no more joiners".
+  onTerminate?: () => void
   spawnBot: (spec: BotSpec) => void
   scheduleSimMs: (ms: number, cb: () => void) => () => void
   // Resolves a world position to a scoped room id (from the attached map).
   getRoomAtPosition?: (x: number, z: number) => string | null
   getServerTick: () => number
+  // Sim-ms per server tick. Used by Scenario to compute `fireAtTick` for
+  // dump/restore of timers; matches the enclosing room's tick rate.
+  getSimMsPerTick: () => number
 }
 
 // The per-instance configuration a Scenario is constructed with. Most of it
@@ -38,7 +54,7 @@ export interface ScenarioDeps {
 // subset of a World's map instance.
 export interface ScenarioConfig {
   id: string
-  script: GameScript | null
+  script: GameScript<any> | null
   gameSpec: GameSpec | null
   // Initial globally-visible state for each geometry id the scenario cares
   // about. Unknown keys are allowed — any id not listed here is treated as
@@ -48,9 +64,46 @@ export interface ScenarioConfig {
   requiredRoomIds?: string[]
 }
 
+// Per-registration data. These are the records the scenario dumps/restores —
+// nothing in here is a closure or a direct reference to a script function, so
+// the whole table round-trips through JSON.
+interface TimerRecord {
+  fireAtTick: number
+  handlerId: string
+  payload: unknown
+}
+interface VoteListenerRecord {
+  regionIds: string[]
+  handlerId: string
+}
+interface RoomEnterListenerRecord {
+  handlerId: string
+}
+interface ButtonListenerRecord {
+  buttonId: string
+  handlerId: string
+}
+
+// Dumpable snapshot of everything the script controls: the script's own
+// `state` object plus the pending-registrations table keyed by synthesized
+// ids. Consumers may `JSON.stringify` this directly. The shape mirrors
+// `Scenario.restoreState`'s input.
+export interface ScenarioDump {
+  state: unknown
+  nextId: number
+  pending: {
+    timers: Record<string, TimerRecord>
+    voteListeners: Record<string, VoteListenerRecord>
+    roomEnterListeners: Record<string, RoomEnterListenerRecord>
+    buttonPressListeners: Record<string, ButtonListenerRecord>
+    buttonReleaseListeners: Record<string, ButtonListenerRecord>
+  }
+}
+
 export class Scenario {
   readonly id: string
-  private readonly script: GameScript | null
+  private readonly script: GameScript<any> | null
+  private scriptState: unknown = null
   private readonly voteRegionSpecs: Map<string, VoteRegionSpec>
   private readonly instructionSpecs: Map<string, InstructionEventSpec>
   private readonly activeRegions: Set<string> = new Set()
@@ -70,13 +123,16 @@ export class Scenario {
   private readonly playerCurrentRoom: Map<string, string | null> = new Map()
   private readonly playerRoomVisible: Map<string, Map<string, boolean>> = new Map()
 
-  private readonly voteListeners: Array<{
-    regionIds: Set<string>
-    callback: (assignments: Map<string, string | null>) => void
-  }> = []
-  private readonly roomEnterListeners: Array<(playerId: string, roomId: string) => void> = []
-  private readonly buttonPressListeners: Map<string, Array<(occupants: string[]) => void>> = new Map()
-  private readonly buttonReleaseListeners: Map<string, Array<() => void>> = new Map()
+  // Pending-registrations tables. All registrations go in by id; dispatchers
+  // iterate the entries rather than traversing a closure list.
+  private readonly timers: Map<string, TimerRecord & { cancel: () => void }> = new Map()
+  private readonly voteListeners: Map<string, VoteListenerRecord> = new Map()
+  private readonly roomEnterListeners: Map<string, RoomEnterListenerRecord> = new Map()
+  private readonly buttonPressListeners: Map<string, ButtonListenerRecord> = new Map()
+  private readonly buttonReleaseListeners: Map<string, ButtonListenerRecord> = new Map()
+  // Monotonic counter used to mint registration ids. Dumped/restored so
+  // post-restore registrations continue the same sequence.
+  private nextId = 1
 
   private readonly buttonManager: ButtonManager | null
 
@@ -100,6 +156,7 @@ export class Scenario {
     }
 
     this.script = config.script
+    this.scriptState = config.script ? config.script.initialState() : null
     const gameSpec = config.gameSpec
     this.voteRegionSpecs = new Map((gameSpec?.voteRegions ?? []).map(r => [r.id, r]))
     this.instructionSpecs = new Map((gameSpec?.instructionSpecs ?? []).map(s => [s.id, s]))
@@ -128,11 +185,11 @@ export class Scenario {
     this.started = true
     if (!this.script) return
     for (const pid of this.attachedPlayerIds) {
-      this.script.onPlayerConnect(this.ctx, pid)
+      this.script.onPlayerConnect?.(this.scriptState, this.ctx, pid)
     }
     if (this.script.onPlayerReady) {
       for (const pid of this.readyPlayerIds) {
-        this.script.onPlayerReady(this.ctx, pid)
+        this.script.onPlayerReady(this.scriptState, this.ctx, pid)
       }
     }
   }
@@ -174,7 +231,7 @@ export class Scenario {
     }
 
     if (this.script && this.started) {
-      this.script.onPlayerConnect(this.ctx, playerId)
+      this.script.onPlayerConnect?.(this.scriptState, this.ctx, playerId)
     }
   }
 
@@ -185,7 +242,7 @@ export class Scenario {
     this.readyPlayerIds.add(playerId)
     if (!this.script?.onPlayerReady) return
     if (!this.started) return
-    this.script.onPlayerReady(this.ctx, playerId)
+    this.script.onPlayerReady(this.scriptState, this.ctx, playerId)
   }
 
   onPlayerDetach(playerId: string): void {
@@ -229,8 +286,58 @@ export class Scenario {
       if (newRoom !== null && newRoom !== oldRoom) {
         this.playerCurrentRoom.set(playerId, newRoom)
         this.deps.world.setPlayerRoom(playerId, newRoom)
-        for (const cb of this.roomEnterListeners) cb(playerId, newRoom)
+        this.dispatchRoomEnter(playerId, newRoom)
       }
+    }
+  }
+
+  // Snapshot of the script's per-scenario state plus every pending
+  // registration. Safe to JSON.stringify — contains no function refs, no
+  // class instances, no closures. Restoring requires the same script + spec.
+  dumpState(): ScenarioDump {
+    const timers: Record<string, TimerRecord> = {}
+    for (const [id, t] of this.timers) {
+      timers[id] = { fireAtTick: t.fireAtTick, handlerId: t.handlerId, payload: t.payload }
+    }
+    return {
+      state: this.scriptState,
+      nextId: this.nextId,
+      pending: {
+        timers,
+        voteListeners: Object.fromEntries(this.voteListeners),
+        roomEnterListeners: Object.fromEntries(this.roomEnterListeners),
+        buttonPressListeners: Object.fromEntries(this.buttonPressListeners),
+        buttonReleaseListeners: Object.fromEntries(this.buttonReleaseListeners),
+      },
+    }
+  }
+
+  // Rehydrate from a dump produced by `dumpState()` against the same script.
+  // Timers are re-armed using `fireAtTick - getServerTick()` so replays keep
+  // the same sim-tick firing point. Must be called before `start()`.
+  restoreState(dump: ScenarioDump): void {
+    if (this.started) throw new Error('restoreState must be called before start()')
+    this.scriptState = dump.state
+    this.nextId = dump.nextId
+    for (const [id, rec] of Object.entries(dump.pending.voteListeners)) {
+      this.voteListeners.set(id, rec)
+    }
+    for (const [id, rec] of Object.entries(dump.pending.roomEnterListeners)) {
+      this.roomEnterListeners.set(id, rec)
+    }
+    for (const [id, rec] of Object.entries(dump.pending.buttonPressListeners)) {
+      this.buttonPressListeners.set(id, rec)
+    }
+    for (const [id, rec] of Object.entries(dump.pending.buttonReleaseListeners)) {
+      this.buttonReleaseListeners.set(id, rec)
+    }
+    const now = this.deps.getServerTick()
+    const simMsPerTick = this.deps.getSimMsPerTick()
+    for (const [id, rec] of Object.entries(dump.pending.timers)) {
+      const ticksRemaining = Math.max(0, rec.fireAtTick - now)
+      const ms = ticksRemaining * simMsPerTick
+      const cancel = this.scheduleScoped(ms, () => this.fireTimer(id))
+      this.timers.set(id, { ...rec, cancel })
     }
   }
 
@@ -275,10 +382,38 @@ export class Scenario {
 
   // ── private helpers ───────────────────────────────────────────────────────
 
+  private mintId(prefix: string): string {
+    return `${prefix}${this.nextId++}`
+  }
+
   // Wraps sim-ms scheduler with an alive-gate. Callbacks queued before
   // delete() but dispatched after are dropped.
   private scheduleScoped(ms: number, cb: () => void): () => void {
     return this.deps.scheduleSimMs(ms, () => { if (this.alive) cb() })
+  }
+
+  private invokeHandler(handlerId: string, payload: unknown): void {
+    if (!this.script || !this.alive) return
+    const handler = this.script.handlers?.[handlerId] as GameScriptHandler<unknown, unknown> | undefined
+    if (!handler) {
+      console.warn(`[Scenario:${this.id}] missing handler '${handlerId}'`)
+      return
+    }
+    handler(this.scriptState, this.ctx, payload)
+  }
+
+  private fireTimer(timerId: string): void {
+    const rec = this.timers.get(timerId)
+    if (!rec) return
+    this.timers.delete(timerId)
+    this.invokeHandler(rec.handlerId, rec.payload)
+  }
+
+  private dispatchRoomEnter(playerId: string, roomId: string): void {
+    const payload: PlayerEnterRoomPayload = { playerId, roomId }
+    for (const { handlerId } of [...this.roomEnterListeners.values()]) {
+      this.invokeHandler(handlerId, payload)
+    }
   }
 
   private emitVoteAssignments(): void {
@@ -300,13 +435,17 @@ export class Scenario {
     if (state === 'idle' && occupants.size >= config.requiredPlayers) {
       bm.setState(buttonId, 'pressed')
       this.deps.broadcast({ type: 'button_state', id: buttonId, state: 'pressed', occupancy: occupants.size })
-      const list = [...occupants]
-      for (const cb of this.buttonPressListeners.get(buttonId) ?? []) cb(list)
+      const payload: ButtonPressPayload = { occupants: [...occupants] }
+      for (const rec of [...this.buttonPressListeners.values()]) {
+        if (rec.buttonId === buttonId) this.invokeHandler(rec.handlerId, payload)
+      }
       return
     }
 
     if (state === 'pressed' && !config.holdAfterRelease && occupants.size < config.requiredPlayers) {
-      for (const cb of this.buttonReleaseListeners.get(buttonId) ?? []) cb()
+      for (const rec of [...this.buttonReleaseListeners.values()]) {
+        if (rec.buttonId === buttonId) this.invokeHandler(rec.handlerId, undefined)
+      }
       if (config.cooldownMs > 0) {
         bm.startCooldown(buttonId, config.cooldownMs, () => {
           bm.setState(buttonId, 'idle')
@@ -340,10 +479,12 @@ export class Scenario {
     const changed = new Set<string>()
     if (oldRegion) changed.add(oldRegion)
     if (newRegion) changed.add(newRegion)
-    const assignments = new Map(this.playerRegions)
-    for (const listener of this.voteListeners) {
-      if ([...changed].some(r => listener.regionIds.has(r))) {
-        listener.callback(assignments)
+    const assignments: Record<string, string | null> = {}
+    for (const [pid, rid] of this.playerRegions) assignments[pid] = rid
+    const payload: VoteChangedPayload = { assignments }
+    for (const rec of [...this.voteListeners.values()]) {
+      if (rec.regionIds.some(r => changed.has(r))) {
+        this.invokeHandler(rec.handlerId, payload)
       }
     }
     this.emitVoteAssignments()
@@ -372,11 +513,30 @@ export class Scenario {
         else self.activeRegions.delete(regionId)
         self.emitVoteAssignments()
       },
-      onVoteChanged(regionIds, callback) {
-        self.voteListeners.push({ regionIds: new Set(regionIds), callback })
+      onVoteChanged(regionIds, handlerId) {
+        const id = self.mintId('vote_')
+        self.voteListeners.set(id, { regionIds: [...regionIds], handlerId })
+        return id
       },
-      after(durationMs, callback) {
-        return self.scheduleScoped(durationMs, callback)
+      after(durationMs, handlerId, payload) {
+        const id = self.mintId('t_')
+        const cancel = self.scheduleScoped(durationMs, () => self.fireTimer(id))
+        const simMsPerTick = self.deps.getSimMsPerTick()
+        const fireAtTick = self.deps.getServerTick() + Math.max(1, Math.ceil(durationMs / simMsPerTick))
+        self.timers.set(id, { fireAtTick, handlerId, payload: payload ?? null, cancel })
+        return id
+      },
+      cancelAfter(timerId) {
+        const rec = self.timers.get(timerId)
+        if (!rec) return
+        rec.cancel()
+        self.timers.delete(timerId)
+      },
+      off(listenerId) {
+        if (self.voteListeners.delete(listenerId)) return
+        if (self.roomEnterListeners.delete(listenerId)) return
+        if (self.buttonPressListeners.delete(listenerId)) return
+        self.buttonReleaseListeners.delete(listenerId)
       },
       getPlayerIds() {
         return [...self.playerRegions.keys()]
@@ -390,6 +550,9 @@ export class Scenario {
       },
       closeScenario() {
         self.deps.onClose()
+      },
+      terminate() {
+        self.deps.onTerminate?.()
       },
       setGeometryVisible(geometryIds, visible, playerIds) {
         const perPlayer = !!(playerIds && playerIds.length > 0)
@@ -420,19 +583,17 @@ export class Scenario {
       getVoteAssignments() {
         return new Map(self.playerRegions)
       },
-      onButtonPress(buttonId, callback) {
-        if (!self.buttonManager) return () => {}
-        const list = self.buttonPressListeners.get(buttonId) ?? []
-        self.buttonPressListeners.set(buttonId, list)
-        list.push(callback)
-        return () => { const i = list.indexOf(callback); if (i >= 0) list.splice(i, 1) }
+      onButtonPress(buttonId, handlerId) {
+        if (!self.buttonManager) return self.mintId('btnp_')
+        const id = self.mintId('btnp_')
+        self.buttonPressListeners.set(id, { buttonId, handlerId })
+        return id
       },
-      onButtonRelease(buttonId, callback) {
-        if (!self.buttonManager) return () => {}
-        const list = self.buttonReleaseListeners.get(buttonId) ?? []
-        self.buttonReleaseListeners.set(buttonId, list)
-        list.push(callback)
-        return () => { const i = list.indexOf(callback); if (i >= 0) list.splice(i, 1) }
+      onButtonRelease(buttonId, handlerId) {
+        if (!self.buttonManager) return self.mintId('btnr_')
+        const id = self.mintId('btnr_')
+        self.buttonReleaseListeners.set(id, { buttonId, handlerId })
+        return id
       },
       modifyButton(buttonId, changes) {
         if (!self.buttonManager) return
@@ -471,8 +632,10 @@ export class Scenario {
         }
         if (event.newHp === 0) self.deps.removePlayer(playerId, true)
       },
-      onPlayerEnterRoom(callback) {
-        self.roomEnterListeners.push(callback)
+      onPlayerEnterRoom(handlerId) {
+        const id = self.mintId('enter_')
+        self.roomEnterListeners.set(id, { handlerId })
+        return id
       },
       spawnBot(spec) {
         for (const key of Object.keys(spec.onInstructMap)) {

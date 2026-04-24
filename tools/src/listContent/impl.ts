@@ -1,6 +1,6 @@
 import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
+import { getDataBackend } from '../_shared/backends/index.js'
 import { PROJECT_ROOT } from '../_shared/paths.js'
 import {
   LIST_CONTENT_SPEC,
@@ -49,7 +49,7 @@ async function run(rawInput: unknown): Promise<ListContentOutput> {
   const wantBots = !anyFor || input.for_bots === true
   const wantTestSpecs = !anyFor || input.for_test_specs === true
 
-  const { bot, map, scenario, testSpec } = getBackends()
+  const { bot, map, scenario, testSpec } = getDataBackend()
 
   const scenarios: ListedScenario[] = []
   const maps: ListedMap[] = []

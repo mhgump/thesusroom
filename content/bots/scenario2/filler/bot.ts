@@ -3,7 +3,7 @@ import type { BotSpec } from '../../../../react-three-capacitor/server/src/bot/B
 
 const R2_TARGET = { type: 'circle' as const, x: 0, z: -0.75, radius: 0.1 }
 
-export const DEMO_BOT: BotSpec = {
+export const SCENARIO2_BOT: BotSpec = {
   phases: ['walk'],
   initialState: {
     phase: 'walk',

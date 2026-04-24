@@ -1,5 +1,5 @@
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
+import { getDataBackend } from '../_shared/backends/index.js'
 import {
   ADD_NOTES_TO_TEST_SPEC_SPEC,
   type AddNotesToTestSpecInput,
@@ -32,7 +32,7 @@ async function run(rawInput: unknown): Promise<AddNotesToTestSpecOutput> {
     return { success: false, error: (err as Error).message }
   }
 
-  const { testSpec } = getBackends()
+  const { testSpec } = getDataBackend()
   const key = { scenario_id: input.scenario_id, test_spec_id: input.test_spec_name }
   const spec = await testSpec.get(key)
   if (spec === null) {

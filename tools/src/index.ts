@@ -13,6 +13,7 @@ import { RUN_SCENARIO_TOOL } from './runScenario/index.js'
 import { INSERT_MAP_TOOL } from './insertMap/index.js'
 import { INSERT_SCENARIO_TOOL } from './insertScenario/index.js'
 import { INSERT_BOT_TOOL } from './insertBot/index.js'
+import { INSERT_SCENARIO_PLAN_TOOL } from './insertScenarioPlan/index.js'
 import { RUN_SCENARIO_WITH_BOTS_TOOL } from './runScenarioWithBots/index.js'
 import { GET_SCENARIO_LOGS_TOOL } from './getScenarioLogs/index.js'
 import { GET_BOT_LOGS_TOOL } from './getBotLogs/index.js'
@@ -32,6 +33,7 @@ export * from './runScenario/index.js'
 export * from './insertMap/index.js'
 export * from './insertScenario/index.js'
 export * from './insertBot/index.js'
+export * from './insertScenarioPlan/index.js'
 export * from './runScenarioWithBots/index.js'
 export * from './getScenarioLogs/index.js'
 export * from './getBotLogs/index.js'
@@ -62,6 +64,8 @@ export { runRunScenarioAgent, RUN_SCENARIO_RESPONSE_SPEC } from './agents/runSce
 export type { RunScenarioAgentResponse } from './agents/runScenarioAgent.js'
 export { runDirectAgent, DIRECT_RESPONSE_SPEC } from './agents/directAgent.js'
 export type { DirectAgentResponse } from './agents/directAgent.js'
+export { runScenarioPlanAgent, SCENARIO_PLAN_RESPONSE_SPEC } from './agents/scenarioPlanAgent.js'
+export type { ScenarioPlanAgentResponse } from './agents/scenarioPlanAgent.js'
 
 export { runAgent, RECORD_TOOL_NAME } from './_shared/agentLoop.js'
 export type { AgentRunParams, AgentRunResult, ResponseSpec } from './_shared/agentLoop.js'
@@ -77,6 +81,7 @@ export const ALL_TOOLS: Tool[] = [
   INSERT_MAP_TOOL as Tool,
   INSERT_SCENARIO_TOOL as Tool,
   INSERT_BOT_TOOL as Tool,
+  INSERT_SCENARIO_PLAN_TOOL as Tool,
   RUN_SCENARIO_WITH_BOTS_TOOL as Tool,
   GET_SCENARIO_LOGS_TOOL as Tool,
   GET_BOT_LOGS_TOOL as Tool,

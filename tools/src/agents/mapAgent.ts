@@ -1,7 +1,7 @@
 import type { Tool } from '../framework.js'
 import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
 import { INSERT_MAP_TOOL } from '../insertMap/index.js'
-import { loadPrompt } from './_loadPrompt.js'
+import { loadSkill } from './_loadPrompt.js'
 
 export interface MapAgentResponse {
   map_name: string
@@ -41,7 +41,7 @@ export async function runMapAgent(
   opts: { verbose?: boolean; maxIterations?: number } = {},
 ): Promise<AgentRunResult<MapAgentResponse>> {
   return runAgent<MapAgentResponse>({
-    systemPrompt: loadPrompt('map-agent.md'),
+    systemPrompt: loadSkill('map-agent'),
     userPrompt,
     tools: [INSERT_MAP_TOOL as Tool],
     responseSpec: MAP_RESPONSE_SPEC,

@@ -7,7 +7,7 @@ import { READ_TEST_SPEC_TOOL } from '../readTestSpec/index.js'
 import { LIST_CONTENT_TOOL } from '../listContent/index.js'
 import { GET_SCENARIO_LOGS_TOOL } from '../getScenarioLogs/index.js'
 import { GET_BOT_LOGS_TOOL } from '../getBotLogs/index.js'
-import { loadPrompt } from './_loadPrompt.js'
+import { loadSkill } from './_loadPrompt.js'
 
 export interface RunScenarioAgentResponse {
   scenario_id: string
@@ -47,7 +47,7 @@ export async function runRunScenarioAgent(
   opts: { verbose?: boolean; maxIterations?: number } = {},
 ): Promise<AgentRunResult<RunScenarioAgentResponse>> {
   return runAgent<RunScenarioAgentResponse>({
-    systemPrompt: loadPrompt('run-scenario-agent.md'),
+    systemPrompt: loadSkill('run-scenario-agent'),
     userPrompt,
     tools: [
       INSERT_RUN_SCENARIO_SPEC_TOOL as Tool,

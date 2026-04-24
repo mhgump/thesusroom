@@ -58,6 +58,14 @@ export interface MultiplayerRoomOptions {
   // scoped to the room's routing key so scenario-spawned bots reconnect
   // through the same orchestration.
   spawnBotFn?: (spec: BotSpec) => void
+  // World-space position used to seed every human player on connect. When
+  // omitted, players spawn at (0, 0). Orchestrations set this from the
+  // scenario's `spawn` field.
+  spawnPosition?: { x: number; z: number }
+  // Fires when a scenario in this room invokes `ctx.terminate()`. Receives
+  // the terminating scenario id. Production leaves this unset; the
+  // run-scenario CLI wires it to resolve its done promise.
+  onScenarioTerminate?: (scenarioId: string) => void
 }
 
 // A MultiplayerRoom owns one World, one ScenarioManager, the tick loop, and
@@ -84,7 +92,9 @@ export class MultiplayerRoom {
   private roomDoneFired = false
   private readonly onCloseScenario?: () => void
   private readonly onRoomDone?: () => void
+  private readonly onScenarioTerminate?: (scenarioId: string) => void
   private readonly spawnBotFn: (spec: BotSpec) => void
+  private readonly spawnPosition: { x: number; z: number }
   // Every map attached via `addMap()`, in attach order. Kept for flattening
   // per-room geometry to the wire on connect/observer snapshot.
   private readonly attachedMaps: GameMap[] = []
@@ -96,12 +106,14 @@ export class MultiplayerRoom {
   private readonly readyPlayerIds: Set<string> = new Set()
 
   constructor(opts: MultiplayerRoomOptions) {
-    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn } = opts
+    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn, spawnPosition, onScenarioTerminate } = opts
     this.roomId = roomId
     this.instanceIndex = instanceIndex
     this.onCloseScenario = onCloseScenario
     this.onRoomDone = onRoomDone
+    this.onScenarioTerminate = onScenarioTerminate
     this.spawnBotFn = spawnBotFn ?? (() => {})
+    this.spawnPosition = spawnPosition ?? { x: 0, z: 0 }
     this.tickRateHz = tickRateHz ?? TICK_RATE_HZ
     this.world = new World()
     this.npcManager = new NpcManager(
@@ -144,9 +156,11 @@ export class MultiplayerRoom {
       broadcast: (msg) => this.broadcast(msg),
       removePlayer: (pid, eliminated) => this.removePlayer(pid, eliminated),
       onClose: () => this.handleScenarioClose(config.id),
+      onTerminate: () => this.onScenarioTerminate?.(config.id),
       spawnBot: (spec) => this.spawnBotFn(spec),
       scheduleSimMs: (ms, cb) => this.scheduleSimMs(ms, cb),
       getServerTick: () => this.serverTick,
+      getSimMsPerTick: () => SIM_MS_PER_TICK,
       getRoomAtPosition: (x, z) => this.getRoomAtPositionFn(x, z),
       ...overrides,
     }
@@ -273,7 +287,7 @@ export class MultiplayerRoom {
     const color = this.pickColor()
     const index = this.nextPlayerIndex++
     this.players.set(playerId, { id: playerId, ws, color, index })
-    this.world.addPlayer(playerId)
+    this.world.addPlayer(playerId, this.spawnPosition.x, this.spawnPosition.z)
 
     const wp = this.world.getPlayer(playerId)!
     this.sendToPlayer(playerId, {

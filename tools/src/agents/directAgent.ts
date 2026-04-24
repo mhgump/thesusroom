@@ -12,7 +12,7 @@ import { MAP_AGENT_TOOL } from '../mapAgentTool/index.js'
 import { SCENARIO_AGENT_TOOL } from '../scenarioAgentTool/index.js'
 import { BOT_AGENT_TOOL } from '../botAgentTool/index.js'
 import { RUN_SCENARIO_AGENT_TOOL } from '../runScenarioAgentTool/index.js'
-import { loadPrompt } from './_loadPrompt.js'
+import { loadSkill } from './_loadPrompt.js'
 
 export interface DirectAgentResponse {
   goal_achieved: boolean
@@ -60,7 +60,7 @@ export async function runDirectAgent(
   opts: { verbose?: boolean; maxIterations?: number } = {},
 ): Promise<AgentRunResult<DirectAgentResponse>> {
   return runAgent<DirectAgentResponse>({
-    systemPrompt: loadPrompt('direct-agent.md'),
+    systemPrompt: loadSkill('direct-agent'),
     userPrompt,
     tools: [
       // Sub-agents.

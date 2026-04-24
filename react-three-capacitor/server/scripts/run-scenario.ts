@@ -3,9 +3,9 @@
  *
  * Usage (from react-three-capacitor/server/):
  *   npx tsx scripts/run-scenario.ts \
- *     [--scenario <id>]               default: demo
+ *     [--scenario <id>]               default: scenario2
  *     [--bots <path:Export> ...]      bot specs relative to project root, e.g.
- *                                     content/bots/demo/demoBot/bot.ts:DEMO_BOT
+ *                                     content/bots/scenario2/filler/bot.ts:SCENARIO2_BOT
  *     [--record-bot-index <n>]        bot index to observe + record video for.
  *                                     Optional; default: no recording.
  *                                     Must be < bot count when set.
@@ -68,7 +68,7 @@ console.error = (...args: unknown[]) => {
 const { values } = parseArgs({
   args: process.argv.slice(2),
   options: {
-    scenario:            { type: 'string',  default: 'demo' },
+    scenario:            { type: 'string',  default: 'scenario2' },
     bots:                { type: 'string',  multiple: true  },
     'record-bot-index':  { type: 'string'                   },
     'log-bot-indices':   { type: 'string'                   },
@@ -84,7 +84,7 @@ const { values } = parseArgs({
   strict: true,
 })
 
-const SCENARIO_ID      = values.scenario ?? 'demo'
+const SCENARIO_ID      = values.scenario ?? 'scenario2'
 const BOT_ARGS         = values.bots ?? []
 const RECORD_BOT_INDEX = values['record-bot-index'] !== undefined
   ? parseInt(values['record-bot-index'], 10)
@@ -196,10 +196,11 @@ if (OUTPUT_DIR) fs.mkdirSync(OUTPUT_DIR, { recursive: true })
 let terminationResolve!: () => void
 const terminationPromise = new Promise<void>(resolve => { terminationResolve = resolve })
 let terminatedByScenario = false
-scenarioSpec.onTerminate(() => {
+const onScenarioTerminate = (terminatedId: string) => {
+  if (terminatedId !== scenarioSpec.id) return
   terminatedByScenario = true
   terminationResolve()
-})
+}
 
 // ── Physics + Server ──────────────────────────────────────────────────────────
 
@@ -231,6 +232,7 @@ const AUTO_START = RECORD_BOT_INDEX === null
 const gameServer = new GameServer(contentRegistry, httpServer, PORT, {
   tickRateHz: TICK_RATE_HZ,
   autoStartScenario: AUTO_START,
+  onScenarioTerminate,
 })
 
 let observerReadyFired = false
