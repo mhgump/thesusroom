@@ -8,8 +8,9 @@ WORKDIR /app
 COPY react-three-capacitor/package-lock.json react-three-capacitor/package.json ./react-three-capacitor/
 RUN cd react-three-capacitor && npm ci --silent
 
-# Copy source (content/ is imported by client maps)
+# Copy source (content/ is imported by client maps; assets/initial/ is imported by content/maps)
 COPY content/ ./content/
+COPY assets/ ./assets/
 COPY react-three-capacitor/index.html \
      react-three-capacitor/tsconfig.json \
      react-three-capacitor/tsconfig.node.json \
@@ -17,6 +18,8 @@ COPY react-three-capacitor/index.html \
      ./react-three-capacitor/
 COPY react-three-capacitor/src/    ./react-three-capacitor/src/
 COPY react-three-capacitor/public/ ./react-three-capacitor/public/
+# vite.config.ts imports NUMBER_DISPLAY_PATHS from server/src/numberDisplayRoutes
+COPY react-three-capacitor/server/src/ ./react-three-capacitor/server/src/
 
 # VITE_WS_URL intentionally omitted — client auto-detects wss:// from page protocol at runtime
 RUN cd react-three-capacitor && npm run build
@@ -38,6 +41,7 @@ COPY react-three-capacitor/src/ ./react-three-capacitor/src/
 
 # Shared content (server maps & scenarios — imported at runtime via relative TS paths)
 COPY content/ ./content/
+COPY assets/ ./assets/
 
 # Built frontend (served as static files by prod.ts)
 COPY --from=frontend /app/react-three-capacitor/dist/ ./react-three-capacitor/dist/
