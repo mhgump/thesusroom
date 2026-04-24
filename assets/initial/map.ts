@@ -20,7 +20,12 @@ const HD_Z     = HALL_D / 2
 const HD_X     = HALL_W / 2
 const WALL_CZ  = HD_Z - bt / 2
 const WALL_CX  = HD_X - bt / 2
-const EW_DEPTH = 2 * (HD_Z - bt)
+// E/W walls run the full room depth so they own all four corners. N/S
+// walls sit between them as door segments that drop at each loop seam —
+// when the north wall of the source and the south wall of the next
+// hallway both drop, the corridor's side walls stay continuous across
+// the join.
+const NS_WALL_W = HALL_W - 2 * bt
 
 const ROOMS: RoomSpec[] = [
   {
@@ -30,10 +35,10 @@ const ROOMS: RoomSpec[] = [
     height: ROOM_H,
     cameraRect: { xMin: -HD_X, xMax: HD_X, zMin: -HD_Z, zMax: HD_Z },
     geometry: [
-      { id: 'initial_wn', cx: 0,        cy: BY, cz: -WALL_CZ, width: HALL_W, height: bh, depth: bt },
-      { id: 'initial_ws', cx: 0,        cy: BY, cz:  WALL_CZ, width: HALL_W, height: bh, depth: bt },
-      { id: 'initial_we', cx:  WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
-      { id: 'initial_ww', cx: -WALL_CX, cy: BY, cz: 0,        width: bt,     height: bh, depth: EW_DEPTH },
+      { id: 'initial_wn', cx: 0,        cy: BY, cz: -WALL_CZ, width: NS_WALL_W, height: bh, depth: bt },
+      { id: 'initial_ws', cx: 0,        cy: BY, cz:  WALL_CZ, width: NS_WALL_W, height: bh, depth: bt },
+      { id: 'initial_we', cx:  WALL_CX, cy: BY, cz: 0,        width: bt,        height: bh, depth: HALL_D },
+      { id: 'initial_ww', cx: -WALL_CX, cy: BY, cz: 0,        width: bt,        height: bh, depth: HALL_D },
     ],
   },
 ]

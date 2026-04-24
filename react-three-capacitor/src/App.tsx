@@ -15,7 +15,7 @@ export default function App() {
   useEffect(() => {
     const p = window.location.pathname;
     if (
-      /^\/observe\/[^/]+\/\d+\/\d+$/.test(p) ||
+      /^\/observe\/(hub|scenarios\/[^/]+|scenariorun\/[^/]+)\/\d+\/\d+$/.test(p) ||
       /^\/recordings\/\d+$/.test(p)
     ) {
       setObserverMode(true);

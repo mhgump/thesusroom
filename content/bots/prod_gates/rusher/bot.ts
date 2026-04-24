@@ -7,21 +7,23 @@ import {
 /**
  * RUSHER_BOT — prod_gates persona.
  *
- * The map is a vertical corridor: spawn at +z (south), victory at z < -0.40
- * (north). Three gates sit at x=0, z = +0.35, +0.10, -0.15 with a 0.1-wide
- * gap centered on x=0. Gates open automatically via proximity from the
- * scenario script — no button press needed.
+ * World layout (computed from the map's computeRoomPositions; spawn at origin):
+ *   spawn    : z ∈ (-0.125,  +0.125)
+ *   corridor : z ∈ (-1.375,  -0.125)   (3 gates at z = +0.3125, 0, -0.3125)
+ *   victory  : z ∈ (-1.625,  -1.375)
  *
- * Strategy: set a fixed target at (x=0, z=-0.5) — past the victory
- * threshold and aligned with all three gate gaps. moveToward will push
- * straight north along x=0, threading every gate. Once the bot crosses
- * z < -0.40 it switches to the `done` phase and idles.
+ * Strategy: head straight north along x = 0 toward (0, -2.0). moveToward
+ * drives the bot at every tick; when blocked by a closed gate the bot sits
+ * pressed against the wall — which simultaneously puts it inside the
+ * corresponding `btn_open_N` trigger radius. The button fires (see
+ * scenario.ts), the gate drops, and the bot resumes northward on the next
+ * tick. Once z < VICTORY_Z (inside the victory room) the bot idles.
  *
  * Auto-readies on connect (BotClient default).
  */
 
-const VICTORY_Z = -0.4
-const TARGET = { type: 'circle' as const, x: 0, z: -0.5, radius: 0.05 }
+const VICTORY_Z = -1.375
+const TARGET = { type: 'circle' as const, x: 0, z: -2.0, radius: 0.05 }
 
 export const RUSHER_BOT: BotSpec = {
   phases: ['rush', 'done'],

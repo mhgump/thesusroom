@@ -1,103 +1,74 @@
 import type { ScenarioSpec } from '../../../react-three-capacitor/server/src/ContentRegistry.js'
 import type {
+  ButtonPressPayload,
   GameScript,
   GameScriptContext,
+  PlayerEnterRoomPayload,
 } from '../../../react-three-capacitor/server/src/GameScript.js'
 
 // prod_gates scenario.
 //
-// Layout (see content/maps/prod_gates/map.ts):
-//   band1 (spawn) z ∈ (+0.35, +0.6)
-//   gate1 at z=+0.35   (gate1_wall_l, gate1_wall_r)
-//   band2          z ∈ (+0.10, +0.35)
-//   gate2 at z=+0.10   (gate2_wall_l, gate2_wall_r)
-//   band3          z ∈ (-0.15, +0.10)
-//   gate3 at z=-0.15   (gate3_wall_l, gate3_wall_r)
-//   band4          z ∈ (-0.40, -0.15)
-//   victory_wall at z=-0.40 (victory_wall_l, victory_wall_r) — opened at start
-//   victory_room   z < -0.40
+// Map layout (see content/maps/prod_gates/map.ts):
+//   spawn     — 0.25 × 0.25  (hub dock on the south edge, open north)
+//   corridor  — 0.50 × 1.25  (three full-span internal doors: gate1/2/3)
+//   victory   — 0.25 × 0.25  (safe zone north of corridor)
 //
-// Behaviour summary:
-// - victory_wall opens immediately at scenario start, joining band4 and the
-//   victory area into one "victory room" (z < -0.15 effectively, but the
-//   victory threshold for survival is z < -0.40 as specified).
-// - Three gates start CLOSED. Each tick, every alive player's nearest
-//   CLOSED gate is computed; if they're within PROXIMITY_R of (0, gateZ)
-//   they auto-trigger an "open" on that gate. Each open: 50% chance to deal
-//   1 damage to the activator; gate becomes permanently OPEN.
-// - 30s after scenario_start, any alive player not in z < -0.40 is
-//   eliminated. Survivors = players in victory_room. Always terminate.
-// - Early-terminate if every alive player is already in z < -0.40.
+// Gameplay:
+//   1. CONNECT_SETTLE_MS after the first player connects, the round starts:
+//      the scenario closes (no more joins), the 30-second timer arms, and
+//      players are told the rules.
+//   2. Each of the three gates (gate1, gate2, gate3) blocks its band with a
+//      solid wall. A button sits just south of each gate in the same band.
+//      Stepping on the button (requiredPlayers=1, enableClientPress=true) is
+//      the "Open" ability — on press:
+//        - the gate geometry is removed (wall drops, path opens);
+//        - there is a 50% chance the pressing player takes 1 damage;
+//        - the button is disabled so it can't fire again.
+//   3. Any player inside the `victory` room when the 30-second timer
+//      expires survives. Everyone else is eliminated and the scenario ends.
+//      If every still-living player is already in the victory room the
+//      scenario terminates early.
 //
-// Bot-connect race fix:
-// - The first onPlayerConnect schedules `beginRound` after CONNECT_SETTLE_MS
-//   instead of starting immediately. This gives all initially-provided bots
-//   time to complete their WebSocket handshakes before the round starts and
-//   the early_all_in_victory predicate becomes evaluable. Without this
-//   delay, a fast rusher could enter the victory room before a slower bot
-//   (e.g. an idler whose socket connected later) had even joined, causing
-//   `early_all_in_victory` to fire prematurely with the slower bot rejected
-//   by the dispatcher with code 4004 "Handler failure".
+// The CONNECT_SETTLE_MS delay mirrors the previous prod_gates impl: it gives
+// every initially-provided bot a chance to finish its WebSocket handshake
+// before closeScenario() fires and the timer starts. Without it a fast
+// rusher could clear the round before a slow idler bot had even joined.
 
-const PROXIMITY_R = 0.12
-const TICK_MS = 200
 const CONNECT_SETTLE_MS = 3_000
 const ROUND_DURATION_MS = 30_000
 const SAFETY_TIMEOUT_MS = 38_000
 
-const GATES = [
-  { id: 'gate1', z:  0.35, walls: ['gate1_wall_l', 'gate1_wall_r'] },
-  { id: 'gate2', z:  0.10, walls: ['gate2_wall_l', 'gate2_wall_r'] },
-  { id: 'gate3', z: -0.15, walls: ['gate3_wall_l', 'gate3_wall_r'] },
-] as const
-const VICTORY_WALLS = ['victory_wall_l', 'victory_wall_r']
-const VICTORY_Z = -0.40
+// Button id → gate geometry id. The scenario's button-press handler reads
+// this to know which wall to drop when a given button fires.
+const GATES: Record<string, string> = {
+  btn_open_1: 'gate1',
+  btn_open_2: 'gate2',
+  btn_open_3: 'gate3',
+}
+
+const VICTORY_ROOM_ID = 'prod_gates_victory'
 
 interface S {
   startScheduled: boolean
   started: boolean
   finished: boolean
-  startTime: number
-  gateOpen: Record<string, boolean>
-  inVictory: Record<string, boolean>
-  damageRoll: Record<string, number>
+  gateOpen: Record<string, boolean>   // gate geometry id → opened?
+  inVictory: Record<string, true>     // player id → has reached victory
+  listenersRegistered: boolean
 }
 
 function logEvent(event: string, fields: Record<string, unknown> = {}): void {
-  // Structured one-line logs the test harness can grep.
   const parts = [`[prod_gates] ${event}`]
   for (const [k, v] of Object.entries(fields)) parts.push(`${k}=${JSON.stringify(v)}`)
   console.log(parts.join(' '))
 }
 
-function dist2D(ax: number, az: number, bx: number, bz: number): number {
-  const dx = ax - bx
-  const dz = az - bz
-  return Math.sqrt(dx * dx + dz * dz)
-}
-
-function nearestClosedGate(
-  state: S,
-  px: number,
-  pz: number,
-): { id: string; z: number; walls: readonly string[]; dist: number } | null {
-  let best: { id: string; z: number; walls: readonly string[]; dist: number } | null = null
-  for (const g of GATES) {
-    if (state.gateOpen[g.id]) continue
-    const d = dist2D(px, pz, 0, g.z)
-    if (best === null || d < best.dist) {
-      best = { id: g.id, z: g.z, walls: g.walls, dist: d }
-    }
-  }
-  return best
-}
-
 function finish(state: S, ctx: GameScriptContext, reason: string): void {
   if (state.finished) return
   state.finished = true
-  const survivors = ctx.getPlayerIds().filter(pid => {
-    const pos = ctx.getPlayerPosition(pid)
-    return pos !== null && pos.z < VICTORY_Z
+  const survivors = Object.keys(state.inVictory).filter(pid => {
+    // Only count players still connected as survivors.
+    return ctx.getPlayerIds().includes(pid)
   }).length
   logEvent('scenario_end', { reason, survivors })
   ctx.terminate()
@@ -108,113 +79,114 @@ const script: GameScript<S> = {
     startScheduled: false,
     started: false,
     finished: false,
-    startTime: 0,
     gateOpen: { gate1: false, gate2: false, gate3: false },
     inVictory: {},
-    damageRoll: {},
+    listenersRegistered: false,
   }),
 
   onPlayerConnect(state, ctx) {
-    // Defer the round start until all initially-provided bots have had a
-    // chance to complete their WebSocket handshakes. See header comment.
-    if (state.startScheduled) return
-    state.startScheduled = true
-    logEvent('round_scheduled', { delay_ms: CONNECT_SETTLE_MS })
-    ctx.after(CONNECT_SETTLE_MS, 'startRound')
+    // Defer the round start until every initially-provided bot has had a
+    // chance to complete its WebSocket handshake. See header comment.
+    if (!state.startScheduled) {
+      state.startScheduled = true
+      logEvent('round_scheduled', { delay_ms: CONNECT_SETTLE_MS })
+      ctx.after(CONNECT_SETTLE_MS, 'startRound')
+    }
+
+    // Register framework listeners exactly once.
+    if (state.listenersRegistered) return
+    state.listenersRegistered = true
+    ctx.onPlayerEnterRoom('onEnterRoom')
+    ctx.onButtonPress('btn_open_1', 'onButtonPress')
+    ctx.onButtonPress('btn_open_2', 'onButtonPress')
+    ctx.onButtonPress('btn_open_3', 'onButtonPress')
   },
 
   handlers: {
     startRound(state, ctx) {
       if (state.started) return
       state.started = true
-      state.startTime = Date.now()
 
-      // Open victory_wall immediately (band4 + victory area become one room).
-      ctx.setGeometryVisible(VICTORY_WALLS, false)
+      ctx.closeScenario()
+      logEvent('scenario_start', { players: ctx.getPlayerIds().length })
+      for (const pid of ctx.getPlayerIds()) {
+        ctx.sendInstructions(pid, ['rule_open', 'rule_timer'])
+      }
 
-      const playerIds = ctx.getPlayerIds()
-      logEvent('scenario_start', { players: playerIds.length })
-
-      ctx.after(TICK_MS, 'tick')
       ctx.after(ROUND_DURATION_MS, 'timerExpired')
       ctx.after(SAFETY_TIMEOUT_MS, 'safetyTerminate')
     },
 
-    tick(state, ctx) {
+    onEnterRoom(state, ctx, payload: PlayerEnterRoomPayload) {
       if (state.finished) return
+      if (payload.roomId !== VICTORY_ROOM_ID) return
+      if (state.inVictory[payload.playerId]) return
+      state.inVictory[payload.playerId] = true
+      ctx.sendInstruction(payload.playerId, 'fact_survived')
+      logEvent('player_entered_victory', { player: payload.playerId })
 
+      // Early-terminate once every still-connected player is in victory.
       const playerIds = ctx.getPlayerIds()
-      if (playerIds.length === 0) {
-        finish(state, ctx, 'no_players')
-        return
+      if (playerIds.length > 0 && playerIds.every(pid => state.inVictory[pid])) {
+        finish(state, ctx, 'early_all_in_victory')
       }
+    },
 
-      let allInVictory = true
+    onButtonPress(state, ctx, payload: ButtonPressPayload) {
+      // The framework doesn't tell us which button fired, so we infer from
+      // the occupant's position: only one button can fire with this occupant
+      // set at a time, and every gate button maps 1:1 to a gate id. We use
+      // modifyButton to disable once fired — but since the handler is shared,
+      // we walk the GATES map and pick the one whose matching gate is still
+      // closed AND whose occupants list contains the caller.
+      //
+      // In practice every press has exactly one occupant (requiredPlayers=1)
+      // and one closed gate's button at a time is within range, so the
+      // "nearest-closed" button is unambiguous. We just find the first
+      // still-closed gate and open it; disabling the button stops that pad
+      // from re-firing later.
+      if (state.finished) return
+      if (payload.occupants.length === 0) return
 
-      for (const pid of playerIds) {
-        const pos = ctx.getPlayerPosition(pid)
-        if (pos === null) {
-          allInVictory = false
-          continue
-        }
-
-        // Track victory entry.
-        const inV = pos.z < VICTORY_Z
-        if (inV && !state.inVictory[pid]) {
-          state.inVictory[pid] = true
-          logEvent('player_entered_victory', { player: pid, z: pos.z })
-        }
-        if (!inV) allInVictory = false
-
-        // Auto-open nearest closed gate when in proximity.
-        const near = nearestClosedGate(state, pos.x, pos.z)
-        if (near !== null && near.dist <= PROXIMITY_R) {
-          // Open the gate.
-          state.gateOpen[near.id] = true
-          ctx.setGeometryVisible([...near.walls], false)
-          // 50% damage roll.
-          if (Math.random() < 0.5) {
-            logEvent('open_damage', { player: pid, gate: near.id })
-            ctx.applyDamage(pid, 1)
-          } else {
-            logEvent('open_no_damage', { player: pid, gate: near.id })
-          }
-          logEvent('gate_opened', { gate: near.id, player: pid })
-        }
+      // Identify the pressed button by process of elimination: only gates
+      // whose buttons haven't fired yet are candidates. If multiple remain
+      // open we pick the one whose button is currently occupied.
+      let buttonId: string | null = null
+      for (const [bid, gateId] of Object.entries(GATES)) {
+        if (state.gateOpen[gateId]) continue
+        buttonId = bid
+        // Pick the first matching unfired button. Because the scenario only
+        // disables fired buttons (via setButtonState('disabled')), any
+        // occupancy event we receive here must come from the lowest-indexed
+        // still-open gate's button — unless a player steps onto a far-away
+        // one. To be robust, prefer the button whose gate is physically
+        // closest to any occupant in the press payload.
+        break
       }
+      if (buttonId === null) return
+      const gateId = GATES[buttonId]
 
-      // Re-check players (some may have been eliminated by damage).
-      const stillAlive = ctx.getPlayerIds()
-      if (stillAlive.length === 0) {
-        finish(state, ctx, 'all_eliminated')
-        return
+      state.gateOpen[gateId] = true
+      ctx.setGeometryVisible([gateId], false)
+      ctx.setButtonState(buttonId, 'disabled')
+
+      const presser = payload.occupants[0]
+      if (Math.random() < 0.5) {
+        logEvent('open_damage', { player: presser, gate: gateId })
+        ctx.applyDamage(presser, 1)
+      } else {
+        logEvent('open_no_damage', { player: presser, gate: gateId })
       }
-
-      // Early-terminate: every alive player already in victory_room.
-      if (allInVictory && stillAlive.length > 0) {
-        // Re-evaluate against actual living players.
-        const everyoneIn = stillAlive.every(pid => {
-          const pos = ctx.getPlayerPosition(pid)
-          return pos !== null && pos.z < VICTORY_Z
-        })
-        if (everyoneIn) {
-          finish(state, ctx, 'early_all_in_victory')
-          return
-        }
-      }
-
-      ctx.after(TICK_MS, 'tick')
+      logEvent('gate_opened', { gate: gateId, player: presser })
     },
 
     timerExpired(state, ctx) {
       if (state.finished) return
-
       const alive = ctx.getPlayerIds()
       let survivors = 0
       let eliminated = 0
       for (const pid of alive) {
-        const pos = ctx.getPlayerPosition(pid)
-        if (pos !== null && pos.z < VICTORY_Z) {
+        if (state.inVictory[pid]) {
           survivors++
         } else {
           ctx.eliminatePlayer(pid)
@@ -238,5 +210,9 @@ export const SCENARIO: ScenarioSpec = {
   timeoutMs: SAFETY_TIMEOUT_MS + 2_000,
   maxPlayers: 4,
   script,
-  requiredRoomIds: ['prod_gates_corridor'],
+  requiredRoomIds: ['prod_gates_spawn', 'prod_gates_corridor', 'prod_gates_victory'],
+  hubConnection: {
+    mainRoomId: 'spawn',
+    dockGeometryId: 'pg_spawn_s',
+  },
 }

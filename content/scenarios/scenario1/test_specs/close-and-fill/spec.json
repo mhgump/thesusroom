@@ -4,12 +4,12 @@
   "map_id": "scenario1",
   "bots": [
     {
-      "path": "content/bots/scenario1/idle/bot.ts",
-      "export": "IDLE_BOT"
+      "path": "content/bots/scenario1/fill/bot.ts",
+      "export": "FILL_BOT"
     }
   ],
   "opts": {
-    "timeout_ms": 30000
+    "timeout_ms": 90000
   },
   "notes": [],
   "hero_index": 0,

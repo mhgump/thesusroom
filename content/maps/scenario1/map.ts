@@ -20,10 +20,11 @@ const MAP_INSTANCE_ID = 'scenario1'
 // reachable for its owner after the isolation walls pop up. Adjacent
 // sub-rooms overlap by 0.1 but `buildMapInstanceArtifacts.overlapSet` and
 // the client's `isRoomOverlapping` gate hide rooms from players that
-// aren't currently inside them, so overlap is invisible at runtime. The
-// four doors in main's north wall are placed at distinct x's so that the
-// first-match room resolution picks the correct sub-room when a player
-// walks through their door.
+// aren't currently inside them, so overlap is invisible at runtime. North
+// of the four sub-rooms sits a fifth `final` room with the same dimensions
+// as `main`; its south wall has matching doors at each VOTE_X so that
+// after the 30s elimination, surviving players can walk through their
+// sub-room into the final room.
 const ROOM_W = 1.6
 const ROOM_D = 0.75
 const ROOM_H = 0.5
@@ -74,30 +75,31 @@ const cellWalls = VOTE_X.flatMap((vx, i) => {
   ]
 })
 
-function seg(id: string, left: number, right: number, color?: string) {
+function seg(id: string, left: number, right: number, cz: number, color?: string) {
   const cx = (left + right) / 2
   const width = right - left
-  const base = { id, cx, cy: BY, cz: -WALL_CZ, width, height: bh, depth: bt }
+  const base = { id, cx, cy: BY, cz, width, height: bh, depth: bt }
   return color ? { ...base, color } : base
 }
 
 const northSegments = [
-  seg('s1_wnl1', -HW,                    VOTE_X[0] - D_HALF),
-  seg('s1_d1',   VOTE_X[0] - D_HALF,     VOTE_X[0] + D_HALF, '#555555'),
-  seg('s1_wnl2', VOTE_X[0] + D_HALF,     VOTE_X[1] - D_HALF),
-  seg('s1_d2',   VOTE_X[1] - D_HALF,     VOTE_X[1] + D_HALF, '#555555'),
-  seg('s1_wnl3', VOTE_X[1] + D_HALF,     -EX_HALF),
-  seg('s1_wne',  -EX_HALF,               EX_HALF),
-  seg('s1_wnr3', EX_HALF,                VOTE_X[2] - D_HALF),
-  seg('s1_d3',   VOTE_X[2] - D_HALF,     VOTE_X[2] + D_HALF, '#555555'),
-  seg('s1_wnr2', VOTE_X[2] + D_HALF,     VOTE_X[3] - D_HALF),
-  seg('s1_d4',   VOTE_X[3] - D_HALF,     VOTE_X[3] + D_HALF, '#555555'),
-  seg('s1_wnr1', VOTE_X[3] + D_HALF,     HW),
+  seg('s1_wnl1', -HW,                    VOTE_X[0] - D_HALF,   -WALL_CZ),
+  seg('s1_d1',   VOTE_X[0] - D_HALF,     VOTE_X[0] + D_HALF,   -WALL_CZ, '#555555'),
+  seg('s1_wnl2', VOTE_X[0] + D_HALF,     VOTE_X[1] - D_HALF,   -WALL_CZ),
+  seg('s1_d2',   VOTE_X[1] - D_HALF,     VOTE_X[1] + D_HALF,   -WALL_CZ, '#555555'),
+  seg('s1_wnl3', VOTE_X[1] + D_HALF,     -EX_HALF,             -WALL_CZ),
+  seg('s1_wne',  -EX_HALF,               EX_HALF,              -WALL_CZ),
+  seg('s1_wnr3', EX_HALF,                VOTE_X[2] - D_HALF,   -WALL_CZ),
+  seg('s1_d3',   VOTE_X[2] - D_HALF,     VOTE_X[2] + D_HALF,   -WALL_CZ, '#555555'),
+  seg('s1_wnr2', VOTE_X[2] + D_HALF,     VOTE_X[3] - D_HALF,   -WALL_CZ),
+  seg('s1_d4',   VOTE_X[3] - D_HALF,     VOTE_X[3] + D_HALF,   -WALL_CZ, '#555555'),
+  seg('s1_wnr1', VOTE_X[3] + D_HALF,     HW,                   -WALL_CZ),
 ]
 
-// Sub-room: 0.5 × 0.5 box with N/E/W walls. The south boundary is owned by
-// main's north wall, so no south wall geometry here — the toggleable door
-// in main's north wall is what opens to admit the owning player.
+// Sub-room: 0.5 × 0.5 box. South boundary is owned by main's north wall
+// (the toggleable `s1_d{n}` door). North wall is a single segment that the
+// scenario script drops once eliminations resolve so the sub-room opens
+// into the `final` room.
 const SUB_W = 0.5
 const SUB_D = 0.5
 const SUB_HD = SUB_D / 2
@@ -108,11 +110,27 @@ const SUB_EW_DEPTH = 2 * (SUB_HD - bt)
 
 function subGeometry(prefix: string) {
   return [
-    { id: `${prefix}_n`, cx: 0,             cy: BY, cz: -SUB_WALL_CZ, width: SUB_W,      height: bh, depth: bt },
+    { id: `${prefix}_n`, cx: 0,             cy: BY, cz: -SUB_WALL_CZ, width: SUB_W,      height: bh, depth: bt, color: '#555555' },
     { id: `${prefix}_e`, cx:  SUB_WALL_CX,  cy: BY, cz: 0,            width: bt,         height: bh, depth: SUB_EW_DEPTH },
     { id: `${prefix}_w`, cx: -SUB_WALL_CX,  cy: BY, cz: 0,            width: bt,         height: bh, depth: SUB_EW_DEPTH },
   ]
 }
+
+// Final room: identical dimensions to main, sitting directly north of the
+// four sub-rooms. South wall has four doors at the same VOTE_X positions
+// as main's north (one per sub-room); the script drops them per-player as
+// each player crosses out of their sub-room. North/east/west are solid.
+const finalSouthSegments = [
+  seg('s1_fwsl1', -HW,                    VOTE_X[0] - D_HALF, WALL_CZ),
+  seg('s1_fd1',   VOTE_X[0] - D_HALF,     VOTE_X[0] + D_HALF, WALL_CZ, '#555555'),
+  seg('s1_fwsl2', VOTE_X[0] + D_HALF,     VOTE_X[1] - D_HALF, WALL_CZ),
+  seg('s1_fd2',   VOTE_X[1] - D_HALF,     VOTE_X[1] + D_HALF, WALL_CZ, '#555555'),
+  seg('s1_fwsm',  VOTE_X[1] + D_HALF,     VOTE_X[2] - D_HALF, WALL_CZ),
+  seg('s1_fd3',   VOTE_X[2] - D_HALF,     VOTE_X[2] + D_HALF, WALL_CZ, '#555555'),
+  seg('s1_fwsr2', VOTE_X[2] + D_HALF,     VOTE_X[3] - D_HALF, WALL_CZ),
+  seg('s1_fd4',   VOTE_X[3] - D_HALF,     VOTE_X[3] + D_HALF, WALL_CZ, '#555555'),
+  seg('s1_fwsr1', VOTE_X[3] + D_HALF,     HW,                 WALL_CZ),
+]
 
 const ROOMS: RoomSpec[] = [
   {
@@ -155,18 +173,42 @@ const ROOMS: RoomSpec[] = [
     cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
     geometry: subGeometry('s1_p4'),
   },
+  {
+    id: 'final', name: 'Final Room',
+    floorWidth: ROOM_W,
+    floorDepth: ROOM_D,
+    height: ROOM_H,
+    cameraRect: { xMin: -0.4028, xMax: 0.4028, zMin: 0, zMax: 0 },
+    geometry: [
+      ...finalSouthSegments,
+      { id: 's1_fwn', cx: 0,           cy: BY, cz: -WALL_CZ, width: ROOM_W,     height: bh, depth: bt },
+      { id: 's1_fwe', cx:  WALL_CX,    cy: BY, cz: 0,        width: bt,         height: bh, depth: EW_DEPTH },
+      { id: 's1_fww', cx: -WALL_CX,    cy: BY, cz: 0,        width: bt,         height: bh, depth: EW_DEPTH },
+    ],
+  },
 ]
 
 const SUB_IDS = ['p1', 'p2', 'p3', 'p4']
 
 // Each sub-room's south wall midpoint (positionB=0.5) attaches to main's
 // north wall at the circle's x — so BFS places each sub-room centered on
-// its circle, 0.5 units north of main.
-const CONNECTIONS: RoomConnection[] = VOTE_X.map((vx, i) => ({
-  roomIdA: 'main', wallA: 'north', positionA: (vx + HW) / ROOM_W,
-  roomIdB: SUB_IDS[i], wallB: 'south', positionB: 0.5,
-  width: DOOR_W,
-}))
+// its circle, 0.5 units north of main. Each sub-room's north wall midpoint
+// (positionA=0.5) attaches to `final`'s south wall at the same circle x —
+// BFS places `final` centered on x=0, 0.5 units north of the sub-rooms
+// (final center world z = -1.25). All four sub→final connections agree on
+// the same final position; validateWorldSpec will reject any drift.
+const CONNECTIONS: RoomConnection[] = [
+  ...VOTE_X.map((vx, i): RoomConnection => ({
+    roomIdA: 'main', wallA: 'north', positionA: (vx + HW) / ROOM_W,
+    roomIdB: SUB_IDS[i], wallB: 'south', positionB: 0.5,
+    width: DOOR_W,
+  })),
+  ...VOTE_X.map((vx, i): RoomConnection => ({
+    roomIdA: SUB_IDS[i], wallA: 'north', positionA: 0.5,
+    roomIdB: 'final', wallB: 'south', positionB: (vx + HW) / ROOM_W,
+    width: DOOR_W,
+  })),
+]
 
 const TOPOLOGY = { rooms: ROOMS, connections: CONNECTIONS }
 const LOCAL_POSITIONS = computeRoomPositions(TOPOLOGY)
@@ -175,8 +217,9 @@ const ARTIFACTS = buildMapInstanceArtifacts(TOPOLOGY, MAP_INSTANCE_ID)
 const CAMERA_SHAPES = buildCameraConstraintShapes(TOPOLOGY, LOCAL_POSITIONS)
 
 const INSTRUCTION_SPECS: InstructionEventSpec[] = [
-  { id: 'find_instruction', text: 'Find your circle', label: 'COMMAND' },
-  { id: 'vote_instruction', text: 'Vote called!',     label: 'COMMAND' },
+  { id: 'find_instruction',    text: 'Find your circle',     label: 'COMMAND' },
+  { id: 'subroom_instruction', text: 'Get to your room!',    label: 'COMMAND' },
+  { id: 'final_instruction',   text: 'Move to the final room!', label: 'COMMAND' },
 ]
 
 const VOTE_REGIONS: VoteRegionSpec[] = [

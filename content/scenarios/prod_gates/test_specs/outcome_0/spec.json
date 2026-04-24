@@ -27,6 +27,7 @@
   "last_run_artifact_ids": [
     "prod_gates/outcome_0/0",
     "prod_gates/outcome_0/1",
-    "prod_gates/outcome_0/2"
+    "prod_gates/outcome_0/2",
+    "prod_gates/outcome_0/3"
   ]
 }
