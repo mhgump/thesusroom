@@ -24,20 +24,16 @@ export interface HubAttachment {
 
 // The initial hallway is authored with a single room `hall` whose north wall
 // is `initial_wn`, south is `initial_ws`, east is `initial_we`, west is
-// `initial_ww`. The opposing mapping below lets the placement helper look up
-// the hallway wall that docks against the target wall.
-const INITIAL_WALL_BY_SIDE: Record<Wall, string> = {
+// `initial_ww`. `HALLWAY_DOCK_WALL_FOR_TARGET_SIDE` is keyed by the TARGET
+// room's wallSide and returns the hallway wall that docks against it — the
+// cardinally-opposite side. For target='south', the hallway's north face
+// meets it (drop `initial_wn`); for target='north', the hallway's south
+// face meets it (drop `initial_ws`), and so on.
+const HALLWAY_DOCK_WALL_FOR_TARGET_SIDE: Record<Wall, string> = {
   south: 'initial_wn',
   north: 'initial_ws',
-  west: 'initial_we',
-  east: 'initial_ww',
-}
-
-function opposite(wall: Wall): Wall {
-  return wall === 'south' ? 'north'
-    : wall === 'north' ? 'south'
-    : wall === 'east'  ? 'west'
-    : 'east'
+  west:  'initial_we',
+  east:  'initial_ww',
 }
 
 // Compute where to place the initial hallway (in the target map's world
@@ -97,7 +93,7 @@ export function computeHubAttachment(
     targetMainRoomWorldX +
     (hub.positionOnWall - 0.5) * (mainRoom.floorWidth - hallwayRoom.floorWidth)
 
-  const initialWallIdToDrop = INITIAL_WALL_BY_SIDE[opposite(hub.wallSide)]
+  const initialWallIdToDrop = HALLWAY_DOCK_WALL_FOR_TARGET_SIDE[hub.wallSide]
 
   return {
     hallwayOrigin: { x: hallwayOriginX, z: hallwayOriginZ },

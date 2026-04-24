@@ -16,7 +16,7 @@ export default function App() {
     const p = window.location.pathname;
     if (
       /^\/observe\/[^/]+\/\d+\/\d+$/.test(p) ||
-      /^\/recordings\/[^/]+\/\d+$/.test(p)
+      /^\/recordings\/\d+$/.test(p)
     ) {
       setObserverMode(true);
     }
@@ -70,12 +70,20 @@ export default function App() {
         <img
           src="/backroomslogo.png"
           alt="The Sus Rooms"
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
+          onContextMenu={(e) => e.preventDefault()}
           style={{
             width: '35vh',
             height: '35vh',
             borderRadius: '50%',
             animation: 'pulse 2s ease-in-out infinite',
-          }}
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            WebkitUserDrag: 'none',
+            WebkitTouchCallout: 'none',
+            pointerEvents: 'none',
+          } as React.CSSProperties}
         />
         <style>{`
           @keyframes pulse {

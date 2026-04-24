@@ -23,7 +23,7 @@ function getWsPath(): string {
   // observer handler rather than the player handler.
   if (/^observe\/[^/]+\/\d+\/\d+$/.test(path)) return path
   // Replay paths likewise route to the replay handler by exact path.
-  if (/^recordings\/[^/]+\/\d+$/.test(path)) return path
+  if (/^recordings\/\d+$/.test(path)) return path
   // Everything else must be an `r_{scenario}` routing key. An empty path
   // (root URL) resolves to `hub` — the combined hub world fronting the
   // default target scenario with a solo initial hallway.

@@ -23,7 +23,6 @@ const numberDisplayProxy = Object.fromEntries(
 const VALIDATION_PATH_REGEXES: RegExp[] = [
   /^\/observe\/[^/]+\/\d+\/\d+$/,
   /^\/recordings\/\d+$/,
-  /^\/recordings\/[^/]+\/\d+$/,
   /^\/r_[^/]+$/,
 ];
 
@@ -89,14 +88,6 @@ function validate404Plugin() {
               res.statusCode = 404;
               res.setHeader('Content-Type', 'text/html; charset=utf-8');
               res.end('<html><body><p>not found</p></body></html>');
-              return;
-            }
-            // Propagate backend-issued redirects to the browser (e.g. the
-            // short-form `/recordings/:idx` → canonical `/recordings/:key/:idx`).
-            if ((resp.status === 301 || resp.status === 302) && resp.headers.get('location')) {
-              res.statusCode = resp.status;
-              res.setHeader('Location', resp.headers.get('location')!);
-              res.end();
               return;
             }
           } catch {

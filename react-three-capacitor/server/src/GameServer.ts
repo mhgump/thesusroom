@@ -37,16 +37,14 @@ function parseRoutingKey(url: string | undefined): string | null {
   return first
 }
 
-// `/recordings/{key}/{index}` — WebSocket endpoint for replay. `{key}` is
-// the routing key the recording was originally made on (so the client
-// loads the matching map); `{index}` is the PlayerRegistry index.
-// Older callers that connect to `/recordings/{index}` without a key get
-// null here and are 4004'd — the HTTP route redirects them to the
-// canonical form before the SPA ever dials the WebSocket.
+// `/recordings/{index}` — WebSocket endpoint for replay. The saved
+// recording is self-sufficient: its `world_reset` event carries the full
+// map bundle, so the client no longer needs the routing key in the URL
+// to pick a scenario-specific chunk.
 function parseReplayParams(url: string | undefined): { index: number } | null {
   if (!url) return null
   const path = url.split('?')[0]
-  const m = path.match(/^\/recordings\/[^/]+\/(\d+)$/)
+  const m = path.match(/^\/recordings\/(\d+)$/)
   return m ? { index: parseInt(m[1], 10) } : null
 }
 

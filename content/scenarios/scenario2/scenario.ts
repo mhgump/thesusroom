@@ -8,32 +8,41 @@ import { SCENARIO2_BOT } from '../../bots/scenario2/filler/bot.js'
 
 // Sim-time delays (ms). ctx.after is tick-driven, so these scale with server
 // tick rate — 50ms of sim time = 1 tick at the canonical 20Hz.
-const BOT_FILL_DELAY_MS  = 2_000   // 40 ticks
+// Bots don't spawn on connect anymore — they wait 5s after the first player
+// reaches room1, which skips bot-fill for hub transfers where the player
+// lingers in the hallway (and for direct `r_scenario2` joins where the
+// player spawns inside room1 and the timer starts immediately).
+const BOT_FILL_DELAY_MS  = 5_000   // 100 ticks
 const MOVE_WARN_DELAY_MS = 2_000   // 40 ticks
 const ELIM_DELAY_MS      = 4_000   // 80 ticks
 const FACT_DELAY_MS      = 1_000   // 20 ticks
 
 interface S2State {
-  botTimerSet: boolean
+  room1EntryTriggered: boolean
   doorOpened: boolean
   inRoom2: Record<string, true>
   allInRoom2Triggered: boolean
   readyPlayers: Record<string, true>
+  roomListenerRegistered: boolean
 }
 
 const script: GameScript<S2State> = {
   initialState: () => ({
-    botTimerSet: false,
+    room1EntryTriggered: false,
     doorOpened: false,
     inRoom2: {},
     allInRoom2Triggered: false,
     readyPlayers: {},
+    roomListenerRegistered: false,
   }),
 
   onPlayerConnect(state, ctx) {
-    if (state.botTimerSet) return
-    state.botTimerSet = true
-    ctx.after(BOT_FILL_DELAY_MS, 'fillBots')
+    // Register the room-entry listener exactly once, on the very first
+    // connect. It drives both the bot-fill timer (on first room1 entry) and
+    // the room2 tracking (after the scenario door opens).
+    if (state.roomListenerRegistered) return
+    state.roomListenerRegistered = true
+    ctx.onPlayerEnterRoom('onEnterRoom')
   },
 
   onPlayerReady(state, ctx, playerId) {
@@ -51,7 +60,6 @@ const script: GameScript<S2State> = {
     }
     ctx.setGeometryVisible(['north_door'], false)
 
-    ctx.onPlayerEnterRoom('onEnterRoom')
     ctx.after(MOVE_WARN_DELAY_MS, 'warnMove')
   },
 
@@ -63,14 +71,25 @@ const script: GameScript<S2State> = {
     },
 
     onEnterRoom(state, ctx, payload: PlayerEnterRoomPayload) {
-      const { playerId, roomId } = payload
-      if (roomId !== 'scenario2_room2') return
-      state.inRoom2[playerId] = true
-      // Wait 250ms for the player to clear the doorway, then re-close the
-      // door for them. resolveOverlap uses their current room's AABB to pick
-      // the push direction, so no explicit room-lock is needed.
-      ctx.after(250, 'reCloseDoorFor', playerId)
-      checkAllInRoom2(state, ctx)
+      const { roomId, playerId } = payload
+      // First-time any player enters room1: start the bot-fill countdown.
+      // Hub-transferred players spawn in the hallway and only trip this on
+      // crossing into room1; direct `r_scenario2` joins spawn in room1 and
+      // trip it immediately.
+      if (roomId === 'scenario2_room1' && !state.room1EntryTriggered) {
+        state.room1EntryTriggered = true
+        ctx.after(BOT_FILL_DELAY_MS, 'fillBots')
+      }
+      // Room2 tracking applies only after the scenario door has opened —
+      // before that, entering room2 is impossible (north_door plug is solid).
+      if (roomId === 'scenario2_room2' && state.doorOpened) {
+        state.inRoom2[playerId] = true
+        // Wait 250ms for the player to clear the doorway, then re-close the
+        // door for them. resolveOverlap uses their current room's AABB to
+        // pick the push direction, so no explicit room-lock is needed.
+        ctx.after(250, 'reCloseDoorFor', playerId)
+        checkAllInRoom2(state, ctx)
+      }
     },
 
     reCloseDoorFor(_state, ctx, playerId: string) {
