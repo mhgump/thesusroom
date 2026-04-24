@@ -5,15 +5,23 @@ interface ButtonEntry {
   config: ButtonConfig
   state: ButtonState
   occupants: Set<string>
-  cooldownTimer: ReturnType<typeof setTimeout> | null
+  cancelCooldown: (() => void) | null
 }
 
 export interface ButtonOccupancyChange { buttonId: string }
 
 export class ButtonManager {
   private readonly buttons: Map<string, ButtonEntry> = new Map()
+  private readonly scheduleSimMs: (ms: number, cb: () => void) => () => void
 
-  constructor(specs: ButtonSpec[]) {
+  constructor(
+    specs: ButtonSpec[],
+    scheduleSimMs: (ms: number, cb: () => void) => () => void = (ms, cb) => {
+      const t = setTimeout(cb, ms)
+      return () => clearTimeout(t)
+    },
+  ) {
+    this.scheduleSimMs = scheduleSimMs
     for (const spec of specs) {
       const { requiredPlayers, holdAfterRelease, cooldownMs, enableClientPress } = spec
       this.buttons.set(spec.id, {
@@ -21,7 +29,7 @@ export class ButtonManager {
         config: { requiredPlayers, holdAfterRelease, cooldownMs, enableClientPress },
         state: spec.initialState ?? 'idle',
         occupants: new Set(),
-        cooldownTimer: null,
+        cancelCooldown: null,
       })
     }
   }
@@ -51,7 +59,7 @@ export class ButtonManager {
   setState(buttonId: string, state: ButtonState): void {
     const entry = this.buttons.get(buttonId)
     if (!entry) return
-    if (entry.cooldownTimer) { clearTimeout(entry.cooldownTimer); entry.cooldownTimer = null }
+    if (entry.cancelCooldown) { entry.cancelCooldown(); entry.cancelCooldown = null }
     entry.state = state
   }
 
@@ -64,11 +72,11 @@ export class ButtonManager {
     const entry = this.buttons.get(buttonId)
     if (!entry) return
     entry.state = 'cooldown'
-    if (entry.cooldownTimer) clearTimeout(entry.cooldownTimer)
-    entry.cooldownTimer = setTimeout(() => {
-      entry.cooldownTimer = null
+    if (entry.cancelCooldown) entry.cancelCooldown()
+    entry.cancelCooldown = this.scheduleSimMs(durationMs, () => {
+      entry.cancelCooldown = null
       onComplete()
-    }, durationMs)
+    })
   }
 
   getState(buttonId: string): ButtonState | undefined {

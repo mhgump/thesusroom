@@ -1,7 +1,9 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type http from 'http'
 import type { IncomingMessage } from 'http'
-import { ScenarioRegistry } from './ScenarioRegistry.js'
+import { ContentRegistry } from './ContentRegistry.js'
+import { RoomRouter } from './RoomRouter.js'
+import { createDefaultScenarioResolver } from './orchestration/index.js'
 import { BotManager } from './bot/BotManager.js'
 import { DEMO_MAP } from '../../../content/maps/demo.js'
 import { DEMO_SCENARIO } from '../../../content/scenarios/demo.js'
@@ -13,31 +15,40 @@ import { SCENARIO3_MAP } from '../../../content/maps/scenario3.js'
 import { SCENARIO3_SCENARIO } from '../../../content/scenarios/scenario3.js'
 import { SCENARIO4_MAP } from '../../../content/maps/scenario4.js'
 import { SCENARIO4_SCENARIO } from '../../../content/scenarios/scenario4.js'
-import type { Room } from './Room.js'
+import type { MultiplayerRoom } from './Room.js'
 import type { ClientMessage } from './types.js'
 
-function parseScenarioId(url: string | undefined): string {
-  if (!url) return 'demo'
-  const path = url.split('?')[0]
-  const name = path.replace(/^\/+/, '').split('/')[0]
-  return name || 'demo'
-}
-
-function parseObserverParams(url: string | undefined): { scenarioId: string; i: number; j: number } | null {
+// A `/observe/{key}/{i}/{j}` path: `{key}` is the full routing key (e.g.
+// `r_demo`), `{i}` the instance index in the router's per-key all-rooms
+// array, `{j}` the per-room player index.
+function parseObserverParams(url: string | undefined): { routingKey: string; i: number; j: number } | null {
   if (!url) return null
   const path = url.split('?')[0]
   const match = path.match(/^\/observe\/([^/]+)\/(\d+)\/(\d+)$/)
   if (!match) return null
-  return { scenarioId: match[1], i: parseInt(match[2], 10), j: parseInt(match[3], 10) }
+  return { routingKey: match[1], i: parseInt(match[2], 10), j: parseInt(match[3], 10) }
+}
+
+// The non-observer URL path is always exactly the routing key, e.g. `/r_demo`.
+// The empty path (`/` or no path) routes to `r_demo` for legacy convenience
+// so visiting the server root still drops the player into the demo scenario.
+function parseRoutingKey(url: string | undefined): string | null {
+  if (!url) return 'r_demo'
+  const path = url.split('?')[0]
+  const first = path.replace(/^\/+/, '').split('/')[0]
+  if (first.length === 0) return 'r_demo'
+  return first
 }
 
 export class GameServer {
   private readonly wss: WebSocketServer
-  private readonly registry: ScenarioRegistry
-  private readonly playerRoom: Map<string, Room> = new Map()
+  private readonly content: ContentRegistry
+  private readonly router: RoomRouter
+  private readonly playerRoom: Map<string, MultiplayerRoom> = new Map()
   private readonly botManager: BotManager
+  private readonly observerReadyListeners: Set<() => void> = new Set()
 
-  constructor(portOrServer: number | http.Server, httpServerPort?: number) {
+  constructor(portOrServer: number | http.Server, httpServerPort?: number, options?: { tickRateHz?: number; autoStartScenario?: boolean }) {
     let botServerUrl: string
     if (typeof portOrServer === 'number') {
       this.wss = new WebSocketServer({ port: portOrServer })
@@ -50,23 +61,32 @@ export class GameServer {
       console.log(`[GameServer] attached to HTTP server, bot url: ${botServerUrl}`)
     }
     this.botManager = new BotManager(botServerUrl)
-    this.registry = new ScenarioRegistry([
+    this.content = new ContentRegistry([
       { map: DEMO_MAP, scenario: DEMO_SCENARIO },
       { map: SCENARIO1_MAP, scenario: SCENARIO1_SCENARIO },
       { map: SCENARIO2_MAP, scenario: SCENARIO2_SCENARIO },
       { map: SCENARIO3_MAP, scenario: SCENARIO3_SCENARIO },
       { map: SCENARIO4_MAP, scenario: SCENARIO4_SCENARIO },
-    ], (scenarioId, spec) => this.botManager.spawnBot(scenarioId, spec))
-    this.registry.prewarm('demo')
+    ])
+    const resolver = createDefaultScenarioResolver(this.content, (routingKey, spec) => {
+      this.botManager.spawnBot(routingKey, spec)
+    }, options)
+    this.router = new RoomRouter(resolver)
+    this.router.prewarm('r_demo')
     this.wss.on('connection', this.handleConnection.bind(this))
   }
 
-  getRegistry(): ScenarioRegistry {
-    return this.registry
+  getRouter(): RoomRouter {
+    return this.router
   }
 
   getBotManager(): BotManager {
     return this.botManager
+  }
+
+  onObserverReady(cb: () => void): () => void {
+    this.observerReadyListeners.add(cb)
+    return () => { this.observerReadyListeners.delete(cb) }
   }
 
   private handleConnection(ws: WebSocket, request: IncomingMessage): void {
@@ -76,16 +96,19 @@ export class GameServer {
       return
     }
 
-    const scenarioId = parseScenarioId(request.url)
-    const room = this.registry.getOrCreateRoom(scenarioId)
-    if (!room) {
-      ws.close(4004, 'Unknown scenario')
+    const routingKey = parseRoutingKey(request.url)
+    if (!routingKey) {
+      ws.close(4004, 'Invalid routing key')
       return
     }
 
-    const playerId = crypto.randomUUID()
+    const routed = this.router.routePlayer(routingKey, ws)
+    if (!routed) {
+      ws.close(4004, 'Unknown routing key')
+      return
+    }
+    const { room, playerId } = routed
     this.playerRoom.set(playerId, room)
-    room.addPlayer(playerId, ws)
 
     ws.on('message', (data) => {
       try {
@@ -94,6 +117,8 @@ export class GameServer {
           room.handleMove(playerId, msg.tick, msg.inputs)
         } else if (msg.type === 'choice') {
           // handled by game script manager via room if needed
+        } else if (msg.type === 'ready') {
+          room.handlePlayerReady(playerId)
         }
       } catch {
         // ignore malformed messages
@@ -106,8 +131,8 @@ export class GameServer {
     })
   }
 
-  private handleObserverConnection(ws: WebSocket, { scenarioId, i, j }: { scenarioId: string; i: number; j: number }): void {
-    const room = this.registry.getRoomByIndex(scenarioId, i)
+  private handleObserverConnection(ws: WebSocket, { routingKey, i, j }: { routingKey: string; i: number; j: number }): void {
+    const room = this.router.getRoomByIndex(routingKey, i)
     if (!room) {
       ws.close(4004, 'Room not found')
       return
@@ -124,6 +149,14 @@ export class GameServer {
     }
 
     room.registerObserver(playerId, ws)
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString())
+        if (msg.type === 'ready') {
+          for (const cb of this.observerReadyListeners) cb()
+        }
+      } catch { /* ignore */ }
+    })
     ws.on('close', () => room.unregisterObserver(playerId, ws))
   }
 }

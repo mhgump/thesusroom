@@ -1,19 +1,22 @@
-import type { ScenarioSpec } from '../../react-three-capacitor/server/src/ScenarioRegistry.js'
+import type { ScenarioSpec } from '../../react-three-capacitor/server/src/ContentRegistry.js'
 import type { GameScript, GameScriptContext } from '../../react-three-capacitor/server/src/GameScript.js'
 import { DEMO_BOT } from '../bots/demo/demoBot.js'
 
 let _terminateCb: (() => void) | null = null
 
-const BOT_FILL_DELAY_MS  = 2_000
-const MOVE_WARN_DELAY_MS = 2_000
-const ELIM_DELAY_MS      = 6_000
-const FACT_DELAY_MS      = 1_000
+// Sim-time delays (ms). ctx.after is tick-driven, so these scale with server
+// tick rate — 50ms of sim time = 1 tick at the canonical 20Hz.
+const BOT_FILL_DELAY_MS  = 2_000   // 40 ticks
+const MOVE_WARN_DELAY_MS = 2_000   // 40 ticks
+const ELIM_DELAY_MS      = 4_000   // 80 ticks
+const FACT_DELAY_MS      = 1_000   // 20 ticks
 
 class DemoScript implements GameScript {
   private botTimerSet = false
   private doorOpened = false
   private readonly inRoom2 = new Set<string>()
   private allInRoom2Triggered = false
+  private readonly readyPlayers = new Set<string>()
 
   onPlayerConnect(ctx: GameScriptContext, _playerId: string): void {
     if (!this.botTimerSet) {
@@ -24,40 +27,47 @@ class DemoScript implements GameScript {
         for (let i = 0; i < needed; i++) ctx.spawnBot(DEMO_BOT)
       })
     }
+  }
 
-    if (ctx.getPlayerIds().length >= 4 && !this.doorOpened) {
-      this.doorOpened = true
-      ctx.closeScenario()
-      for (const pid of ctx.getPlayerIds()) {
-        ctx.addRule(pid, 'Players that do not continue will be eliminated.')
-      }
-      ctx.setGeometryVisible(['north_door'], false)
-      ctx.setGeometryVisible(['door_open'], true)
+  onPlayerReady(ctx: GameScriptContext, playerId: string): void {
+    if (this.doorOpened) return
+    this.readyPlayers.add(playerId)
 
-      ctx.onPlayerEnterRoom((pid, roomId) => {
-        if (roomId !== 'demo_room2') return
-        this.inRoom2.add(pid)
-        // Lock the player to room2, wait for them to clear the doorway, then re-close it.
-        ctx.lockPlayerToRoom(pid)
-        ctx.after(250, () => {
-          ctx.setGeometryVisible(['north_door'], true, [pid])
-          ctx.unlockPlayerFromRoom(pid)
-        })
+    const playerIds = ctx.getPlayerIds()
+    if (playerIds.length < 4) return
+    if (!playerIds.every(pid => this.readyPlayers.has(pid))) return
+
+    this.doorOpened = true
+    ctx.closeScenario()
+    for (const pid of ctx.getPlayerIds()) {
+      ctx.addRule(pid, 'Players that do not continue will be eliminated.')
+    }
+    ctx.setGeometryVisible(['north_door'], false)
+    ctx.setGeometryVisible(['door_open'], true)
+
+    ctx.onPlayerEnterRoom((pid, roomId) => {
+      if (roomId !== 'demo_room2') return
+      this.inRoom2.add(pid)
+      // Lock the player to room2, wait for them to clear the doorway, then re-close it.
+      ctx.lockPlayerToRoom(pid)
+      ctx.after(250, () => {
+        ctx.setGeometryVisible(['north_door'], true, [pid])
+        ctx.unlockPlayerFromRoom(pid)
+      })
+      this.checkAllInRoom2(ctx)
+    })
+
+    ctx.after(MOVE_WARN_DELAY_MS, () => {
+      const living = ctx.getPlayerIds()
+      const inRoom1 = living.filter(p => !this.inRoom2.has(p))
+      for (const pid of inRoom1) ctx.sendInstruction(pid, 'rule_move')
+      ctx.after(ELIM_DELAY_MS, () => {
+        for (const pid of ctx.getPlayerIds()) {
+          if (!this.inRoom2.has(pid)) ctx.eliminatePlayer(pid)
+        }
         this.checkAllInRoom2(ctx)
       })
-
-      ctx.after(MOVE_WARN_DELAY_MS, () => {
-        const living = ctx.getPlayerIds()
-        const inRoom1 = living.filter(p => !this.inRoom2.has(p))
-        for (const pid of inRoom1) ctx.sendInstruction(pid, 'rule_move')
-        ctx.after(ELIM_DELAY_MS, () => {
-          for (const pid of ctx.getPlayerIds()) {
-            if (!this.inRoom2.has(pid)) ctx.eliminatePlayer(pid)
-          }
-          this.checkAllInRoom2(ctx)
-        })
-      })
-    }
+    })
   }
 
   private checkAllInRoom2(ctx: GameScriptContext): void {
@@ -82,7 +92,7 @@ class DemoScript implements GameScript {
 
 export const DEMO_SCENARIO: ScenarioSpec = {
   id: 'demo',
-  timeoutMs: 120_000,
+  timeoutMs: 90_000,
   onTerminate(cb) { _terminateCb = cb },
   scriptFactory: () => new DemoScript(),
   initialVisibility: {

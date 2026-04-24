@@ -2,11 +2,11 @@ import WebSocket from 'ws'
 import type { BotSpec, BotState, BotCallbackContext, BotCommand } from './BotTypes.js'
 import { isAtTarget } from './BotTypes.js'
 
-const TICK_MS = 50
-const RECONNECT_MS = 2000
-const MOVE_REPORT_DISTANCE = 0.5
-const MOVE_REPORT_INTERVAL_MS = 500
-const NEXT_COMMAND_INTERVAL_MS = 250
+const DEFAULT_TICK_MS = 50
+const DEFAULT_RECONNECT_MS = 2000
+const DEFAULT_MOVE_REPORT_DISTANCE = 0.5
+const DEFAULT_MOVE_REPORT_INTERVAL_MS = 500
+const DEFAULT_NEXT_COMMAND_INTERVAL_MS = 250
 
 export interface BotLogEntry {
   time: number
@@ -20,10 +20,13 @@ export class BotClient {
   private position = { x: 0, z: 0 }
   private state: BotState
   private clientPredictiveTick = 0
-  private tickInterval: ReturnType<typeof setInterval> | null = null
+  private tickTimer: ReturnType<typeof setTimeout> | null = null
   private lastTickTime = Date.now()
   private running = false
   private readonly _logs: BotLogEntry[] = []
+  private readonly tickMs: number
+  private readonly moveReportIntervalMs: number
+  private readonly nextCommandIntervalMs: number
 
   private readonly otherPlayers = new Map<string, { x: number; z: number }>()
   private readonly lastReportedPos = new Map<string, { x: number; z: number }>()
@@ -32,14 +35,26 @@ export class BotClient {
   private currentCommand: BotCommand = { type: 'idle' }
 
   private readonly serverUrl: string
-  private readonly scenarioId: string
+  private readonly routingKey: string
   private readonly spec: BotSpec
+  private readonly autoReady: boolean
 
-  constructor(serverUrl: string, scenarioId: string, spec: BotSpec) {
+  constructor(serverUrl: string, routingKey: string, spec: BotSpec, options?: { tickMs?: number; autoReady?: boolean }) {
     this.serverUrl = serverUrl
-    this.scenarioId = scenarioId
+    this.routingKey = routingKey
     this.spec = spec
     this.state = { ...spec.initialState }
+    this.tickMs = options?.tickMs ?? DEFAULT_TICK_MS
+    this.autoReady = options?.autoReady ?? true
+    const speedFactor = DEFAULT_TICK_MS / this.tickMs
+    this.moveReportIntervalMs = DEFAULT_MOVE_REPORT_INTERVAL_MS / speedFactor
+    this.nextCommandIntervalMs = DEFAULT_NEXT_COMMAND_INTERVAL_MS / speedFactor
+  }
+
+  sendReady(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'ready' }))
+    }
   }
 
   get logs(): readonly BotLogEntry[] { return this._logs }
@@ -50,7 +65,7 @@ export class BotClient {
 
   start(): void {
     this.running = true
-    this.log('info', `starting — server: ${this.serverUrl}/${this.scenarioId}`)
+    this.log('info', `starting — server: ${this.serverUrl}/${this.routingKey}`)
     this.connect()
   }
 
@@ -66,7 +81,7 @@ export class BotClient {
 
   private connect(): void {
     if (!this.running) return
-    const ws = new WebSocket(`${this.serverUrl}/${this.scenarioId}`)
+    const ws = new WebSocket(`${this.serverUrl}/${this.routingKey}`)
     this.ws = ws
 
     ws.on('open', () => {
@@ -88,7 +103,7 @@ export class BotClient {
       this.log('info', `disconnected (code=${code} reason=${reason.toString() || '—'})`)
       this.stopTick()
       if (this.running) {
-        setTimeout(() => this.connect(), RECONNECT_MS)
+        setTimeout(() => this.connect(), DEFAULT_RECONNECT_MS)
       }
     })
 
@@ -103,6 +118,7 @@ export class BotClient {
         this.playerId = msg.playerId as string
         this.position = { x: msg.x as number, z: msg.z as number }
         this.log('info', `welcome as ${this.playerId} at (${this.position.x.toFixed(2)}, ${this.position.z.toFixed(2)})`)
+        if (this.autoReady) this.sendReady()
         break
       }
 
@@ -145,7 +161,7 @@ export class BotClient {
         const lastTime = this.lastReportedTime.get(pid) ?? 0
         const now = Date.now()
         const dist = Math.hypot(newPos.x - lastPos.x, newPos.z - lastPos.z)
-        if (dist >= MOVE_REPORT_DISTANCE && now - lastTime >= MOVE_REPORT_INTERVAL_MS) {
+        if (dist >= DEFAULT_MOVE_REPORT_DISTANCE && now - lastTime >= this.moveReportIntervalMs) {
           const from = { ...lastPos }
           this.lastReportedPos.set(pid, { ...newPos })
           this.lastReportedTime.set(pid, now)
@@ -192,41 +208,53 @@ export class BotClient {
   }
 
   private startTick(): void {
-    this.tickInterval = setInterval(() => {
-      if (!this.playerId || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    let next = performance.now() + this.tickMs
+    const loop = () => {
+      if (!this.running || !this.ws || this.ws.readyState !== 1) return
+      this.doTick()
+      next += this.tickMs
+      const delay = Math.max(0, next - performance.now())
+      this.tickTimer = setTimeout(loop, delay)
+    }
+    this.tickTimer = setTimeout(loop, this.tickMs)
+  }
 
-      const now = Date.now()
-      const dt = Math.min((now - this.lastTickTime) / 1000, 0.1)
-      this.lastTickTime = now
+  private doTick(): void {
+    if (!this.playerId || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
-      const commandCompleted =
-        this.currentCommand.type === 'move' &&
-        isAtTarget(this.position, this.state.target)
+    const now = Date.now()
+    // dt is sim-time per tick (50ms), NOT wall-clock — at accelerated tick rates
+    // the wall-clock dt would be 12× too small and the bot would appear frozen
+    // in sim space. Each input represents exactly one canonical sim-tick.
+    const dt = DEFAULT_TICK_MS / 1000
 
-      if (commandCompleted || now - this.lastNextCommandMs >= NEXT_COMMAND_INTERVAL_MS) {
-        const phase = this.state.phase
-        const fn = this.spec.nextCommand[phase]
-        try {
-          this.currentCommand = fn ? fn(this.makeContext(), { ...this.position }) : { type: 'idle' }
-        } catch (err) {
-          this.log('error', `nextCommand[${phase}] threw: ${err}`)
-          this.currentCommand = { type: 'idle' }
-        }
-        this.lastNextCommandMs = now
+    const commandCompleted =
+      this.currentCommand.type === 'move' &&
+      isAtTarget(this.position, this.state.target)
+
+    if (commandCompleted || now - this.lastNextCommandMs >= this.nextCommandIntervalMs) {
+      const phase = this.state.phase
+      const fn = this.spec.nextCommand[phase]
+      try {
+        this.currentCommand = fn ? fn(this.makeContext(), { ...this.position }) : { type: 'idle' }
+      } catch (err) {
+        this.log('error', `nextCommand[${phase}] threw: ${err}`)
+        this.currentCommand = { type: 'idle' }
       }
+      this.lastNextCommandMs = now
+    }
 
-      const jx = this.currentCommand.type === 'move' ? this.currentCommand.jx : 0
-      const jz = this.currentCommand.type === 'move' ? this.currentCommand.jz : 0
+    const jx = this.currentCommand.type === 'move' ? this.currentCommand.jx : 0
+    const jz = this.currentCommand.type === 'move' ? this.currentCommand.jz : 0
 
-      this.ws.send(JSON.stringify({ type: 'move', tick: this.clientPredictiveTick, inputs: [{ jx, jz, dt }] }))
-      this.clientPredictiveTick++
-    }, TICK_MS)
+    this.ws.send(JSON.stringify({ type: 'move', tick: this.clientPredictiveTick, inputs: [{ jx, jz, dt }] }))
+    this.clientPredictiveTick++
   }
 
   private stopTick(): void {
-    if (this.tickInterval !== null) {
-      clearInterval(this.tickInterval)
-      this.tickInterval = null
+    if (this.tickTimer !== null) {
+      clearTimeout(this.tickTimer)
+      this.tickTimer = null
     }
   }
 

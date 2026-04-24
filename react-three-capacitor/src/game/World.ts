@@ -1,5 +1,7 @@
 import type RAPIER_TYPE from '@dimforge/rapier2d-compat'
 import type { WalkableArea, WalkableRect } from './WorldSpec.js'
+import { buildMapInstanceArtifacts } from './MapInstance.js'
+import type { GameMap } from './GameMap.js'
 
 export type { WalkableArea, WalkableRect } from './WorldSpec.js'
 
@@ -227,8 +229,33 @@ export class World {
     this.mapInstances.set(instance.mapInstanceId, instance)
   }
 
+  // Register a map by its GameMap spec. This is the preferred entry point:
+  // builds the scoped room ids + default adjacency from the map's WorldSpec
+  // and stores the resulting WorldMapInstance on the world.
+  addMap(map: GameMap): WorldMapInstance {
+    const artifacts = buildMapInstanceArtifacts(map.worldSpec, map.mapInstanceId)
+    const defaultAdjacency = new Map<string, string[]>()
+    for (const scopedId of artifacts.scopedRoomIds) {
+      defaultAdjacency.set(scopedId, artifacts.getAdjacentRoomIds(scopedId))
+    }
+    const instance: WorldMapInstance = {
+      mapInstanceId: map.mapInstanceId,
+      scopedRoomIds: artifacts.scopedRoomIds,
+      defaultAdjacency,
+    }
+    this.addMapInstance(instance)
+    return instance
+  }
+
   getMapInstance(mapInstanceId: string): WorldMapInstance | undefined {
     return this.mapInstances.get(mapInstanceId)
+  }
+
+  // Returns the scoped room ids contributed by the named map instance, or an
+  // empty array if no such instance is registered.
+  getRoomsInMapInstance(mapInstanceId: string): string[] {
+    const instance = this.mapInstances.get(mapInstanceId)
+    return instance ? [...instance.scopedRoomIds] : []
   }
 
   // Returns the scoped room id of the room the player last entered (or null).

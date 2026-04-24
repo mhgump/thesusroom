@@ -12,13 +12,22 @@ type PeriodicBroadcast = (npcId: string, x: number, z: number, events: WorldEven
 
 export class NpcManager {
   private readonly entities: Map<string, NpcEntity> = new Map()
-  private readonly timers: Map<string, ReturnType<typeof setInterval>> = new Map()
+  private readonly cancelers: Map<string, () => void> = new Map()
   private readonly world: World
   private readonly periodicBroadcast: PeriodicBroadcast
+  private readonly scheduleSimMs: (ms: number, cb: () => void) => () => void
 
-  constructor(world: World, periodicBroadcast: PeriodicBroadcast) {
+  constructor(
+    world: World,
+    periodicBroadcast: PeriodicBroadcast,
+    scheduleSimMs: (ms: number, cb: () => void) => () => void = (ms, cb) => {
+      const t = setTimeout(cb, ms)
+      return () => clearTimeout(t)
+    },
+  ) {
     this.world = world
     this.periodicBroadcast = periodicBroadcast
+    this.scheduleSimMs = scheduleSimMs
   }
 
   spawnAll(specs: NpcSpec[]): void {
@@ -32,15 +41,21 @@ export class NpcManager {
     this.entities.set(npcId, entity)
 
     if (typeof spec.trigger === 'object') {
-      const timer = setInterval(() => {
-        const emitted: WorldEvent[] = []
-        this.runTick(entity, [], emitted)
-        const np = this.world.getPlayer(entity.id)
-        if (np && emitted.length > 0) {
-          this.periodicBroadcast(entity.id, np.x, np.z, emitted)
-        }
-      }, spec.trigger.period)
-      this.timers.set(npcId, timer)
+      const period = spec.trigger.period
+      const schedule = () => {
+        const cancel = this.scheduleSimMs(period, () => {
+          if (!this.entities.has(npcId)) return
+          const emitted: WorldEvent[] = []
+          this.runTick(entity, [], emitted)
+          const np = this.world.getPlayer(entity.id)
+          if (np && emitted.length > 0) {
+            this.periodicBroadcast(entity.id, np.x, np.z, emitted)
+          }
+          schedule()
+        })
+        this.cancelers.set(npcId, cancel)
+      }
+      schedule()
     }
   }
 
@@ -61,8 +76,7 @@ export class NpcManager {
   }
 
   destroyAll(): void {
-    for (const timer of this.timers.values()) clearInterval(timer)
-    this.timers.clear()
+    for (const c of this.cancelers.values()) c()
     for (const id of this.entities.keys()) this.world.removePlayer(id)
     this.entities.clear()
   }

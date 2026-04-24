@@ -16,6 +16,11 @@ import { INSERT_BOT_TOOL } from './insertBot/index.js'
 import { RUN_SCENARIO_WITH_BOTS_TOOL } from './runScenarioWithBots/index.js'
 import { GET_SCENARIO_LOGS_TOOL } from './getScenarioLogs/index.js'
 import { GET_BOT_LOGS_TOOL } from './getBotLogs/index.js'
+import { INSERT_RUN_SCENARIO_SPEC_TOOL } from './insertRunScenarioSpec/index.js'
+import { RUN_SCENARIO_FROM_SPEC_TOOL } from './runScenarioFromSpec/index.js'
+import { ADD_NOTES_TO_TEST_SPEC_TOOL } from './addNotesToTestSpec/index.js'
+import { READ_TEST_SPEC_TOOL } from './readTestSpec/index.js'
+import { LIST_CONTENT_TOOL } from './listContent/index.js'
 import { MAP_AGENT_TOOL } from './mapAgentTool/index.js'
 import { SCENARIO_AGENT_TOOL } from './scenarioAgentTool/index.js'
 import { BOT_AGENT_TOOL } from './botAgentTool/index.js'
@@ -30,6 +35,17 @@ export * from './insertBot/index.js'
 export * from './runScenarioWithBots/index.js'
 export * from './getScenarioLogs/index.js'
 export * from './getBotLogs/index.js'
+export * from './insertRunScenarioSpec/index.js'
+export * from './runScenarioFromSpec/index.js'
+export * from './addNotesToTestSpec/index.js'
+export * from './readTestSpec/index.js'
+export * from './listContent/index.js'
+export type {
+  RunScenarioSpec,
+  RunScenarioSpecBot,
+  RunScenarioSpecNote,
+  RunScenarioSpecOpts,
+} from './_shared/runScenarioSpec.js'
 export * from './mapAgentTool/index.js'
 export * from './scenarioAgentTool/index.js'
 export * from './botAgentTool/index.js'
@@ -64,6 +80,12 @@ export const ALL_TOOLS: Tool[] = [
   RUN_SCENARIO_WITH_BOTS_TOOL as Tool,
   GET_SCENARIO_LOGS_TOOL as Tool,
   GET_BOT_LOGS_TOOL as Tool,
+  // Test-spec lifecycle (persisted run-scenario attempts under content/test_specs/).
+  INSERT_RUN_SCENARIO_SPEC_TOOL as Tool,
+  RUN_SCENARIO_FROM_SPEC_TOOL as Tool,
+  ADD_NOTES_TO_TEST_SPEC_TOOL as Tool,
+  READ_TEST_SPEC_TOOL as Tool,
+  LIST_CONTENT_TOOL as Tool,
   // Kept for callers that want full control of run-scenario plumbing.
   RUN_SCENARIO_TOOL as Tool,
 ]

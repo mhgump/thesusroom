@@ -10,9 +10,12 @@ export type RunScenarioAgentToolOutput = RunScenarioAgentResponse
 export const RUN_SCENARIO_AGENT_SPEC: ToolSpec = {
   name: 'run_scenario_agent',
   description:
-    'Delegate to a Run-Scenario Agent that runs a scenario with chosen bots, ' +
-    'inspects logs, and summarizes whether the prompt\'s goal was achieved. ' +
-    'Returns {achieved_goal, summary, failure_reason_summary, run_artifact_id}.',
+    'Delegate to a Run-Scenario Agent that picks a scenario + bots, persists ' +
+    'a test spec under content/test_specs/{name}.json, runs the scenario, ' +
+    'inspects logs, and appends its reasoning to the spec\'s notes array. ' +
+    'Returns {test_spec_name, success} — the full trail (scenario/map/bots/' +
+    'opts, notes, run_artifact_ids) lives on disk in the spec; use ' +
+    'read_test_spec to load it.',
   input_schema: {
     type: 'object',
     additionalProperties: false,

@@ -10,11 +10,14 @@ export class BotManager {
     this.serverUrl = serverUrl
   }
 
-  spawnBot(scenarioId: string, spec: BotSpec): BotClient {
-    const client = new BotClient(this.serverUrl, scenarioId, spec)
+  // `routingKey` is the full path segment the bot should connect under
+  // (e.g. `r_demo`). Scenario-spawned bots reuse the spawning room's key so
+  // they land back in the same orchestration.
+  spawnBot(routingKey: string, spec: BotSpec): BotClient {
+    const client = new BotClient(this.serverUrl, routingKey, spec)
     this.clients.add(client)
     client.start()
-    console.log(`[BotManager] spawned bot for scenario:${scenarioId}`)
+    console.log(`[BotManager] spawned bot for key:${routingKey}`)
     return client
   }
 

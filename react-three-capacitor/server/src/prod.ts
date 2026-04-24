@@ -20,17 +20,17 @@ const server = http.createServer(app)
 const gameServer = new GameServer(server)
 
 // Observer not-found guard: return dummy HTML before the SPA fallback catches it.
-app.get('/observe/:scenario/:i/:j', (req, res) => {
+app.get('/observe/:key/:i/:j', (req, res) => {
   const i = parseInt(req.params.i, 10)
   const j = parseInt(req.params.j, 10)
-  if (!gameServer.getRegistry().hasRoomAndPlayer(req.params.scenario, i, j)) {
+  if (!gameServer.getRouter().hasRoomAndPlayer(req.params.key, i, j)) {
     res.status(404).send('<html><body><p>not found</p></body></html>')
     return
   }
   res.sendFile(path.join(staticDir, 'index.html'))
 })
 
-// SPA fallback: serve index.html for all paths so React handles /scenario1, /demo, etc.
+// SPA fallback: serve index.html for all paths so React handles /r_demo, /r_scenario1, etc.
 app.get('*', (_req, res) => {
   res.sendFile(path.join(staticDir, 'index.html'))
 })

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { GameScene } from './scene/GameScene';
 import { HUD } from './hud/HUD';
@@ -6,7 +6,8 @@ import { useWebSocket } from './network/useWebSocket';
 import { useGameStore } from './store/gameStore';
 
 export default function App() {
-  const [sceneReady, setSceneReady] = useState(false);
+  const sceneReady = useGameStore((s) => s.sceneReady);
+  const setSceneReady = useGameStore((s) => s.setSceneReady);
   const setObserverMode = useGameStore((s) => s.setObserverMode);
 
   useEffect(() => {

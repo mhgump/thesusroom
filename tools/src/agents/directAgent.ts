@@ -6,6 +6,8 @@ import { INSERT_BOT_TOOL } from '../insertBot/index.js'
 import { RUN_SCENARIO_WITH_BOTS_TOOL } from '../runScenarioWithBots/index.js'
 import { GET_SCENARIO_LOGS_TOOL } from '../getScenarioLogs/index.js'
 import { GET_BOT_LOGS_TOOL } from '../getBotLogs/index.js'
+import { READ_TEST_SPEC_TOOL } from '../readTestSpec/index.js'
+import { LIST_CONTENT_TOOL } from '../listContent/index.js'
 import { MAP_AGENT_TOOL } from '../mapAgentTool/index.js'
 import { SCENARIO_AGENT_TOOL } from '../scenarioAgentTool/index.js'
 import { BOT_AGENT_TOOL } from '../botAgentTool/index.js'
@@ -73,6 +75,9 @@ export async function runDirectAgent(
       RUN_SCENARIO_WITH_BOTS_TOOL as Tool,
       GET_SCENARIO_LOGS_TOOL as Tool,
       GET_BOT_LOGS_TOOL as Tool,
+      // Discovery + inspection.
+      LIST_CONTENT_TOOL as Tool,
+      READ_TEST_SPEC_TOOL as Tool,
     ],
     responseSpec: DIRECT_RESPONSE_SPEC,
     verbose: opts.verbose,

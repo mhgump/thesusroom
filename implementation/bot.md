@@ -24,7 +24,7 @@ Node.js is single-threaded. Each bot is managed by a `setInterval` tick and WebS
 
 ## BotClient lifecycle
 
-1. `start()` → `connect()` opens `ws://<serverUrl>/<scenarioId>`.
+1. `start()` → `connect()` opens `ws://<serverUrl>/<routingKey>`. The routing key is the same `r_{scenario}` path shape human clients use, not a bare scenario id.
 2. On `open`: reset `clientPredictiveTick` to 0, start the 50 ms tick interval.
 3. Every tick: call `spec.nextCommand(ctx, position)` → send `{ type: 'move', tick: clientPredictiveTick, inputs: [{ jx, jz, dt }] }`, then increment `clientPredictiveTick`.
 4. On `move_ack`: update `this.position` from the server-authoritative values.
@@ -42,13 +42,13 @@ Node.js is single-threaded. Each bot is managed by a `setInterval` tick and WebS
 
 ```
 GameScriptManager.spawnBotFn
-  → Room constructor spawnBotFn parameter
-  → ScenarioRegistry: (spec) => this.spawnBotFn!(scenarioId, spec)
-  → BotManager.spawnBot(scenarioId, spec)
-  → new BotClient(serverUrl, scenarioId, spec).start()
+  → Room constructor spawnBotFn parameter (set via RoomOptions)
+  → DefaultScenarioOrchestration: (spec) => spawnBotFn(ctx.routingKey, spec)
+  → BotManager.spawnBot(routingKey, spec)
+  → new BotClient(serverUrl, routingKey, spec).start()
 ```
 
-`BotManager` is constructed in `GameServer` with the derived server URL and passed to `ScenarioRegistry` via its constructor. `ScenarioRegistry` partially applies the scenario ID so each room's spawn function is pre-bound to its own scenario.
+`BotManager` is constructed in `GameServer` with the derived server URL and passed to the routing resolver's factory. `DefaultScenarioOrchestration` partially applies the room's routing key (e.g. `r_demo`) into the spawn function so scenario-spawned bots land in the same orchestration as the humans.
 
 ## Demo bot
 

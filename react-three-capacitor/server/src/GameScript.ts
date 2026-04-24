@@ -75,4 +75,6 @@ export interface GameScriptContext {
 export interface GameScript {
   // Called whenever a new human player connects to the room.
   onPlayerConnect(ctx: GameScriptContext, playerId: string): void
+  // Called when a connected player signals client-side readiness.
+  onPlayerReady?(ctx: GameScriptContext, playerId: string): void
 }

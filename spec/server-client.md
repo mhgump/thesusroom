@@ -1,7 +1,8 @@
 # Server–Client Protocol — Spec
 
 - The client and server run the exact same world simulation code; physics constants and event logic are shared.
-- The server runs a fixed-rate simulation tick; each tick increments a monotonic `serverTick` counter, processes every client's buffered moves, and emits outgoing messages. The tick runs on a periodic loop independent of client messages, but only emits `move_ack` / `player_update` messages for players that had moves to process.
+- The server runs a simulation tick at a configurable wall-clock rate; each tick increments a monotonic `serverTick` counter, advances simulation by a fixed 50 ms of sim-time, processes every client's buffered moves, and emits outgoing messages. The tick runs on a periodic loop independent of client messages, but only emits `move_ack` / `player_update` messages for players that had moves to process.
+- Callbacks scheduled by a game script (`ctx.after`), button cooldowns, and periodic NPC triggers are tick-driven — they count in ticks (and therefore in sim-time), not wall-clock time. Running the server at a higher wall-clock tick rate advances the scenario proportionally faster.
 - The client predicts locally every frame by running the same physics on its own world instance; the local player's visual position follows this predicted state each frame.
 - The client batches its per-frame predicted inputs and sends them to the server at the tick rate. Each `move` message carries a monotonically increasing `clientTick` and the ordered array of per-frame `{jx, jz, dt}` inputs accumulated since the last send.
 - The server never drops or rejects client moves. Moves received between ticks are buffered and, on the next tick, applied per player in ascending `clientTick` order — re-establishing the client's intended input order even when messages arrive reordered.
@@ -17,13 +18,16 @@
 - Remote events are held in a per-player queue keyed by `serverTick` and delivered exactly once when `render_tick` reaches that tick. The render buffer therefore applies uniformly to remote positions and events, keeping them temporally aligned.
 - Events in a `move_ack` are processed immediately by the sender; events in a `player_update` are subject to the render-tick buffer.
 - Each world instance corresponds 1:1 to a multiplayer websocket room; the websocket room's lifetime is the world's lifetime.
-- For every websocket room the server creates, the current setup is exactly: one world instance, one map instance loaded into it, and one scenario attached to every player in the map.
-- The server maintains a registry mapping scenario names to open world instances; an instance is open when its attached scenario still accepts new connections.
-- The demo scenario's world is pre-warmed at server startup and is always open for new connections.
-- A player connecting to `/{scenario_name}` is routed to the open world for that scenario; if no open world exists, a new one is created. If the scenario name is unknown, the connection is rejected.
-- Connecting to `/` or any unrecognised path defaults to the `demo` scenario.
-- When the game script calls `closeScenario`, the world is removed from the open registry; new players are routed to a fresh world or rejected. The closed world continues running for its current players and is destroyed when the last player disconnects.
-- On connection the server sends: (1) `welcome` with the player's assigned id, colour, spawn position, initial HP, and current `serverTick`; (2) `player_joined` for each already-connected player (human or NPC) with their current position, animation state, HP, and the current `serverTick`.
+- Every websocket room is governed by a room orchestration mode that decides how the room is assembled, which players are admitted, when it stops accepting new connections ("closed"), and when it is destroyed.
+- The server maintains, per routing key, a list of open rooms for that key and a stable list of all rooms (open or closed) used to resolve observer URLs.
+- A player connection URL is a routing key in the path. The only recognised key shape in the current deployment is `r_{scenario_name}`, which selects the default scenario orchestration mode with that scenario. Connecting to `/` or the empty path is treated as `r_demo`; any other path shape is rejected.
+- When a player connects for a routing key, the server picks a random open room for that key (if any exist) or creates a new one via the key's orchestration. Unknown routing keys are rejected with close code 4004.
+- The routing-key `r_demo` is pre-warmed at server startup so the first player to connect skips room construction.
+- When an orchestration signals that a room is closed, the server removes it from the open list for its key; it stays in the all-rooms list for the key until destroyed. Already-connected players stay connected. The room is destroyed when its last player disconnects, at which point its slot in the all-rooms list is freed.
+- The default scenario orchestration mode runs one world with one map and one scenario, keeps at most one open room per routing key, closes that room when the attached script calls `closeScenario`, and destroys it when the last player disconnects.
+- A room may be created with its scenario script paused: players connect normally and can signal ready, but the attached script's `onPlayerConnect` and `onPlayerReady` callbacks do not fire until the room is explicitly started. Starting the room replays those callbacks in the order the players connected / readied during the paused phase, then normal flow resumes. The production server never pauses; this is used by the test harness so the observer finishes loading before the scenario begins.
+- On connection the server sends: (1) `welcome` with the player's assigned id, colour, spawn position, initial HP, current `serverTick`, and the room's effective wall-clock tick rate (`tickRateHz`); (2) `player_joined` for each already-connected player (human or NPC) with their current position, animation state, HP, and the current `serverTick`.
+- After the loading screen dismisses, the client sends a `ready` message to the server exactly once per session. Observer connections send the same message when their scene finishes loading.
 - On connection the server sends `player_joined` to every already-connected player describing the new player.
 - On disconnection the server removes the player from the world and broadcasts `player_left` to all remaining players.
 - On elimination (HP reaches zero) the server removes the player from the world and broadcasts `player_left` to all remaining players.

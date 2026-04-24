@@ -4,7 +4,7 @@ import type { AnimationState, WorldEvent, MoveInput } from './World.js'
 import type { FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState, RuleLabel } from './GameSpec.js'
 
 export type ServerMessage =
-  | { type: 'welcome'; playerId: string; color: string; x: number; z: number; hp: 0 | 1 | 2; serverTick: number }
+  | { type: 'welcome'; playerId: string; color: string; x: number; z: number; hp: 0 | 1 | 2; serverTick: number; tickRateHz: number }
   | { type: 'player_joined'; playerId: string; color: string; x: number; z: number; animState: AnimationState; hp: 0 | 1 | 2; isNpc?: boolean; hasHealth?: boolean; serverTick: number }
   | { type: 'player_left'; playerId: string }
   | { type: 'move_ack'; clientTick: number; x: number; z: number; events: WorldEvent[]; serverTick: number }
@@ -25,3 +25,4 @@ export type ServerMessage =
 export type ClientMessage =
   | { type: 'move'; tick: number; inputs: MoveInput[] }
   | { type: 'choice'; eventId: string; optionId: string }
+  | { type: 'ready' }

@@ -51,8 +51,10 @@ interface GameState {
   buttonSpecs: Record<string, ButtonSpec>
   buttonStates: Record<string, { state: ButtonState; occupancy: number }>
   localButtonPressing: Record<string, boolean>
+  sceneReady: boolean
 
   setConnected: (v: boolean) => void
+  setSceneReady: (v: boolean) => void
   setObserverMode: (v: boolean) => void
   setObserverEndReason: (r: 'none' | 'eliminated' | 'disconnected') => void
   setPlayerId: (id: string) => void
@@ -116,8 +118,10 @@ export const useGameStore = create<GameState>((set) => ({
   buttonSpecs: {},
   buttonStates: {},
   localButtonPressing: {},
+  sceneReady: false,
 
   setConnected: (v) => set({ connected: v }),
+  setSceneReady: (v) => set({ sceneReady: v }),
   setObserverMode: (v) => set({ observerMode: v }),
   setObserverEndReason: (r) => set({ observerEndReason: r }),
   setPlayerId: (id) => set({ playerId: id }),
@@ -258,6 +262,7 @@ export const useGameStore = create<GameState>((set) => ({
     buttonSpecs: {},
     buttonStates: {},
     localButtonPressing: {},
+    sceneReady: false,
   }),
 }))
 

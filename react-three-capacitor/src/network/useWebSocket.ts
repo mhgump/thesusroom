@@ -9,18 +9,30 @@ import {
   registerServerTick,
   resetBuffers,
   getRenderTick,
+  setServerTickRateHz,
+  getServerTickRateHz,
 } from './positionBuffer'
 import type { ServerMessage } from './types'
 import { CURRENT_MAP } from '../../../content/maps'
 import { localWorld } from '../game/localWorld'
-import { TICK_RATE_HZ } from '../game/World'
+
+function getWsPath(): string {
+  const path = window.location.pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+  // Observer paths pass through verbatim so the server routes them to the
+  // observer handler rather than the player handler.
+  if (/^observe\/[^/]+\/\d+\/\d+$/.test(path)) return path
+  // Everything else must be an `r_{scenario}` routing key. An empty path
+  // (root URL) defaults to `r_demo` so visiting `/` still loads the demo.
+  if (path.length === 0) return 'r_demo'
+  return path.split('/')[0]
+}
 
 function getWsUrl(): string {
-  const scenarioPath = window.location.pathname.replace(/^\/+/, '') || 'demo'
+  const wsPath = getWsPath()
   const envUrl = import.meta.env.VITE_WS_URL
-  if (envUrl) return `${envUrl}/${scenarioPath}`
+  if (envUrl) return `${envUrl}/${wsPath}`
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${window.location.host}/${scenarioPath}`
+  return `${proto}://${window.location.host}/${wsPath}`
 }
 
 let singleton: WebSocketClient | null = null
@@ -50,6 +62,7 @@ export function useWebSocket(): void {
 
       switch (msg.type) {
         case 'welcome':
+          setServerTickRateHz(msg.tickRateHz)
           registerServerTick(msg.serverTick)
           store.setPlayerId(msg.playerId)
           store.setLocalColor(msg.color)
@@ -106,7 +119,7 @@ export function useWebSocket(): void {
             // Defer until the render tick reaches the event's tick. Approximate
             // by converting tick-lag to ms at the fixed 20 Hz tick rate.
             const ticksUntil = Math.max(0, msg.serverTick - getRenderTick())
-            const delayMs = ticksUntil * (1000 / TICK_RATE_HZ)
+            const delayMs = ticksUntil * (1000 / getServerTickRateHz())
             setTimeout(() => {
               if (msg.event.type === 'show_choice') store.showChoice(msg.event)
               else if (msg.event.type === 'show_rule') store.showRule(msg.event)
@@ -208,6 +221,21 @@ export function useWebSocket(): void {
     return () => { remove(); removeClose() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    let sent = false
+    const check = () => {
+      const s = useGameStore.getState()
+      if (sent) return
+      if (s.sceneReady && s.connected) {
+        sent = true
+        getClient().send({ type: 'ready' })
+      }
+    }
+    const unsub = useGameStore.subscribe(check)
+    check()
+    return () => unsub()
+  }, [])
 }
 
 export function useWsSend() {
@@ -217,6 +245,7 @@ export function useWsSend() {
       client.send({ type: 'move', tick, inputs }),
     sendChoice: (eventId: string, optionId: string) =>
       client.send({ type: 'choice', eventId, optionId }),
+    sendReady: () => client.send({ type: 'ready' }),
   }
 }
 

@@ -30,6 +30,15 @@ const MAX_BUFFER_AGE_TICKS = 40  // drop snapshots older than ~2s
 let serverWorldTick = 0
 let renderTickFloat = 0
 let renderTickInitialized = false
+let serverTickRateHz = TICK_RATE_HZ
+
+export function setServerTickRateHz(hz: number): void {
+  if (hz > 0) serverTickRateHz = hz
+}
+
+export function getServerTickRateHz(): number {
+  return serverTickRateHz
+}
 
 export function getRenderTick(): number {
   return renderTickFloat
@@ -61,7 +70,7 @@ export function advanceRenderTick(deltaSec: number): void {
   if (lag < lo) speed = 1.0
   else if (lag >= hi) speed = 2.0
   else speed = 1.0 + (lag - lo) / (hi - lo)
-  renderTickFloat = Math.min(target, renderTickFloat + deltaSec * TICK_RATE_HZ * speed)
+  renderTickFloat = Math.min(target, renderTickFloat + deltaSec * serverTickRateHz * speed)
 }
 
 // ── Remote player position snapshots (interpolated, not consumed) ─────────────
@@ -164,4 +173,5 @@ export function resetBuffers(): void {
   serverWorldTick = 0
   renderTickFloat = 0
   renderTickInitialized = false
+  serverTickRateHz = TICK_RATE_HZ
 }

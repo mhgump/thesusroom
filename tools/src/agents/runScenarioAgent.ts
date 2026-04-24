@@ -1,46 +1,36 @@
 import type { Tool } from '../framework.js'
 import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
-import { RUN_SCENARIO_WITH_BOTS_TOOL } from '../runScenarioWithBots/index.js'
+import { INSERT_RUN_SCENARIO_SPEC_TOOL } from '../insertRunScenarioSpec/index.js'
+import { RUN_SCENARIO_FROM_SPEC_TOOL } from '../runScenarioFromSpec/index.js'
+import { ADD_NOTES_TO_TEST_SPEC_TOOL } from '../addNotesToTestSpec/index.js'
+import { READ_TEST_SPEC_TOOL } from '../readTestSpec/index.js'
+import { LIST_CONTENT_TOOL } from '../listContent/index.js'
 import { GET_SCENARIO_LOGS_TOOL } from '../getScenarioLogs/index.js'
 import { GET_BOT_LOGS_TOOL } from '../getBotLogs/index.js'
 import { loadPrompt } from './_loadPrompt.js'
 
 export interface RunScenarioAgentResponse {
-  achieved_goal: boolean
-  summary: string
-  failure_reason_summary: string
-  run_artifact_id: string
+  test_spec_name: string
+  success: boolean
 }
 
 export const RUN_SCENARIO_RESPONSE_SPEC: ResponseSpec = {
   description:
-    '{ achieved_goal, summary, failure_reason_summary, run_artifact_id } — ' +
-    'achieved_goal is true iff the prompt\'s goal was met by the run; summary ' +
-    'is a one-paragraph description of what happened (complete/timeout, ' +
-    'survivors, notable log events); failure_reason_summary is a short reason ' +
-    'the goal was not met (empty string when achieved_goal=true); ' +
-    'run_artifact_id is the artifact id you used (empty string if no run ' +
-    'succeeded enough to produce one).',
+    '{ test_spec_name, success } — test_spec_name is the slug of the spec ' +
+    'you created under content/test_specs/; success is true iff the prompt\'s ' +
+    'goal was met by the run. Full reasoning lives in the spec\'s notes array.',
   schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['achieved_goal', 'summary', 'failure_reason_summary', 'run_artifact_id'],
+    required: ['test_spec_name', 'success'],
     properties: {
-      achieved_goal: {
+      test_spec_name: {
+        type: 'string',
+        description: 'Slug of the test spec this attempt produced.',
+      },
+      success: {
         type: 'boolean',
         description: 'True iff the prompt\'s goal was achieved by the run.',
-      },
-      summary: {
-        type: 'string',
-        description: 'One-paragraph description of what happened during the run.',
-      },
-      failure_reason_summary: {
-        type: 'string',
-        description: 'Short reason the goal was not met; empty string when achieved_goal=true.',
-      },
-      run_artifact_id: {
-        type: 'string',
-        description: 'Artifact id of the run (empty string if no artifact was produced).',
       },
     },
   },
@@ -54,7 +44,11 @@ export async function runRunScenarioAgent(
     systemPrompt: loadPrompt('run-scenario-agent.md'),
     userPrompt,
     tools: [
-      RUN_SCENARIO_WITH_BOTS_TOOL as Tool,
+      INSERT_RUN_SCENARIO_SPEC_TOOL as Tool,
+      RUN_SCENARIO_FROM_SPEC_TOOL as Tool,
+      ADD_NOTES_TO_TEST_SPEC_TOOL as Tool,
+      READ_TEST_SPEC_TOOL as Tool,
+      LIST_CONTENT_TOOL as Tool,
       GET_SCENARIO_LOGS_TOOL as Tool,
       GET_BOT_LOGS_TOOL as Tool,
     ],

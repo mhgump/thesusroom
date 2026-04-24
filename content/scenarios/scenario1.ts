@@ -1,4 +1,4 @@
-import type { ScenarioSpec } from '../../react-three-capacitor/server/src/ScenarioRegistry.js'
+import type { ScenarioSpec } from '../../react-three-capacitor/server/src/ContentRegistry.js'
 import type { GameScript, GameScriptContext } from '../../react-three-capacitor/server/src/GameScript.js'
 
 const ALL_REGIONS = ['s1_v1', 's1_v2', 's1_v3', 's1_v4']

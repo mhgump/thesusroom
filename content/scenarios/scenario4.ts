@@ -1,4 +1,4 @@
-import type { ScenarioSpec } from '../../react-three-capacitor/server/src/ScenarioRegistry.js'
+import type { ScenarioSpec } from '../../react-three-capacitor/server/src/ContentRegistry.js'
 import type { GameScript } from '../../react-three-capacitor/server/src/GameScript.js'
 
 let _terminateCb: (() => void) | null = null

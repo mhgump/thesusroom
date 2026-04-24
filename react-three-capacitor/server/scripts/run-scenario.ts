@@ -39,7 +39,7 @@ import { SCENARIO2_SCENARIO } from '../../../content/scenarios/scenario2.js'
 import { SCENARIO3_SCENARIO } from '../../../content/scenarios/scenario3.js'
 import { SCENARIO4_SCENARIO } from '../../../content/scenarios/scenario4.js'
 import type { BotSpec } from '../src/bot/BotTypes.js'
-import type { ScenarioSpec } from '../src/ScenarioRegistry.js'
+import type { ScenarioSpec } from '../src/ContentRegistry.js'
 
 const SCENARIO_SPECS: Record<string, ScenarioSpec> = {
   demo: DEMO_SCENARIO,
@@ -87,6 +87,8 @@ const { values } = parseArgs({
     'output-dir':        { type: 'string'                   },
     'response-json':     { type: 'string'                   },
     timeout:             { type: 'string'                   },
+    'tick-rate-hz':      { type: 'string',  default: '240'  },
+    'capture-fps':       { type: 'string',  default: '60'   },
   },
   strict: true,
 })
@@ -103,6 +105,21 @@ const RESPONSE_JSON    = values['response-json']
   ? path.resolve(process.cwd(), values['response-json'])
   : null
 const TIMEOUT_OVERRIDE = values.timeout ? parseInt(values.timeout, 10) : undefined
+
+const TICK_RATE_HZ = parseFloat(values['tick-rate-hz'] ?? '240')
+if (!Number.isFinite(TICK_RATE_HZ) || TICK_RATE_HZ <= 0) {
+  console.error(`--tick-rate-hz must be > 0 — got ${values['tick-rate-hz']}`)
+  process.exit(1)
+}
+const TICK_MS = 1000 / TICK_RATE_HZ
+const SPEED_MULTIPLIER = TICK_RATE_HZ / 20
+const CAPTURE_FPS = parseFloat(values['capture-fps'] ?? '60')
+if (!Number.isFinite(CAPTURE_FPS) || CAPTURE_FPS <= 0) {
+  console.error(`--capture-fps must be > 0 — got ${values['capture-fps']}`)
+  process.exit(1)
+}
+
+console.log('[run-scenario] tickRateHz=%d tickMs=%s speedMult=%d captureFps=%d', TICK_RATE_HZ, TICK_MS.toFixed(3), SPEED_MULTIPLIER, CAPTURE_FPS)
 
 // Parse --log-bot-indices: undefined → all bots, "" → none, "0,2" → [0, 2]
 const LOG_BOT_INDICES: number[] | null = values['log-bot-indices'] === undefined
@@ -209,13 +226,31 @@ const app = express()
 if (RECORD_BOT_INDEX !== null) app.use(express.static(staticDir))
 
 const httpServer = http.createServer(app)
-const gameServer = new GameServer(httpServer, PORT)
+// When recording, leave the scenario in its "created but not started" state
+// until the observer browser is recording. Bots can connect and auto-ready
+// freely during that window; the Scenario buffers their connect/ready events
+// and replays them in order when `startScenario(id)` is called. Non-recording
+// runs start the scenario immediately.
+const AUTO_START = RECORD_BOT_INDEX === null
+const gameServer = new GameServer(httpServer, PORT, {
+  tickRateHz: TICK_RATE_HZ,
+  autoStartScenario: AUTO_START,
+})
+
+let observerReadyFired = false
+const observerReadyPromise = new Promise<void>(resolve => {
+  const unsub = gameServer.onObserverReady(() => {
+    observerReadyFired = true
+    unsub()
+    resolve()
+  })
+})
 
 if (RECORD_BOT_INDEX !== null) {
-  app.get('/observe/:scenario/:i/:j', (req, res) => {
+  app.get('/observe/:key/:i/:j', (req, res) => {
     const i = parseInt(req.params.i, 10)
     const j = parseInt(req.params.j, 10)
-    if (!gameServer.getRegistry().hasRoomAndPlayer(req.params.scenario, i, j)) {
+    if (!gameServer.getRouter().hasRoomAndPlayer(req.params.key, i, j)) {
       res.status(404).send('<html><body><p>not found</p></body></html>')
       return
     }
@@ -249,9 +284,11 @@ console.log(`[run-scenario] server on http://localhost:${PORT}`)
 
 // ── Connect bots ──────────────────────────────────────────────────────────────
 
+const ROUTING_KEY = `r_${SCENARIO_ID}`
+
 const botClients: BotClient[] = []
 for (const spec of botSpecs) {
-  const client = new BotClient(`ws://localhost:${PORT}`, SCENARIO_ID, spec)
+  const client = new BotClient(`ws://localhost:${PORT}`, ROUTING_KEY, spec, { tickMs: TICK_MS })
   client.start()
   botClients.push(client)
   await new Promise(r => setTimeout(r, 100))
@@ -260,31 +297,35 @@ for (const spec of botSpecs) {
 // Wait for bots to register on the server.
 await new Promise(r => setTimeout(r, 300))
 
-const effectiveTimeout = TIMEOUT_OVERRIDE ?? scenarioSpec.timeoutMs
+// Scenario timeouts are expressed in sim-ms; scale to wall-clock by the speed
+// multiplier so a 90s / 1800-tick scenario takes 7.5s wall at 240Hz.
+const simTimeoutMs = TIMEOUT_OVERRIDE ?? scenarioSpec.timeoutMs
+const effectiveTimeout = simTimeoutMs / SPEED_MULTIPLIER
 const timeoutPromise = new Promise<void>(resolve => setTimeout(resolve, effectiveTimeout))
 
 // ── Optionally launch browser and record ──────────────────────────────────────
 
-type ChromiumBrowser = Awaited<ReturnType<typeof import('playwright')['chromium']['launch']>>
+type PlaywrightModule = typeof import('playwright')
+type ChromiumBrowser = Awaited<ReturnType<PlaywrightModule['chromium']['launch']>>
 type BrowserContext = Awaited<ReturnType<ChromiumBrowser['newContext']>>
+type CDPSession = Awaited<ReturnType<BrowserContext['newCDPSession']>>
+type FfmpegProcess = ReturnType<typeof import('node:child_process')['spawn']>
 let browser: ChromiumBrowser | null = null
 let context: BrowserContext | null = null
-let videoHandle: ReturnType<Awaited<ReturnType<BrowserContext['newPage']>>['video']> | null = null
+let cdp: CDPSession | null = null
+let ffmpeg: FfmpegProcess | null = null
 let videoOutPath: string | null = null
 let screenshotOutPath: string | null = null
 let screenshotHasContent: boolean | null = null
 
 if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
   const { chromium } = await import('playwright')
-  const observeUrl = `http://localhost:${PORT}/observe/${SCENARIO_ID}/0/${RECORD_BOT_INDEX}`
+  const observeUrl = `http://localhost:${PORT}/observe/${ROUTING_KEY}/0/${RECORD_BOT_INDEX}`
   console.log(`[run-scenario] observing ${observeUrl}`)
 
   browser = await chromium.launch({ headless: true })
-  context = await browser.newContext({
-    recordVideo: { dir: OUTPUT_DIR, size: { width: 1280, height: 720 } },
-  })
+  context = await browser.newContext({ viewport: { width: 1280, height: 720 } })
   const page = await context.newPage()
-  videoHandle = page.video()
 
   page.on('console', msg => {
     if (msg.type() === 'error') console.error(`[browser:error] ${msg.text()}`)
@@ -292,7 +333,57 @@ if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
   page.on('pageerror', err => console.error(`[browser:pageerror] ${err.message}`))
 
   await page.goto(observeUrl)
+
+  const OBSERVER_READY_FALLBACK_MS = 10_000
+  const observerReadyResult = await Promise.race([
+    observerReadyPromise.then(() => 'ready' as const),
+    new Promise<'timeout'>(resolve => setTimeout(() => resolve('timeout'), OBSERVER_READY_FALLBACK_MS)),
+  ])
+  if (observerReadyResult === 'ready') {
+    console.log('[run-scenario] observer ready signal received — starting screencast')
+  } else {
+    console.warn(`[run-scenario] observer ready signal did not arrive within ${OBSERVER_READY_FALLBACK_MS}ms — starting screencast anyway`)
+  }
+
   console.log(`[run-scenario] recording started (timeout: ${effectiveTimeout}ms)`)
+
+  const { spawn } = await import('node:child_process')
+  videoOutPath = path.join(OUTPUT_DIR, `${RECORD_BOT_INDEX}.mp4`)
+  ffmpeg = spawn('ffmpeg', [
+    '-y',
+    '-f', 'image2pipe',
+    '-framerate', String(CAPTURE_FPS),
+    '-i', '-',
+    '-c:v', 'libx264',
+    '-pix_fmt', 'yuv420p',
+    '-r', String(CAPTURE_FPS),
+    videoOutPath,
+  ])
+  ffmpeg.stderr?.on('data', (_d: Buffer) => { /* noisy; drop */ })
+  ffmpeg.on('error', (err: Error) => console.error(`[ffmpeg:error] ${err.message}`))
+
+  cdp = await context.newCDPSession(page)
+  const cdpSession = cdp
+  const ffmpegProc = ffmpeg
+  cdpSession.on('Page.screencastFrame', async (params: unknown) => {
+    const { data, sessionId } = params as { data: string; sessionId: number }
+    try { ffmpegProc.stdin?.write(Buffer.from(data, 'base64')) } catch { /* ignore */ }
+    try { await cdpSession.send('Page.screencastFrameAck', { sessionId }) } catch { /* ignore */ }
+  })
+  await cdpSession.send('Page.startScreencast', { format: 'jpeg', quality: 80, everyNthFrame: 1 })
+
+  // Observer is recording. Start the scenario — replays onPlayerConnect for
+  // every bot that connected during the created-not-started phase and
+  // onPlayerReady for every bot that auto-readied, in arrival order.
+  // Scenario-spawned bots (bot-fill etc.) and later ready signals flow
+  // through normally.
+  const room = gameServer.getRouter().getRoomByIndex(ROUTING_KEY, 0)
+  if (room) {
+    room.startScenario(SCENARIO_ID)
+    console.log('[run-scenario] scenario started')
+  } else {
+    console.warn('[run-scenario] no room to start — scenario will not run')
+  }
 
   // Wait a bit, grab screenshot, verify non-black pixels.
   const SCREENSHOT_DELAY = Math.min(3_000, effectiveTimeout / 2)
@@ -337,13 +428,16 @@ if (context) await new Promise(r => setTimeout(r, 2_000))
 
 // ── Finalize recording ────────────────────────────────────────────────────────
 
-if (context && browser && videoHandle && OUTPUT_DIR && RECORD_BOT_INDEX !== null) {
+if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
   console.log('[run-scenario] stopping recording...')
-  await context.close()
-  await browser.close()
-  const tempPath = await videoHandle.path()
-  videoOutPath = path.join(OUTPUT_DIR, `${RECORD_BOT_INDEX}.webm`)
-  fs.renameSync(tempPath, videoOutPath)
+  if (cdp) { try { await cdp.send('Page.stopScreencast') } catch { /* ignore */ } }
+  if (context) await context.close()
+  if (browser) await browser.close()
+  if (ffmpeg) {
+    const ffmpegProc = ffmpeg
+    ffmpegProc.stdin?.end()
+    await new Promise<void>(resolve => ffmpegProc.on('close', () => resolve()))
+  }
   console.log(`[run-scenario] saved: ${videoOutPath}`)
 }
 
@@ -387,6 +481,7 @@ const response = {
   video_path: videoOutPath,
   screenshot_path: screenshotOutPath,
   screenshot_has_content: screenshotHasContent,
+  observer_ready_fired: observerReadyFired,
   server_logs: serverLogs,
   exit_code: process.exitCode ?? 0,
 }

@@ -14,8 +14,6 @@ export interface ClientMap {
   walkableVariants?: Array<{ triggerIds: string[]; walkable: WalkableArea }>
 }
 
-// Computed once at module load from the page URL — stable for the session.
-export const CURRENT_SCENARIO_ID: string =
-  typeof window !== 'undefined'
-    ? window.location.pathname.replace(/^\/+/, '') || 'demo'
-    : 'demo'
+// Re-export the canonical module's parse — this file predates the shared
+// parser and is kept only so legacy importers of `../registry` keep working.
+export { CURRENT_SCENARIO_ID } from '../../maps/index.js'
