@@ -18,6 +18,10 @@ const MIN_PLAYERS = 4
 const BOT_FILL_DELAY_MS = 3_000
 const CLOSE_AFTER_FILL_MS = 1_000
 const FINALIZE_AFTER_CLOSE_MS = 2_000
+// Holds the scenario open after the bot-exit trigger so bots have time to
+// visibly walk off the east edge before the exit-transfer tears the room
+// down.
+const BOT_EXIT_DELAY_MS = 5_000
 
 interface S4State {
   fillScheduled: boolean
@@ -59,6 +63,11 @@ const script: GameScript<S4State> = {
     finalizeRun(state, ctx) {
       if (state.finalized) return
       state.finalized = true
+      ctx.exitBots()
+      ctx.after(BOT_EXIT_DELAY_MS, 'finalExit')
+    },
+
+    finalExit(_state, ctx) {
       ctx.exitScenario()
     },
   },

@@ -22,6 +22,10 @@ export function RulePopup() {
 
   if (!event?.rules) return null
 
+  const count = event.rules.length
+  const columns = count >= 4 ? 2 : 1
+  const rows = count <= 3 ? count : Math.ceil(count / 2)
+
   return (
     <>
       <style>{`
@@ -38,7 +42,6 @@ export function RulePopup() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: 'clamp(12px, 3vw, 24px)',
           fontFamily: 'system-ui, monospace',
           cursor: 'pointer',
         }}
@@ -65,10 +68,12 @@ export function RulePopup() {
 
         <div
           style={{
-            display: 'flex',
-            flexDirection: 'column',
+            display: 'grid',
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
             gap: 'clamp(7px, 1.5vw, 12px)',
-            width: 'min(640px, 90vw)',
+            width: '70vw',
+            height: '70vh',
             cursor: 'default',
           }}
         >
@@ -77,20 +82,25 @@ export function RulePopup() {
               key={i}
               style={{
                 background: RULE_COLORS[i % RULE_COLORS.length],
-                borderRadius: '6px',
-                padding: 'clamp(10px, 1.5vw, 16px) clamp(12px, 2vw, 20px)',
+                borderRadius: 'clamp(4px, 1.2cqmin, 12px)',
+                padding: 'clamp(8px, 3.5cqmin, 32px) clamp(10px, 4.5cqmin, 40px)',
                 color: '#fff',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 'clamp(10px, 2vw, 18px)',
+                gap: 'clamp(8px, 3.5cqmin, 28px)',
+                minWidth: 0,
+                minHeight: 0,
+                containerType: 'size',
               }}
             >
               <div
                 style={{
                   flex: 1,
-                  fontSize: 'clamp(0.85rem, 2.2vw, 1.05rem)',
-                  lineHeight: 1.4,
+                  minWidth: 0,
+                  fontSize: 'clamp(0.85rem, 7.5cqmin, 3rem)',
+                  lineHeight: 1.3,
                   textAlign: 'left',
+                  overflowWrap: 'break-word',
                 }}
               >
                 {rule.text}
@@ -98,13 +108,13 @@ export function RulePopup() {
               <div
                 style={{
                   flexShrink: 0,
-                  fontSize: 'clamp(0.55rem, 1.2vw, 0.65rem)',
+                  fontSize: 'clamp(0.5rem, 2.4cqmin, 1rem)',
                   fontWeight: 700,
                   letterSpacing: '0.1em',
                   textTransform: 'uppercase',
-                  padding: 'clamp(2px, 0.4vw, 4px) clamp(5px, 1vw, 8px)',
+                  padding: 'clamp(2px, 0.8cqmin, 8px) clamp(4px, 1.8cqmin, 14px)',
                   border: '1px solid rgba(255,255,255,0.4)',
-                  borderRadius: '3px',
+                  borderRadius: 'clamp(2px, 0.6cqmin, 6px)',
                   opacity: 0.8,
                   whiteSpace: 'nowrap',
                 }}

@@ -46,6 +46,10 @@ export class BotRunner {
   private readonly lastReportedTime = new Map<string, number>()
   private lastNextCommandMs = 0
   private currentCommand: BotCommand = { type: 'idle' }
+  // When non-null, doTick emits this movement every tick and skips the spec's
+  // nextCommand entirely. Set by the MR's `overrideBotMovement` — scenarios
+  // use this to drive the bot-exit walk-off.
+  private movementOverride: { jx: number; jz: number } | null = null
 
   private readonly spec: BotSpec
   private readonly hooks: BotRunnerHooks
@@ -173,6 +177,13 @@ export class BotRunner {
     }
   }
 
+  // Force the bot to emit a fixed movement direction every tick, bypassing
+  // the spec's phase-based nextCommand. Used to drive the end-of-scenario
+  // walk-off. Pass null to clear and resume spec-driven movement.
+  overrideMovement(jx: number, jz: number): void {
+    this.movementOverride = { jx, jz }
+  }
+
   // Called by the MR when it is removing this bot (e.g. elimination or
   // room teardown). Stops the tick and fires the onStop callback.
   notifyRemoved(): void {
@@ -210,23 +221,30 @@ export class BotRunner {
     const now = Date.now()
     const dt = DEFAULT_TICK_MS / 1000
 
-    const commandCompleted =
-      this.currentCommand.type === 'move' &&
-      isAtTarget(this.position, this.state.target)
+    let jx: number
+    let jz: number
+    if (this.movementOverride) {
+      jx = this.movementOverride.jx
+      jz = this.movementOverride.jz
+    } else {
+      const commandCompleted =
+        this.currentCommand.type === 'move' &&
+        isAtTarget(this.position, this.state.target)
 
-    if (commandCompleted || now - this.lastNextCommandMs >= this.nextCommandIntervalMs) {
-      const fn = this.spec.nextCommand[this.state.phase]
-      try {
-        this.currentCommand = fn ? fn(this.makeContext(), { ...this.position }) : { type: 'idle' }
-      } catch (err) {
-        this.log('error', `nextCommand[${this.state.phase}] threw: ${err}`)
-        this.currentCommand = { type: 'idle' }
+      if (commandCompleted || now - this.lastNextCommandMs >= this.nextCommandIntervalMs) {
+        const fn = this.spec.nextCommand[this.state.phase]
+        try {
+          this.currentCommand = fn ? fn(this.makeContext(), { ...this.position }) : { type: 'idle' }
+        } catch (err) {
+          this.log('error', `nextCommand[${this.state.phase}] threw: ${err}`)
+          this.currentCommand = { type: 'idle' }
+        }
+        this.lastNextCommandMs = now
       }
-      this.lastNextCommandMs = now
-    }
 
-    const jx = this.currentCommand.type === 'move' ? this.currentCommand.jx : 0
-    const jz = this.currentCommand.type === 'move' ? this.currentCommand.jz : 0
+      jx = this.currentCommand.type === 'move' ? this.currentCommand.jx : 0
+      jz = this.currentCommand.type === 'move' ? this.currentCommand.jz : 0
+    }
 
     this.hooks.sendMove(this.clientPredictiveTick, [{ jx, jz, dt }])
     this.clientPredictiveTick++

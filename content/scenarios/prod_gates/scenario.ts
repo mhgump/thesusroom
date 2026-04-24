@@ -29,8 +29,12 @@ import type {
 //      player has reached the victory room.
 
 const CONNECT_SETTLE_MS = 2_000
-const ROUND_DURATION_MS = 8_000
-const SAFETY_TIMEOUT_MS = 12_000
+const ROUND_DURATION_MS = 20_000
+const SAFETY_TIMEOUT_MS = 25_000
+// Holds the scenario open after the bot-exit trigger so bots have time to
+// visibly walk off the east edge before the exit-transfer tears the room
+// down.
+const BOT_EXIT_DELAY_MS = 5_000
 
 // World-frame gate z-coords. The corridor room sits at world z = -0.75 (BFS
 // from spawn at origin, corridor is 0.75 units north of spawn centre), and
@@ -76,7 +80,8 @@ function finish(state: S, ctx: GameScriptContext, reason: string): void {
     return ctx.getPlayerIds().includes(pid)
   }).length
   logEvent('scenario_end', { reason, survivors })
-  ctx.exitScenario()
+  ctx.exitBots()
+  ctx.after(BOT_EXIT_DELAY_MS, 'finalExit')
 }
 
 function grantOpenTo(state: S, ctx: GameScriptContext, playerId: string): void {
@@ -202,12 +207,19 @@ const script: GameScript<S> = {
       logEvent('safety_terminate', {})
       finish(state, ctx, 'safety_timeout')
     },
+
+    finalExit(_state, ctx) {
+      ctx.exitScenario()
+    },
   },
 }
 
 export const SCENARIO: ScenarioSpec = {
   id: 'prod_gates',
-  timeoutMs: SAFETY_TIMEOUT_MS + 2_000,
+  // +BOT_EXIT_DELAY_MS so the bot walk-off (kicked off inside `finish`) can
+  // complete even when `finish` is invoked from `safetyTerminate`, which
+  // fires right at the SAFETY_TIMEOUT_MS mark.
+  timeoutMs: SAFETY_TIMEOUT_MS + 2_000 + BOT_EXIT_DELAY_MS,
   maxPlayers: 4,
   script,
   requiredRoomIds: ['prod_gates_spawn', 'prod_gates_corridor', 'prod_gates_victory'],

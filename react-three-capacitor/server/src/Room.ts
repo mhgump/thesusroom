@@ -327,6 +327,8 @@ export class MultiplayerRoom {
       // bots into their own script (this is exactly the scenario1–4
       // close-then-fill pattern).
       spawnBot: (spec) => { this.spawnBotInRoom(spec, { attachToScenarioId: config.id }) },
+      getBotIds: () => [...this.bots.keys()],
+      overrideBotMovement: (pid, jx, jz) => { this.bots.get(pid)?.runner.overrideMovement(jx, jz) },
       onExitScenario: this.onExitScenario ? (scenarioId) => this.onExitScenario!(scenarioId) : undefined,
       removeMap: (mapInstanceId) => {
         this.removeMap(mapInstanceId)

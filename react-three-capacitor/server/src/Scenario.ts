@@ -36,6 +36,14 @@ export interface ScenarioDeps {
   // close signals "no more joiners".
   onTerminate?: () => void
   spawnBot: (spec: BotSpec) => void
+  // Returns the player ids of every bot seated in the enclosing room. Bots
+  // are room-wide, not scenario-scoped; the scenario filters this against
+  // its own attached-player set before acting.
+  getBotIds: () => string[]
+  // Force a bot to emit a fixed movement direction every tick. Bypasses the
+  // bot's BotSpec phase/nextCommand machinery. Used to drive the
+  // end-of-scenario walk-off.
+  overrideBotMovement: (playerId: string, jx: number, jz: number) => void
   // Invoked by `ctx.exitScenario()`. Optional — only set when the enclosing
   // scenario's spec carries an `exitConnection` AND the server is wired for
   // exit transfers. Receives the scenario id so the server can look up the
@@ -117,6 +125,11 @@ export interface ScenarioDump {
     playerAbilities: Record<string, Record<string, AbilityGrantRecord>>
   }
 }
+
+// Time between triggering the bot-exit walk-off and removing the bot from
+// the room. At MOVE_SPEED (0.645 units/s) this gives the bot ~3.2 units of
+// eastward travel — enough to clear any authored scenario map.
+const BOT_EXIT_REMOVAL_DELAY_MS = 5_000
 
 export class Scenario {
   readonly id: string
@@ -710,6 +723,29 @@ export class Scenario {
         const id = self.mintId('abil_')
         self.abilityUseListeners.set(id, { abilityId, handlerId })
         return id
+      },
+      exitBots() {
+        const allRoomIds = world.getAllRooms().map(r => r.scopedId)
+        const botIdsInRoom = self.deps.getBotIds()
+        for (const botId of botIdsInRoom) {
+          if (!self.attachedPlayerIds.has(botId)) continue
+          // Hide every room for the bot — makes all geometry in those rooms
+          // passable for that bot specifically (other players still see the
+          // rooms / walls). Other humans will see the bot walking through
+          // walls as it exits, which is the intended effect.
+          if (allRoomIds.length > 0) world.setRoomVisible(allRoomIds, false, [botId])
+          // Drop the stay-in-rooms constraint for the bot so Rapier doesn't
+          // revert its position once it crosses the outermost room AABB.
+          world.setAccessibleRoomsOverride(botId, [])
+          self.deps.overrideBotMovement(botId, 1, 0)
+          // Remove the bot after it has had time to clear the map. The
+          // raw-callback timer path sidesteps the handler registry — no
+          // entry in `handlers` is required, and the timer is dropped if
+          // the scenario is torn down before it fires.
+          self.scheduleScoped(BOT_EXIT_REMOVAL_DELAY_MS, () => {
+            self.deps.removePlayer(botId)
+          })
+        }
       },
     }
   }

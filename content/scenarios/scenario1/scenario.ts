@@ -84,6 +84,8 @@ function resolveElimination(state: S1State, ctx: GameScriptContext): void {
     }
   }
 
+  ctx.exitBots()
+
   if (survivors.length === 0) {
     ctx.exitScenario()
     return

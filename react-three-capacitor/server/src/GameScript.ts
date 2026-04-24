@@ -118,6 +118,13 @@ export interface GameScriptContext {
   // a listener id usable with `off()`. Multiple handlers for the same
   // ability fire in registration order.
   onAbilityUse(abilityId: string, handlerId: string): string
+  // End-of-scenario bot walk-off. Every bot currently attached to this
+  // scenario has its collisions disabled, begins walking straight east
+  // (ignoring its BotSpec's phase logic), and is removed from the room
+  // shortly afterwards. Returns immediately; removal is asynchronous. Safe
+  // to call before `exitScenario()` if the caller also schedules a delay so
+  // the walk-off is visible before the scenario tears down.
+  exitBots(): void
 }
 
 // Signature for every named handler and for top-level `onPlayerConnect` /
