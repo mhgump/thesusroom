@@ -46,7 +46,7 @@ export class ScenarioRunRegistry {
     if (!entry) throw new Error(`Unknown scenario: ${req.scenario_id}`)
 
     const routingRunId = crypto.randomBytes(6).toString('hex')
-    const routingKey = `sr_${routingRunId}`
+    const routingKey = `scenariorun/${routingRunId}`
     const simTimeoutMs = req.timeout_ms ?? entry.scenario.timeoutMs
     const speedMultiplier = req.tick_rate_hz / 20
     const effectiveTimeoutMs = simTimeoutMs / speedMultiplier
@@ -84,8 +84,9 @@ export class ScenarioRunRegistry {
   }
 
   getByRoutingKey(routingKey: string): RegisteredRun | null {
-    if (!routingKey.startsWith('sr_')) return null
-    return this.runs.get(routingKey.slice(3)) ?? null
+    const prefix = 'scenariorun/'
+    if (!routingKey.startsWith(prefix)) return null
+    return this.runs.get(routingKey.slice(prefix.length)) ?? null
   }
 
   get(routingRunId: string): RegisteredRun | null {

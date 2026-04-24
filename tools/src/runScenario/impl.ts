@@ -136,6 +136,7 @@ async function run(rawInput: unknown): Promise<ScenarioRunResult> {
   const result = JSON.parse(fs.readFileSync(responsePath, 'utf8')) as ScenarioRunResult
 
   await scenarioRunResult.put(key, result)
+  await scenarioRunResult.putBlobs(key, outputDir)
 
   return result
 }

@@ -5,7 +5,7 @@
 // server, where the pattern is matched properly via `NumberDisplay.ts`.
 export const NUMBER_DISPLAY_PATHS: readonly string[] = [
   '/tenthousand',
-  '/scenarios',
+  '/scenariocount',
   '/vetted',
   '/tests',
   '/costs',

@@ -44,5 +44,10 @@ COPY --from=frontend /app/react-three-capacitor/dist/ ./react-three-capacitor/di
 
 EXPOSE 8080
 
+# Production runs against the Postgres backend. POSTGRES_HOST/USER/PASSWORD/SCHEMA
+# are supplied by supervisor.sh in the GCE deploy (sourced from Cloud SQL +
+# Secret Manager).
+ENV DATA_BACKEND=postgres
+
 # tsx runs prod.ts directly — no compile step needed
 CMD ["react-three-capacitor/server/node_modules/.bin/tsx", "react-three-capacitor/server/src/prod.ts"]

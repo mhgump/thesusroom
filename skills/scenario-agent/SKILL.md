@@ -33,6 +33,34 @@ Draft full TypeScript module exporting a `ScenarioSpec` (`scriptFactory`,
 `timeoutMs`, `onTerminate`, optional initial visibility) → `insert_scenario`
 → read validator error → revise → repeat. Bounded to ~5 attempts.
 
+## Termination discipline (the validator does NOT catch this)
+
+Every terminal path in the script must call `ctx.terminate()` — including
+degenerate outcomes like "all players eliminated" or "no-op majority."
+Otherwise the scenario silently hangs until `timeoutMs` expires and the test
+harness reports `complete: false`, which the run-scenario-agent flags as a
+scenario authoring bug.
+
+Example of the pitfall: a handler that eliminates stragglers and then bails
+out without checking `ctx.getPlayerIds().length === 0` — the scenario will
+time out whenever every player is eliminated. Fix pattern:
+
+```ts
+eliminateStragglers(state, ctx) {
+  for (const pid of ctx.getPlayerIds()) {
+    if (!state.inRoom2[pid]) ctx.eliminatePlayer(pid)
+  }
+  if (ctx.getPlayerIds().length === 0) {
+    ctx.terminate()
+    return
+  }
+  // ...continue to the success-path checks...
+}
+```
+
+Walk every terminal branch of the script and confirm each one reaches
+`ctx.terminate()`.
+
 ## When to use
 
 Delegate when the caller needs a scenario authored against an existing map,

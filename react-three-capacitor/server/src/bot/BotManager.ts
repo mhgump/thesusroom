@@ -12,9 +12,9 @@ export class BotManager {
     this.serverUrl = serverUrl
   }
 
-  // `routingKey` is the full path segment the bot should connect under
-  // (e.g. `r_demo`). Scenario-spawned bots reuse the spawning room's key so
-  // they land back in the same orchestration.
+  // `routingKey` is the full path the bot should connect under
+  // (e.g. `scenarios/demo`). Scenario-spawned bots reuse the spawning
+  // room's key so they land back in the same orchestration.
   spawnBot(routingKey: string, spec: BotSpec): BotClient {
     const client = new BotClient(this.serverUrl, routingKey, spec)
     this.tracked.push({ client, routingKey })

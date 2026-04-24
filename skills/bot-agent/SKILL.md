@@ -35,6 +35,28 @@ Draft full TypeScript module exporting a `BotSpec` (phases, initialState,
 validator error → revise → repeat. Bounded to ~5 attempts. Key invariant:
 `nextCommand` must cover every phase in `phases`.
 
+## Runtime gotchas (the shape validator does NOT catch these)
+
+`insert_bot` only checks that the exported object has the right keys and
+types. The following compile-and-validate cleanly but fail at runtime — avoid
+them:
+
+- **State mutation** — `state` on `BotCallbackContext` is `readonly`. Mutating
+  `ctx.state.target = ...` is silently dropped by the runtime. Use
+  `ctx.updateBotState({ target })`.
+- **`nextCommand` signature** — handlers are
+  `(ctx: BotCallbackContext, position: { x: number; z: number }) => BotCommand`.
+  `BotCallbackContext` has **no** `position` property. Read the current
+  position from the second argument (or `ctx.getPosition()`), not `ctx.position`.
+- **`autoReady` is not a BotSpec field** — it is an option on the `BotClient`
+  constructor (`new BotClient(url, key, spec, { autoReady })`), defaulting to
+  `true`. Putting `autoReady: true` on the BotSpec is a no-op. Bots auto-ready
+  without any custom code; don't add anything for it.
+
+Reference: `react-three-capacitor/server/src/bot/BotTypes.ts` for the exact
+interfaces, and `react-three-capacitor/server/src/bot/BotClient.ts` for the
+client-side options.
+
 ## When to use
 
 Delegate when the caller needs a bot written for an existing scenario. Use

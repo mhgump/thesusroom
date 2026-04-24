@@ -1,7 +1,7 @@
 import type { LogEntry } from '../../scripts/logFormat.js'
 
 // POST /scenario-run request body. The CLI/tool builds this and the server
-// prepares a one-shot room behind the `sr_<routing_run_id>` routing key. The
+// prepares a one-shot room behind the `scenariorun/<routing_run_id>` routing key. The
 // server does NOT spawn CLI bots — the caller connects them over the returned
 // routing key directly. The server DOES spawn scenario-internal bots (via
 // ctx.spawnBot) and ticks the room until termination or timeout.

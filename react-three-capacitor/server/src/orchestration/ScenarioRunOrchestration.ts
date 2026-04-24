@@ -8,7 +8,7 @@ import type { ConnectionContext } from '../connections/types.js'
 import { createScenarioRoom } from './scenarioRoom.js'
 import { parseRoutingKey, parseSrUid } from '../connections/urls.js'
 
-// One-shot orchestration that backs a `sr_<runId>` routing key. The registry
+// One-shot orchestration that backs a `scenariorun/<runId>` routing key. The registry
 // hands it the `RegisteredRun` the resolver just looked up; this class owns
 // the lifecycle: build the room via `createScenarioRoom`, start the timeout,
 // resolve the result on scenario-terminate or timeout, and refuse to be
@@ -86,7 +86,7 @@ export class ScenarioRunOrchestration implements RoomOrchestration {
 
   // Block a second room from ever being created for this routing key: once
   // the run terminates the router drops the orchestration entry, so new
-  // `/sr_<id>` connections are rejected with 4004.
+  // `/scenariorun/<id>` connections are rejected with 4004.
   isOpen(room: MultiplayerRoom): boolean {
     return !this.run.terminated && room.isOpen()
   }

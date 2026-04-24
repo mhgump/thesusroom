@@ -23,9 +23,10 @@ export function attachSrUidCookie(app: express.Express): void {
 }
 
 // Attaches validation routes for URLs that map to a game entity:
-//   /observe/:key/:i/:j  -> requires live room+player
-//   /recordings/:index   -> requires a saved recording
-//   /r_{routingKey}      -> requires a valid routing key (known scenario)
+//   /observe/:seg1/:seg2?/:i/:j  -> requires live room+player
+//   /recordings/:index           -> requires a saved recording
+//   /scenarios/:id               -> requires a valid scenario routing key
+//   /scenariorun/:id             -> requires a valid scenario-run routing key
 // Each route invokes `onValid(res)` when the path is legitimate, or
 // responds 404 otherwise.
 //
@@ -44,15 +45,26 @@ export function attachValidationRoutes(
     res.status(404).send('<html><body><p>not found</p></body></html>')
   }
 
-  app.get('/observe/:key/:i/:j', (req, res) => {
+  const validateObserver = (key: string, req: express.Request, res: express.Response): void => {
     const i = parseInt(req.params.i, 10)
     const j = parseInt(req.params.j, 10)
-    if (!gameServer.getRouter().hasRoomAndPlayer(req.params.key, i, j)) {
+    if (!gameServer.getRoomRegistry().hasRoomAndPlayer(key, i, j)) {
       notFound(res)
       return
     }
     onValid(res)
-  })
+  }
+
+  // Observer paths: `hub` is a single-segment key, `scenarios/{id}` and
+  // `scenariorun/{id}` are two-segment keys. Register each shape explicitly
+  // so the room lookup uses the exact routing key stored in the registry.
+  app.get('/observe/hub/:i/:j', (req, res) => validateObserver('hub', req, res))
+  app.get('/observe/scenarios/:id/:i/:j', (req, res) =>
+    validateObserver(`scenarios/${req.params.id}`, req, res),
+  )
+  app.get('/observe/scenariorun/:id/:i/:j', (req, res) =>
+    validateObserver(`scenariorun/${req.params.id}`, req, res),
+  )
 
   app.get('/recordings/:index', async (req, res) => {
     const idx = parseInt(req.params.index, 10)
@@ -74,14 +86,12 @@ export function attachValidationRoutes(
     onValid(res)
   })
 
-  app.get('/:routingKey', async (req, res, next) => {
-    const key = req.params.routingKey
-    if (!key.startsWith('r_')) {
-      next()
-      return
-    }
+  const validateRoutingKey = async (
+    key: string,
+    res: express.Response,
+  ): Promise<void> => {
     try {
-      if (!(await gameServer.getRouter().canRouteKey(key))) {
+      if (!(await gameServer.getDispatcher().canRouteKey(key))) {
         notFound(res)
         return
       }
@@ -91,5 +101,13 @@ export function attachValidationRoutes(
       return
     }
     onValid(res)
+  }
+
+  app.get('/scenarios/:id', async (req, res) => {
+    await validateRoutingKey(`scenarios/${req.params.id}`, res)
+  })
+
+  app.get('/scenariorun/:id', async (req, res) => {
+    await validateRoutingKey(`scenariorun/${req.params.id}`, res)
   })
 }

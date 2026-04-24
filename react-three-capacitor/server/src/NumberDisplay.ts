@@ -26,7 +26,7 @@ export function buildDefaultNumberDisplayRoutes(): NumberRoute[] {
   return [
     { path: '/tenthousand', provider: () => 10000 },
     {
-      path: '/scenarios',
+      path: '/scenariocount',
       provider: async () => {
         const data = getDataBackend()
         const list = new ScenarioList(data, new VettedScenarios(data))

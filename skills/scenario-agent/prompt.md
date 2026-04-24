@@ -41,3 +41,14 @@ Use `content/scenarios/demo.ts`, `scenario1.ts`, etc. as references.
 - If you cannot make the scenario validate within ~5 `insert_scenario`
   attempts, record `success: false` with a concise `failure_reason_summary`.
 - Never emit a text-only turn. Always call a tool or `record_json_task_response`.
+
+## Terminate on every terminal path
+
+Every branch that ends the scenario must explicitly call `ctx.terminate()` —
+including degenerate outcomes like "all players eliminated." A missing
+`terminate()` call causes the scenario to hang until `timeoutMs`, which the
+test harness reports as `complete: false` and the run-scenario-agent treats as
+a scenario authoring bug.
+
+Before submitting, walk every terminal branch of the script and confirm each
+one reaches `ctx.terminate()`. The validator does NOT catch a missing call.

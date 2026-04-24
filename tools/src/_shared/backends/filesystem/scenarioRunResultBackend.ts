@@ -75,6 +75,12 @@ export class FilesystemScenarioRunResultBackend implements ScenarioRunBackend {
     return this.runDir(key)
   }
 
+  // Filesystem's locate() is the canonical storage dir and the run-scenario
+  // child writes video / screenshot directly there — nothing to ingest.
+  async putBlobs(_key: RunResultKey, _dir: string): Promise<void> {
+    return
+  }
+
   // Scan existing indices for (scenario, test_spec) and return the next free one.
   // Callers use this before put() to assign a fresh key.
   async nextIndex(scenario: string, test_spec: string): Promise<number> {

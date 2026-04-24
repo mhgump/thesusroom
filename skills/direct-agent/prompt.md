@@ -44,7 +44,12 @@ You have the full toolbox:
    unachievable, or you have made ~10 meaningful iterations without progress.
 6. Call `record_json_task_response` with a structured summary of what was
    accomplished. Reference specific `test_spec_name`s by name so the user
-   (and any replay tool) can trace every sub-agent attempt.
+   (and any replay tool) can trace every sub-agent attempt. Populate the
+   top-level `test_spec_name` field with the slug of the spec whose run
+   demonstrated the goal — this is the spec the caller should look at /
+   re-run. If the prompt asked for a specific test-spec name, use that one.
+   If `goal_achieved=false` and no spec was ever written, set it to the
+   empty string.
 
 ## Constraints
 

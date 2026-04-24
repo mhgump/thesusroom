@@ -7,9 +7,9 @@ import type { ConnectionHandler } from '../connections/types.js'
 // the room's lifecycle callbacks back through `onClose` / `onDestroy` so the
 // registry can maintain its open and all-rooms lists.
 export interface RoomCreationContext {
-  // The routing key this room belongs to (e.g. `r_demo`). Used to pre-bind
-  // bot spawns to the same key so scenario-spawned bots reconnect into the
-  // same orchestration.
+  // The routing key this room belongs to (e.g. `scenarios/demo`). Used to
+  // pre-bind bot spawns to the same key so scenario-spawned bots reconnect
+  // into the same orchestration.
   routingKey: string
   // Slot index in the per-key all-rooms array. Becomes the observer `{i}`.
   instanceIndex: number

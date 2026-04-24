@@ -10,7 +10,7 @@ import { MOVER_BOT } from '../../bots/scenario2/mover/bot.js'
 // tick rate — 50ms of sim time = 1 tick at the canonical 20Hz.
 // Bots don't spawn on connect anymore — they wait 5s after the first player
 // reaches room1, which skips bot-fill for hub transfers where the player
-// lingers in the hallway (and for direct `r_scenario2` joins where the
+// lingers in the hallway (and for direct `scenarios/scenario2` joins where the
 // player spawns inside room1 and the timer starts immediately).
 const BOT_FILL_DELAY_MS  = 5_000   // 100 ticks
 const MOVE_WARN_DELAY_MS = 2_000   // 40 ticks
@@ -74,7 +74,7 @@ const script: GameScript<S2State> = {
       const { roomId, playerId } = payload
       // First-time any player enters room1: start the bot-fill countdown.
       // Hub-transferred players spawn in the hallway and only trip this on
-      // crossing into room1; direct `r_scenario2` joins spawn in room1 and
+      // crossing into room1; direct `scenarios/scenario2` joins spawn in room1 and
       // trip it immediately.
       if (roomId === 'scenario2_room1' && !state.room1EntryTriggered) {
         state.room1EntryTriggered = true

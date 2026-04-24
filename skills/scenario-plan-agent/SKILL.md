@@ -61,6 +61,12 @@ Validation the tool enforces:
 - **Totals reflect scenario capacity.** `min_player_count` / `max_player_count`
   are about what the scenario supports, not the size of the test set; every
   outcome's total must fit inside.
+- **0-survivor outcomes presume a clean terminate.** If you list an
+  `expected_survivors: 0` outcome, the scenario script must call
+  `ctx.terminate()` on the all-eliminated branch — otherwise the run-scenario
+  harness will report `complete: false` and the outcome will be considered
+  unverified. Mention this in `scenario_sketch` so the scenario-agent wires
+  the branch.
 - **Iterate on validation errors.** Call `insert_scenario_plan`; if it returns
   `{success:false, error}`, fix that one field and re-call. Bound to ~5 attempts.
 - **Never emit a text-only turn.** Call a tool or `record_json_task_response`.

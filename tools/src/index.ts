@@ -66,6 +66,12 @@ export { runDirectAgent, DIRECT_RESPONSE_SPEC } from './agents/directAgent.js'
 export type { DirectAgentResponse } from './agents/directAgent.js'
 export { runScenarioPlanAgent, SCENARIO_PLAN_RESPONSE_SPEC } from './agents/scenarioPlanAgent.js'
 export type { ScenarioPlanAgentResponse } from './agents/scenarioPlanAgent.js'
+export { runCreateScenarioAgent } from './agents/createScenarioAgent.js'
+export type {
+  CreateScenarioAgentResponse,
+  CreateScenarioAgentOpts,
+  CreateScenarioFailedOutcome,
+} from './agents/createScenarioAgent.js'
 
 export { runAgent, RECORD_TOOL_NAME } from './_shared/agentLoop.js'
 export type { AgentRunParams, AgentRunResult, ResponseSpec } from './_shared/agentLoop.js'

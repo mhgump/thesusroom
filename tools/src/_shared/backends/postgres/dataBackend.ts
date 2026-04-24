@@ -1,34 +1,138 @@
 import type { DataBackend } from '../dataBackend.js'
+import { getPool } from './client.js'
 
-// Stub. The interface is here to prove the primitive has no filesystem-isms;
-// real wiring (pg driver, schema, connection pool) lands when we pick up the
-// Postgres backing work.
+// Postgres-backed generic list + JSON-document primitive.
+//
+// Lists live in `kv_list(key, idx, value)`; JSON docs live in `kv_json(key, value)`.
+// Structural item equality (for removeFromList / listIndexOf) is delegated to
+// jsonb's built-in equality, which normalizes key ordering and whitespace —
+// slightly stricter than the filesystem backend's JSON.stringify compare but
+// matches in every case the domain callers rely on (primitives + plain objects
+// the same caller wrote originally).
 export class PostgresDataBackend implements DataBackend {
-  readList<T>(_key: string): Promise<T[]> {
-    throw new Error('PostgresDataBackend: not implemented')
+  async readList<T>(key: string): Promise<T[]> {
+    const p = await getPool()
+    const r = await p.query<{ value: T }>(
+      'SELECT value FROM kv_list WHERE key = $1 ORDER BY idx',
+      [key],
+    )
+    return r.rows.map(row => row.value)
   }
-  writeList<T>(_key: string, _items: T[]): Promise<void> {
-    throw new Error('PostgresDataBackend: not implemented')
+
+  async writeList<T>(key: string, items: T[]): Promise<void> {
+    const p = await getPool()
+    const client = await p.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query('DELETE FROM kv_list WHERE key = $1', [key])
+      for (let i = 0; i < items.length; i++) {
+        await client.query(
+          'INSERT INTO kv_list (key, idx, value) VALUES ($1, $2, $3)',
+          [key, i, JSON.stringify(items[i])],
+        )
+      }
+      await client.query('COMMIT')
+    } catch (err) {
+      await client.query('ROLLBACK')
+      throw err
+    } finally {
+      client.release()
+    }
   }
-  appendToList<T>(_key: string, _item: T): Promise<number> {
-    throw new Error('PostgresDataBackend: not implemented')
+
+  async appendToList<T>(key: string, item: T): Promise<number> {
+    const p = await getPool()
+    const client = await p.connect()
+    try {
+      await client.query('BEGIN')
+      const r = await client.query<{ next: number }>(
+        'SELECT COALESCE(MAX(idx) + 1, 0) AS next FROM kv_list WHERE key = $1',
+        [key],
+      )
+      const idx = Number(r.rows[0].next)
+      await client.query(
+        'INSERT INTO kv_list (key, idx, value) VALUES ($1, $2, $3)',
+        [key, idx, JSON.stringify(item)],
+      )
+      await client.query('COMMIT')
+      return idx
+    } catch (err) {
+      await client.query('ROLLBACK')
+      throw err
+    } finally {
+      client.release()
+    }
   }
-  removeFromList<T>(_key: string, _item: T): Promise<void> {
-    throw new Error('PostgresDataBackend: not implemented')
+
+  async removeFromList<T>(key: string, item: T): Promise<void> {
+    const p = await getPool()
+    const client = await p.connect()
+    try {
+      await client.query('BEGIN')
+      // Match the first (lowest-idx) structurally-equal row and delete it,
+      // then shift subsequent idx's down so the list stays contiguous — same
+      // semantics as the filesystem splice().
+      const r = await client.query<{ idx: number }>(
+        'SELECT idx FROM kv_list WHERE key = $1 AND value = $2::jsonb ORDER BY idx LIMIT 1',
+        [key, JSON.stringify(item)],
+      )
+      if (r.rowCount && r.rowCount > 0) {
+        const target = Number(r.rows[0].idx)
+        await client.query('DELETE FROM kv_list WHERE key = $1 AND idx = $2', [key, target])
+        await client.query(
+          'UPDATE kv_list SET idx = idx - 1 WHERE key = $1 AND idx > $2',
+          [key, target],
+        )
+      }
+      await client.query('COMMIT')
+    } catch (err) {
+      await client.query('ROLLBACK')
+      throw err
+    } finally {
+      client.release()
+    }
   }
-  listCount(_key: string): Promise<number> {
-    throw new Error('PostgresDataBackend: not implemented')
+
+  async listCount(key: string): Promise<number> {
+    const p = await getPool()
+    const r = await p.query<{ c: string }>(
+      'SELECT COUNT(*)::text AS c FROM kv_list WHERE key = $1',
+      [key],
+    )
+    return Number(r.rows[0].c)
   }
-  listIndexOf<T>(_key: string, _item: T): Promise<number> {
-    throw new Error('PostgresDataBackend: not implemented')
+
+  async listIndexOf<T>(key: string, item: T): Promise<number> {
+    const p = await getPool()
+    const r = await p.query<{ idx: number }>(
+      'SELECT idx FROM kv_list WHERE key = $1 AND value = $2::jsonb ORDER BY idx LIMIT 1',
+      [key, JSON.stringify(item)],
+    )
+    if (!r.rowCount) return -1
+    return Number(r.rows[0].idx)
   }
-  readJson<T>(_key: string): Promise<T | null> {
-    throw new Error('PostgresDataBackend: not implemented')
+
+  async readJson<T>(key: string): Promise<T | null> {
+    const p = await getPool()
+    const r = await p.query<{ value: T }>(
+      'SELECT value FROM kv_json WHERE key = $1',
+      [key],
+    )
+    if (!r.rowCount) return null
+    return r.rows[0].value
   }
-  writeJson<T>(_key: string, _value: T): Promise<void> {
-    throw new Error('PostgresDataBackend: not implemented')
+
+  async writeJson<T>(key: string, value: T): Promise<void> {
+    const p = await getPool()
+    await p.query(
+      `INSERT INTO kv_json (key, value) VALUES ($1, $2::jsonb)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [key, JSON.stringify(value)],
+    )
   }
-  deleteJson(_key: string): Promise<void> {
-    throw new Error('PostgresDataBackend: not implemented')
+
+  async deleteJson(key: string): Promise<void> {
+    const p = await getPool()
+    await p.query('DELETE FROM kv_json WHERE key = $1', [key])
   }
 }

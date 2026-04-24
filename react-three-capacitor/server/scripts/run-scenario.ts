@@ -3,7 +3,7 @@
  *
  * The thin client:
  *  1) POSTs a run spec to /scenario-run on the main server, which registers
- *     a one-shot routing key `sr_<id>` and a one-shot room behind it.
+ *     a one-shot routing key `scenariorun/<id>` and a one-shot room behind it.
  *  2) Connects CLI-driven bots over WebSocket to that routing key.
  *  3) Optionally launches Playwright + ffmpeg against
  *     http://<host>/observe/<key>/0/<recordBotIndex> to record video.

@@ -19,20 +19,29 @@ export interface DirectAgentResponse {
   summary: string
   failure_reason_summary: string
   iterations_used: number
+  test_spec_name: string
 }
 
 export const DIRECT_RESPONSE_SPEC: ResponseSpec = {
   description:
-    '{ goal_achieved, summary, failure_reason_summary, iterations_used } — ' +
-    'goal_achieved is true iff the user\'s high-level goal was met; summary ' +
-    'is a paragraph describing what was built/changed and what the final ' +
-    'scenario run showed; failure_reason_summary is a short reason the goal ' +
-    'was not met (empty string when goal_achieved=true); iterations_used is ' +
-    'how many edit-run cycles the agent performed.',
+    '{ goal_achieved, summary, failure_reason_summary, iterations_used, ' +
+    'test_spec_name } — goal_achieved is true iff the user\'s high-level goal ' +
+    'was met; summary is a paragraph describing what was built/changed and ' +
+    'what the final scenario run showed; failure_reason_summary is a short ' +
+    'reason the goal was not met (empty string when goal_achieved=true); ' +
+    'iterations_used is how many edit-run cycles the agent performed; ' +
+    'test_spec_name is the slug of the test spec whose run demonstrated the ' +
+    'goal (empty string if no spec was produced).',
   schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['goal_achieved', 'summary', 'failure_reason_summary', 'iterations_used'],
+    required: [
+      'goal_achieved',
+      'summary',
+      'failure_reason_summary',
+      'iterations_used',
+      'test_spec_name',
+    ],
     properties: {
       goal_achieved: {
         type: 'boolean',
@@ -50,6 +59,15 @@ export const DIRECT_RESPONSE_SPEC: ResponseSpec = {
         type: 'integer',
         minimum: 0,
         description: 'Number of edit→run iterations the agent performed.',
+      },
+      test_spec_name: {
+        type: 'string',
+        description:
+          'Slug of the test spec whose run demonstrated the goal (matches ' +
+          'content/scenarios/{scenario_id}/test_specs/{test_spec_name}/). ' +
+          'Empty string if no spec was authored — on success this should ' +
+          'always be populated with the test_spec_name returned by ' +
+          'run_scenario_agent (or the one passed to insert_run_scenario_spec).',
       },
     },
   },

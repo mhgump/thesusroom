@@ -1,7 +1,7 @@
 import type { Backends } from './backends.js'
 import type { DataBackend } from './dataBackend.js'
 import { FilesystemBackends, FilesystemDataBackend } from './filesystem/index.js'
-import { PostgresDataBackend } from './postgres/dataBackend.js'
+import { PostgresBackends, PostgresDataBackend } from './postgres/index.js'
 
 let cachedBackends: Backends | null = null
 let cachedDataBackend: DataBackend | null = null
@@ -14,8 +14,10 @@ export function getBackends(): Backends {
       cachedBackends = new FilesystemBackends()
       return cachedBackends
     }
-    case 'postgres':
-      throw new Error('DATA_BACKEND=postgres not implemented for per-content-type backends')
+    case 'postgres': {
+      cachedBackends = new PostgresBackends()
+      return cachedBackends
+    }
     default:
       throw new Error(`unknown DATA_BACKEND: ${kind}`)
   }

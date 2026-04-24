@@ -20,15 +20,19 @@ import { ensureClientWorld } from '../game/clientWorld'
 function getWsPath(): string {
   const path = window.location.pathname.replace(/^\/+/, '').replace(/\/+$/, '')
   // Observer paths pass through verbatim so the server routes them to the
-  // observer handler rather than the player handler.
-  if (/^observe\/[^/]+\/\d+\/\d+$/.test(path)) return path
+  // observer handler rather than the player handler. Supports single-segment
+  // (`hub`) and two-segment (`scenarios/{id}`, `scenariorun/{id}`) routing
+  // keys embedded in the observer path.
+  if (/^observe\/(hub|scenarios\/[^/]+|scenariorun\/[^/]+)\/\d+\/\d+$/.test(path)) return path
   // Replay paths likewise route to the replay handler by exact path.
   if (/^recordings\/\d+$/.test(path)) return path
-  // Everything else must be an `r_{scenario}` routing key. An empty path
-  // (root URL) resolves to `hub` — the combined hub world fronting the
-  // default target scenario with a solo initial hallway.
+  // Scenario and scenario-run paths forward verbatim as the routing key.
+  if (/^scenarios\/[^/]+$/.test(path)) return path
+  if (/^scenariorun\/[^/]+$/.test(path)) return path
+  // Empty path (root URL) resolves to `hub` — the combined hub world fronting
+  // the default target scenario with a solo initial hallway.
   if (path.length === 0) return 'hub'
-  return path.split('/')[0]
+  return path
 }
 
 function readSrUidCookie(): string | null {

@@ -3,28 +3,21 @@ import { MAP as INITIAL_MAP } from '../../assets/initial/map.js'
 
 export type { GameMap }
 
-// Extracts `{scenario}` from an `r_{scenario}` routing key, or null if the
-// key is not in that shape.
-function scenarioFromRoutingKey(key: string): string | null {
-  if (!key.startsWith('r_')) return null
-  const name = key.slice(2)
-  return name.length === 0 ? null : name
-}
-
-// Parses a routing-key path (`/r_scenario1`) or an observer path
-// (`/observe/r_scenario1/0/0`) into the scenario id used to pick the
-// client map. Returns null for `/`, `/recordings/:idx`, and anything
-// else that does not carry a scenario id — the caller falls back to the
-// bundled initial map without fetching a scenario-specific chunk. For
-// replay paths the map is rebuilt from the recording's own `world_reset`
-// event, so no static import is needed.
+// Parses a scenario path (`/scenarios/{id}`) or an observer path
+// (`/observe/scenarios/{id}/0/0`) into the scenario id used to pick the
+// client map. Returns null for `/`, `/scenariorun/:id`, `/recordings/:idx`,
+// and anything else that does not carry a scenario id — the caller falls
+// back to the bundled initial map without fetching a scenario-specific
+// chunk. For replay paths the map is rebuilt from the recording's own
+// `world_reset` event, so no static import is needed.
 function parseScenarioIdFromPath(pathname: string): string | null {
   const path = pathname.replace(/^\/+/, '').replace(/\/+$/, '')
   if (path.length === 0) return null
-  const observer = path.match(/^observe\/([^/]+)\/\d+\/\d+$/)
-  if (observer) return scenarioFromRoutingKey(observer[1])
-  const first = path.split('/')[0]
-  return scenarioFromRoutingKey(first)
+  const observer = path.match(/^observe\/scenarios\/([^/]+)\/\d+\/\d+$/)
+  if (observer) return observer[1]
+  const scenario = path.match(/^scenarios\/([^/]+)$/)
+  if (scenario) return scenario[1]
+  return null
 }
 
 // Derived from the URL path at module load time — stable for the session.

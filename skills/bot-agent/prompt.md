@@ -41,3 +41,20 @@ Use `content/bots/demo/demoBot.ts` as a reference.
 - If you cannot make the bot validate within ~5 `insert_bot` attempts, record
   `success: false` with a concise `failure_reason_summary`.
 - Never emit a text-only turn. Always call a tool or `record_json_task_response`.
+
+## Runtime correctness (validator is shape-only)
+
+`insert_bot` reports `success: true` for objects that fail at runtime. Before
+considering a bot "done," self-audit against these three rules — they are the
+bugs most recently observed slipping past the validator:
+
+1. **Never assign to `ctx.state.*` directly.** The state object is `readonly`
+   on `BotCallbackContext` and mutations are not persisted. Use
+   `ctx.updateBotState({ field: value })`.
+2. **`nextCommand` handlers take two args: `(ctx, position)`.** There is no
+   `ctx.position`. Use the second argument (or `ctx.getPosition()`).
+3. **Do not put `autoReady` on the BotSpec.** It is a `BotClient` constructor
+   option (defaults to `true`), not a spec field. Bots auto-ready already.
+
+Cross-check with `react-three-capacitor/server/src/bot/BotTypes.ts` before
+submitting.

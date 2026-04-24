@@ -18,7 +18,7 @@ export interface PlayerRecordingDoc<M = unknown> {
   schemaVersion: 1
   browserUuid: string
   playerIndex: number
-  // The first room's routing key (e.g. `r_demo` or `hub`). Informational.
+  // The first room's routing key (e.g. `scenarios/demo` or `hub`). Informational.
   routingKey: string
   // The crypto.randomUUID() assigned on first connect. Informational.
   inGamePlayerId: string

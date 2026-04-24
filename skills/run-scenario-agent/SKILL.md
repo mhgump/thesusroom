@@ -36,6 +36,27 @@ Pick unique `test_spec_name` → `insert_run_scenario_spec` → `run_scenario_fr
 once** with `author: "run-scenario-agent"` → return pointer. Cap at two runs per
 invocation.
 
+## How to read the result
+
+`run_scenario_from_spec` returns `{ complete, scenario_summary, survivors,
+run_artifact_id }`. The authoritative signals:
+
+- `complete: true` — the scenario called `ctx.terminate()`. This is the
+  "scenario finished under its own control" signal and should be true for
+  **every** expected outcome in a well-authored scenario, including
+  zero-survivor paths. `complete: false` means the run hit `timeoutMs` with no
+  terminate call — almost always a bug in the scenario (a terminal branch
+  forgot to call `ctx.terminate()`), not an acceptable outcome. Call it out.
+- `survivors` — the authoritative count is read from the server-authored
+  `termination_metadata.final_state.survivor_count` in response.json (plus
+  `survivor_player_ids` for the exact set). This is captured from the Room's
+  living-player map at finalize time, **not** inferred from log presence. Use
+  this value, not log-grepping, when you quote evidence.
+
+If the spec's expected outcome is "0 survivors," the scenario script must
+still terminate — flag `complete: false` as a scenario authoring bug rather
+than silently accepting the timeout path.
+
 ## When to use
 
 Delegate for running a specific configuration and recording a verdict. The

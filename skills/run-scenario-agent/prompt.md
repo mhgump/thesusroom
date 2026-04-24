@@ -37,8 +37,15 @@ pointer to it.
      `success:false`, append a note explaining what was missing, and return.
 3. Call `run_scenario_from_spec` with `{scenario_id, test_spec_name}`. Inspect
    the returned summary. Signals to check:
-   - `complete: true` — the scenario finished on its own, not by timeout.
-   - `survivors` — bots not eliminated by the server.
+   - `complete: true` — the scenario called `ctx.terminate()`. A well-authored
+     scenario terminates on every expected outcome (including 0 survivors).
+     `complete: false` almost always means the scenario forgot to call
+     `terminate()` on some terminal branch — flag it as a scenario bug, not a
+     run verdict.
+   - `survivors` — authoritative count comes from response.json's
+     `termination_metadata.final_state.survivor_count` (server-authored; the
+     set of players still attached to the Room at finalize time). Quote this
+     value, not log-derived estimates.
 4. If the goal seems unmet, call `get_scenario_logs` and/or `get_bot_logs`
    on the `run_artifact_id` to understand why. Quote precise log lines in
    your note if relevant.

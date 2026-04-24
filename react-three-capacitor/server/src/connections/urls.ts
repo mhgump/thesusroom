@@ -4,24 +4,29 @@ import type { IncomingMessage } from 'http'
 // doesn't match. Handlers use them to extract the fields they need; the
 // dispatcher uses the null-vs-non-null result to pick which handler to run.
 
-// A `/observe/{key}/{i}/{j}` path.
+// A `/observe/{key}/{i}/{j}` path. `{key}` is the routing key, which may be
+// either a bare `hub` or a two-segment form like `scenarios/{id}` or
+// `scenariorun/{id}`.
 export function parseObserverParams(url: string | undefined): { routingKey: string; i: number; j: number } | null {
   if (!url) return null
   const path = url.split('?')[0]
-  const match = path.match(/^\/observe\/([^/]+)\/(\d+)\/(\d+)$/)
+  const match = path.match(/^\/observe\/(hub|scenarios\/[^/]+|scenariorun\/[^/]+)\/(\d+)\/(\d+)$/)
   if (!match) return null
   return { routingKey: match[1], i: parseInt(match[2], 10), j: parseInt(match[3], 10) }
 }
 
-// The non-observer URL path is always exactly the routing key, e.g. `/r_scenario1`.
-// The empty path (`/` or no path) routes to `hub` — the combined hub world
-// that fronts the default target scenario with a solo initial hallway.
+// The non-observer URL path is either `/` (→ `hub`), `/scenarios/{id}` (→
+// `scenarios/{id}`), or `/scenariorun/{id}` (→ `scenariorun/{id}`). The
+// returned routing key doubles as the path suffix bots connect under, so it
+// is preserved verbatim rather than flattened into a single segment.
 export function parseRoutingKey(url: string | undefined): string | null {
   if (!url) return 'hub'
   const path = url.split('?')[0]
-  const first = path.replace(/^\/+/, '').split('/')[0]
-  if (first.length === 0) return 'hub'
-  return first
+  const stripped = path.replace(/^\/+/, '').replace(/\/+$/, '')
+  if (stripped.length === 0 || stripped === 'hub') return 'hub'
+  const m = stripped.match(/^(scenarios|scenariorun)\/([^/]+)$/)
+  if (m) return `${m[1]}/${m[2]}`
+  return null
 }
 
 // `/recordings/{index}` — WebSocket endpoint for replay. The saved recording

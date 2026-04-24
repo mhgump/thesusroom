@@ -19,6 +19,12 @@ import type { GameMap } from '../../../../react-three-capacitor/src/game/GameMap
 // assign fresh keys before put().
 export interface ScenarioRunBackend extends KeyValueBackend<RunResultKey, ScenarioRunResult> {
   nextIndex(scenario: string, test_spec: string): Promise<number>
+  // Ingest any sibling binary artifacts (video, screenshot) the run's child
+  // process wrote to its staging dir. Filesystem backends: no-op, since
+  // locate() returns the canonical storage dir and the child wrote directly
+  // there. Postgres backends: gzip-compress each file and upsert it under the
+  // run key. Called by the runScenario tool after `put()`.
+  putBlobs(key: RunResultKey, dir: string): Promise<void>
 }
 
 // load() evaluates the scenario module and returns its `SCENARIO` export. Used

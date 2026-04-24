@@ -21,9 +21,12 @@ const numberDisplayProxy = Object.fromEntries(
 // fallback for anything it doesn't recognize, so we ping the backend to
 // replicate prod 404 behavior before Vite answers with index.html.
 const VALIDATION_PATH_REGEXES: RegExp[] = [
-  /^\/observe\/[^/]+\/\d+\/\d+$/,
+  /^\/observe\/hub\/\d+\/\d+$/,
+  /^\/observe\/scenarios\/[^/]+\/\d+\/\d+$/,
+  /^\/observe\/scenariorun\/[^/]+\/\d+\/\d+$/,
   /^\/recordings\/\d+$/,
-  /^\/r_[^/]+$/,
+  /^\/scenarios\/[^/]+$/,
+  /^\/scenariorun\/[^/]+$/,
 ];
 
 // Dev uses Vite's server (not Express) to serve HTML, so the sr_uid cookie
@@ -58,8 +61,8 @@ function srUidCookiePlugin() {
 }
 
 // Dev uses Vite's SPA fallback for any path it doesn't recognize — by
-// default `/bogus`, `/recordings/999`, `/r_nonexistent` all render the
-// SPA. Mirror prod's 404 behavior by validating navigation requests
+// default `/bogus`, `/recordings/999`, `/scenarios/nonexistent` all render
+// the SPA. Mirror prod's 404 behavior by validating navigation requests
 // against the game server: paths matching `VALIDATION_PATH_REGEXES` get
 // a HEAD ping, and any other top-level HTML navigation that isn't `/`
 // also 404s.
@@ -119,7 +122,10 @@ function rapierWasm() {
 
 export default defineConfig({
   plugins: [react(), rapierWasm(), srUidCookiePlugin(), validate404Plugin()],
-  base: './',
+  // Absolute from root so multi-segment SPA routes like `/scenarios/scenario2`
+  // still resolve asset imports to `/assets/...` (relative `./assets/...`
+  // would resolve against the route's parent path and 404).
+  base: '/',
   build: {
     outDir: 'dist',
   },
