@@ -9,7 +9,12 @@ export interface ScenarioSpec {
   id: string
   scriptFactory: () => GameScript
   initialVisibility?: Record<string, boolean>
+  // Keyed by scoped room id (`{mapInstanceId}_{localRoomId}`).
   initialRoomVisibility?: Record<string, boolean>
+  // Scoped room ids the scenario requires to exist in the attached room set.
+  // Asserted when the scenario is attached to a world — a missing id fails
+  // construction so content bugs surface immediately.
+  requiredRoomIds?: string[]
   timeoutMs: number
   onTerminate(cb: () => void): void
 }
@@ -42,6 +47,20 @@ export class ScenarioRegistry {
     const instanceIndex = nullSlot !== -1 ? nullSlot : instances.length
 
     const { map, scenario } = entry
+    // Assert every room id the scenario requires is actually present in the
+    // attached map instance — a missing id fails construction so content bugs
+    // surface immediately instead of producing silently inert scripts.
+    if (scenario.requiredRoomIds && scenario.requiredRoomIds.length > 0) {
+      const availableRoomIds = new Set(
+        map.worldSpec.rooms.map(r => `${map.mapInstanceId}_${r.id}`),
+      )
+      const missing = scenario.requiredRoomIds.filter(id => !availableRoomIds.has(id))
+      if (missing.length > 0) {
+        throw new Error(
+          `Scenario '${scenario.id}' requires room ids not present in map '${map.mapInstanceId}': ${missing.join(', ')}`,
+        )
+      }
+    }
     const room = new Room(
       scenario.id,
       instanceIndex,
@@ -62,6 +81,20 @@ export class ScenarioRegistry {
       map.physics,
       map.toggleVariants ?? [],
     )
+
+    // Register this map instance with the room's world so the world can track
+    // per-player current room and default accessible-room adjacency keyed by
+    // scoped room id (`{mapInstanceId}_{localId}`).
+    const scopedRoomIds = map.worldSpec.rooms.map(r => `${map.mapInstanceId}_${r.id}`)
+    const defaultAdjacency = new Map<string, string[]>()
+    for (const scopedId of scopedRoomIds) {
+      defaultAdjacency.set(scopedId, map.getAdjacentRoomIds(scopedId))
+    }
+    room.registerMapInstance({
+      mapInstanceId: map.mapInstanceId,
+      scopedRoomIds,
+      defaultAdjacency,
+    })
 
     if (nullSlot !== -1) {
       instances[nullSlot] = room

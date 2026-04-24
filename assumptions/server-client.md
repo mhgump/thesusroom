@@ -1,6 +1,9 @@
 # Server–Client Protocol — Assumptions
 
 - The client-side `src/game/World.ts` is the single source of truth. The server's `server/src/World.ts` is a one-line re-export (`export * from '../../src/game/World.js'`) that resolves to the same module at runtime; a divergence between the two is impossible by construction rather than enforced by a sync step.
+- Each websocket room maps 1:1 to one `Room` instance, one `World` instance, one map instance, and one attached scenario. No deployment currently composes multiple map instances or scenarios into the same world.
+- `mapInstanceId` equals the scenario id for every shipped scenario (e.g. `demo`). Room ids on the wire are always the scoped form `{mapInstanceId}_{localRoomId}` (e.g. `demo_room1`). This applies to `room_visibility_state.updates[].roomId`, the keys of `ScenarioSpec.initialRoomVisibility`, `ScenarioSpec.requiredRoomIds`, and the `roomId` argument of `onPlayerEnterRoom` callbacks.
+- `Room.registerMapInstance` is called from `ScenarioRegistry.getOrCreateRoom` immediately after the `Room` constructor returns. It registers the scoped room ids and the map's default adjacency with the world before any player is added, so `World.getAccessibleRooms` can resolve for the first connecting player.
 - The simulation tick rate is exactly 20 Hz (`TICK_RATE_HZ = 20`, `TICK_INTERVAL_MS = 50`). The constant lives in `World.ts` and both the server `Room` and client `Player` derive their intervals from it.
 - The client's remote-render buffer is exactly 5 ticks (250 ms at 20 Hz); `render_tick` trails `server_world_tick` by this buffer under normal playback.
 - The remote-playback catch-up ramp uses exactly these knees: speed is 1.0 while lag < `1.5 × 5` ticks, ramps linearly to 2.0 as lag grows to `3 × 5` ticks, and is clamped at 2.0 above that. `render_tick` is never advanced past `server_world_tick − 5`.

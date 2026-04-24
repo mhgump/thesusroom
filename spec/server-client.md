@@ -16,11 +16,13 @@
 - `render_tick` is initialised to `server_world_tick` minus a fixed buffer of ticks and normally advances in real-time at 1×. When the gap between `server_world_tick` and `render_tick` grows past a configured ratio of the buffer, playback accelerates — ramping linearly toward 2× as the gap grows further, then clamping at 2× — to absorb message bunching. `render_tick` is never advanced past `server_world_tick` minus the buffer.
 - Remote events are held in a per-player queue keyed by `serverTick` and delivered exactly once when `render_tick` reaches that tick. The render buffer therefore applies uniformly to remote positions and events, keeping them temporally aligned.
 - Events in a `move_ack` are processed immediately by the sender; events in a `player_update` are subject to the render-tick buffer.
-- The server maintains a registry mapping scenario names to open room instances; a room instance is open when it accepts new connections.
-- The demo scenario room is pre-warmed at server startup and is always open for new connections.
-- A player connecting to `/{scenario_name}` is routed to the open instance for that scenario; if no open instance exists, a new one is created. If the scenario name is unknown, the connection is rejected.
+- Each world instance corresponds 1:1 to a multiplayer websocket room; the websocket room's lifetime is the world's lifetime.
+- For every websocket room the server creates, the current setup is exactly: one world instance, one map instance loaded into it, and one scenario attached to every player in the map.
+- The server maintains a registry mapping scenario names to open world instances; an instance is open when its attached scenario still accepts new connections.
+- The demo scenario's world is pre-warmed at server startup and is always open for new connections.
+- A player connecting to `/{scenario_name}` is routed to the open world for that scenario; if no open world exists, a new one is created. If the scenario name is unknown, the connection is rejected.
 - Connecting to `/` or any unrecognised path defaults to the `demo` scenario.
-- When the game script calls `closeScenario`, the room is removed from the open registry; new players are routed to a fresh instance or rejected. The closed room continues running for its current players and is destroyed when the last player disconnects.
+- When the game script calls `closeScenario`, the world is removed from the open registry; new players are routed to a fresh world or rejected. The closed world continues running for its current players and is destroyed when the last player disconnects.
 - On connection the server sends: (1) `welcome` with the player's assigned id, colour, spawn position, initial HP, and current `serverTick`; (2) `player_joined` for each already-connected player (human or NPC) with their current position, animation state, HP, and the current `serverTick`.
 - On connection the server sends `player_joined` to every already-connected player describing the new player.
 - On disconnection the server removes the player from the world and broadcasts `player_left` to all remaining players.

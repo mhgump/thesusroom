@@ -3,5 +3,6 @@ export type {
   RunScenarioInput,
   RunScenarioOutput,
   RunScenarioLogEntry,
+  ServerLogEntry,
 } from './spec.js'
 export { RUN_SCENARIO_TOOL } from './impl.js'

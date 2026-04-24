@@ -69,6 +69,18 @@ interface CharBody {
 
 export interface MoveInput { jx: number; jz: number; dt: number }
 
+// Per-map-instance record held inside a World. One World may host multiple
+// map instances under distinct `mapInstanceId`s; each contributes its rooms
+// and default room adjacency to the world.
+export interface WorldMapInstance {
+  mapInstanceId: string
+  // Scoped room ids contributed by this instance (`{mapInstanceId}_{localId}`).
+  scopedRoomIds: string[]
+  // Scoped adjacency map: scoped room id → array of reachable scoped room ids
+  // derived from the map's default connections.
+  defaultAdjacency: Map<string, string[]>
+}
+
 export class World {
   readonly players: Map<string, WorldPlayerState> = new Map()
   private readonly playerRules: Map<string, string[]> = new Map()
@@ -76,6 +88,14 @@ export class World {
   private readonly touchingPairs: Set<string> = new Set()
   private walkable: WalkableArea
   private moveQueue: Map<string, MoveInput[]> = new Map()
+  // Registered map instances in insertion order; keyed by mapInstanceId.
+  private readonly mapInstances: Map<string, WorldMapInstance> = new Map()
+  // Per-player scoped room id of the room the player last entered, or null if
+  // the player is between rooms (corridor) or has never entered a room.
+  private readonly playerRoom: Map<string, string | null> = new Map()
+  // Per-player override of accessible rooms (scoped ids). When undefined the
+  // player falls back to the default adjacency of their current room.
+  private readonly playerAccessibleRoomsOverride: Map<string, Set<string>> = new Map()
 
   // Rapier state (null = AABB mode)
   private rapier: RapierModule | null = null
@@ -200,6 +220,51 @@ export class World {
 
   setWalkable(area: WalkableArea): void { this.walkable = area }
 
+  // Register a map instance in this world. The same map can be added multiple
+  // times under different `mapInstanceId`s; each instance contributes rooms
+  // and the map's default adjacency to the world.
+  addMapInstance(instance: WorldMapInstance): void {
+    this.mapInstances.set(instance.mapInstanceId, instance)
+  }
+
+  getMapInstance(mapInstanceId: string): WorldMapInstance | undefined {
+    return this.mapInstances.get(mapInstanceId)
+  }
+
+  // Returns the scoped room id of the room the player last entered (or null).
+  getPlayerRoom(playerId: string): string | null {
+    return this.playerRoom.get(playerId) ?? null
+  }
+
+  setPlayerRoom(playerId: string, scopedRoomId: string | null): void {
+    this.playerRoom.set(playerId, scopedRoomId)
+  }
+
+  // Returns the accessible-rooms set for the player: the override if set, else
+  // the default adjacency of the player's current room (current room itself
+  // plus every room reachable through a map connection from that room). When
+  // the player has no current room or the adjacency is unknown, returns the
+  // empty set.
+  getAccessibleRooms(playerId: string): Set<string> {
+    const override = this.playerAccessibleRoomsOverride.get(playerId)
+    if (override) return new Set(override)
+    const roomId = this.playerRoom.get(playerId)
+    if (!roomId) return new Set()
+    for (const inst of this.mapInstances.values()) {
+      const adj = inst.defaultAdjacency.get(roomId)
+      if (adj) return new Set([roomId, ...adj])
+    }
+    return new Set([roomId])
+  }
+
+  setAccessibleRoomsOverride(playerId: string, scopedRoomIds: string[] | null): void {
+    if (scopedRoomIds === null) {
+      this.playerAccessibleRoomsOverride.delete(playerId)
+    } else {
+      this.playerAccessibleRoomsOverride.set(playerId, new Set(scopedRoomIds))
+    }
+  }
+
   // Lock a player to whichever walkable rect they're currently deepest inside.
   // resolveOverlap will only accept push targets within that rect, preventing
   // a closing geometry from ejecting the player into the wrong room.
@@ -255,6 +320,8 @@ export class World {
     this.players.delete(id)
     this.playerRules.delete(id)
     this.playerGeomOverride.delete(id)
+    this.playerRoom.delete(id)
+    this.playerAccessibleRoomsOverride.delete(id)
     for (const key of [...this.touchingPairs]) {
       const [a, b] = key.split(':')
       if (a === id || b === id) this.touchingPairs.delete(key)

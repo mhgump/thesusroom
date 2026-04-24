@@ -34,11 +34,12 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
       // Hide remote players who are inside a room not visible from the local player's room.
       // Players in corridors (not inside any room floor) are always shown.
       const { currentRoomId } = useGameStore.getState()
-      const visibleRooms = new Set([currentRoomId, ...(CURRENT_MAP.worldSpec.visibility[currentRoomId] ?? [])])
+      const visibleRooms = new Set([currentRoomId, ...CURRENT_MAP.getAdjacentRoomIds(currentRoomId)])
       let visible = true
       for (const room of CURRENT_MAP.worldSpec.rooms) {
-        if (visibleRooms.has(room.id)) continue
-        const roomPos = CURRENT_MAP.roomPositions.get(room.id)
+        const scopedId = `${CURRENT_MAP.mapInstanceId}_${room.id}`
+        if (visibleRooms.has(scopedId)) continue
+        const roomPos = CURRENT_MAP.roomPositions.get(scopedId)
         if (!roomPos) continue
         const hw = room.floorWidth / 2
         const hd = room.floorDepth / 2

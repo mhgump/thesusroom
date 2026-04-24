@@ -6,13 +6,19 @@
 react-three-capacitor/server/src/
   GameSpec.ts            — Type definitions: InstructionEventSpec, VoteRegionSpec, FloorGeometrySpec, GameSpec, validateGameSpec
   GameScript.ts          — Event types (ToggleVoteRegionOnEvent, ToggleVoteRegionOffEvent, InstructionEvent),
-                           GameScriptContext interface (including closeScenario, setGeometryVisible, getVoteAssignments),
+                           GameScriptContext interface (including closeScenario, setGeometryVisible, setRoomVisible,
+                           getVoteAssignments, onPlayerEnterRoom — all room-scoped APIs use scoped ids),
                            GameScript interface
   GameScriptManager.ts   — Runtime: vote region state, player tracking, per-player geometry visibility,
-                           listener dispatch, context factory
-  ScenarioRegistry.ts    — MapSpec and ScenarioSpec interfaces; creates Room instances on demand via scriptFactory
-  Room.ts                — Integrates GameScriptManager; calls onPlayerConnect, onPlayerDisconnect, onPlayerMoved
+                           per-player current scoped room, listener dispatch, context factory
+  ScenarioRegistry.ts    — ScenarioSpec interface (including requiredRoomIds, initialRoomVisibility);
+                           creates Room instances on demand via scriptFactory; asserts requiredRoomIds;
+                           calls Room.registerMapInstance with scoped room ids and default adjacency
+  Room.ts                — Integrates GameScriptManager; calls onPlayerConnect, onPlayerDisconnect, onPlayerMoved;
+                           exposes registerMapInstance which forwards to world.addMapInstance
 react-three-capacitor/src/game/
+  World.ts               — WorldMapInstance interface; addMapInstance, getPlayerRoom, setPlayerRoom,
+                           getAccessibleRooms, setAccessibleRoomsOverride
   GameSpec.ts            — Client-side mirror of server/src/GameSpec.ts (type definitions only)
 content/server/
   maps/demo.ts           — Demo map spec: walkable area, NPC specs, vote region specs
@@ -36,6 +42,8 @@ react-three-capacitor/src/network/
 
 `ScenarioSpec` uses a `scriptFactory: () => GameScript` function rather than a single script instance. `ScenarioRegistry.getOrCreateRoom` calls `scenario.scriptFactory()` each time a new `Room` is created, ensuring every room gets a fresh script with no stale state from prior rooms.
 
+A scenario is "attached" to a world instance at room construction time. In the current deployment each websocket `Room` hosts exactly one `World`, one map instance, and one scenario; the scenario remains open (accepting new connections) until `ctx.closeScenario()` fires, after which the room is destroyed once its last attached player disconnects.
+
 `GameScriptManager` owns:
 - `activeRegions: Set<string>` — region ids currently enabled via `toggleVoteRegion`
 - `playerRegions: Map<string, string | null>` — every connected player mapped to their current region id
@@ -45,6 +53,34 @@ react-three-capacitor/src/network/
 - `voteListeners` array — registered `onVoteChanged` callbacks with their watched region id sets
 
 `Room` creates a `GameScriptManager` in its constructor whenever `gameSpec` is provided. The manager receives four callbacks into Room: `sendInstruction` (sends an `{ type: 'instruction', text }` message to a specific player), `removePlayer` (calls `Room.removePlayer`), `onCloseScenario` (supplied by `ScenarioRegistry` to remove the room from the open registry), and `sendGeometryState` (sends a `{ type: 'geometry_state', updates }` message to a specific player).
+
+## Scenario Attachment Assertion
+
+`ScenarioRegistry.getOrCreateRoom` builds the set of scoped room ids available in the attached map instance as `{mapInstanceId}_{localId}` for every room in `map.worldSpec.rooms`. If `scenario.requiredRoomIds` is non-empty, any id not in that set throws:
+
+```
+Scenario '<id>' requires room ids not present in map '<mapInstanceId>': <missing ids>
+```
+
+The throw happens before the `Room` is constructed, so a content bug surfaces immediately rather than producing a silently inert script.
+
+After construction, `ScenarioRegistry` computes `defaultAdjacency` by calling `map.getAdjacentRoomIds(scopedId)` for every scoped id, then calls `room.registerMapInstance({ mapInstanceId, scopedRoomIds, defaultAdjacency })`. `Room.registerMapInstance` forwards the instance to `World.addMapInstance` so `World.getAccessibleRooms` can resolve scoped ids via the map's connection graph.
+
+## Scoped Room Ids in Callbacks
+
+All room-scoped APIs on `GameScriptContext` use scoped ids of the form `{mapInstanceId}_{localRoomId}`:
+
+- `setRoomVisible(roomIds, visible, playerIds?)` — `roomIds` entries are scoped.
+- `onPlayerEnterRoom(callback)` — the callback receives `(playerId, scopedRoomId)`.
+- `ScenarioSpec.initialRoomVisibility` — keyed by scoped ids.
+
+`GameScriptManager` tracks `playerCurrentRoom: Map<string, string | null>`. `onPlayerMoved` invokes `getRoomAtPosition(x, z)` (supplied by the map) to resolve the player's current scoped room id. When the resolved id is non-null and differs from the stored value, the manager updates `playerCurrentRoom`, mirrors the change into the world, and fires every `roomEnterListener`. A `null` return is treated as "no transition" — the previously stored room id is preserved so corridor travel does not emit spurious enters.
+
+## World.setPlayerRoom Sync During onPlayerMoved
+
+Immediately before notifying `roomEnterListeners`, `GameScriptManager.onPlayerMoved` calls `this.world.setPlayerRoom(playerId, newRoom)`. This keeps `World.playerRoom` — the source of truth consumed by `World.getAccessibleRooms` — aligned with the room transitions the script observes through `onPlayerEnterRoom`. Without this call, script-visible room events and the world's accessible-rooms resolution would drift, since no other site updates `playerRoom` during player movement.
+
+The spec permits restricting an attached player's accessible rooms to a subset of the scenario's rooms, but no code currently calls `World.setAccessibleRoomsOverride`; containment in the current deployment is enforced by the walkable area plus geometry toggles.
 
 ## Lifecycle Integration in Room
 

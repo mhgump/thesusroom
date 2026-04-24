@@ -4,10 +4,12 @@ import type { GameMap } from '../../react-three-capacitor/src/game/GameMap.js'
 import type { PhysicsSpec } from '../../react-three-capacitor/src/game/World.js'
 import {
   computeRoomPositions,
-  getRoomAtPosition,
   validateWorldSpec,
 } from '../../react-three-capacitor/src/game/WorldSpec.js'
+import { buildMapInstanceArtifacts } from '../../react-three-capacitor/src/game/MapInstance.js'
 import { buildCameraConstraintShapes } from '../../react-three-capacitor/src/game/CameraConstraint.js'
+
+const DEMO_MAP_INSTANCE_ID = 'demo'
 
 const R           = 0.0282  // CAPSULE_RADIUS
 const BT          = 0.025   // barrierThickness
@@ -107,9 +109,11 @@ export const DEMO_WORLD_SPEC: WorldSpec = {
   },
 }
 
-export const DEMO_ROOM_POSITIONS = computeRoomPositions(DEMO_WORLD_SPEC)
-validateWorldSpec(DEMO_WORLD_SPEC, DEMO_ROOM_POSITIONS)
-export const DEMO_CAMERA_SHAPES = buildCameraConstraintShapes(DEMO_WORLD_SPEC, DEMO_ROOM_POSITIONS)
+const DEMO_LOCAL_POSITIONS = computeRoomPositions(DEMO_WORLD_SPEC)
+validateWorldSpec(DEMO_WORLD_SPEC, DEMO_LOCAL_POSITIONS)
+const DEMO_ARTIFACTS = buildMapInstanceArtifacts(DEMO_WORLD_SPEC, DEMO_MAP_INSTANCE_ID)
+export const DEMO_ROOM_POSITIONS = DEMO_ARTIFACTS.roomPositions
+export const DEMO_CAMERA_SHAPES = buildCameraConstraintShapes(DEMO_WORLD_SPEC, DEMO_LOCAL_POSITIONS)
 
 // ── Walkable areas ─────────────────────────────────────────────────────────────
 
@@ -200,6 +204,7 @@ export const DEMO_GAME_SPEC: GameSpec = {
 
 export const DEMO_MAP: GameMap = {
   id: 'demo',
+  mapInstanceId: DEMO_MAP_INSTANCE_ID,
   worldSpec: DEMO_WORLD_SPEC,
   roomPositions: DEMO_ROOM_POSITIONS,
   cameraShapes: DEMO_CAMERA_SHAPES,
@@ -207,7 +212,9 @@ export const DEMO_MAP: GameMap = {
   physics: DEMO_PHYSICS,
   gameSpec: DEMO_GAME_SPEC,
   npcs: [],
-  getRoomAtPosition: (x, z) => getRoomAtPosition(DEMO_WORLD_SPEC, DEMO_ROOM_POSITIONS, x, z),
+  getRoomAtPosition: DEMO_ARTIFACTS.getRoomAtPosition,
+  getAdjacentRoomIds: DEMO_ARTIFACTS.getAdjacentRoomIds,
+  isRoomOverlapping: DEMO_ARTIFACTS.isRoomOverlapping,
   walkableVariants: [
     { triggerIds: ['door_open'],                           walkable: BOTH_ROOMS },
     { triggerIds: ['door_open', 'room3_accessible'],       walkable: ALL_THREE  },

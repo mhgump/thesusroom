@@ -4,10 +4,12 @@ import type { GameMap } from '../../react-three-capacitor/src/game/GameMap.js'
 import {
   computeRoomPositions,
   computeWalkableArea,
-  getRoomAtPosition,
   validateWorldSpec,
 } from '../../react-three-capacitor/src/game/WorldSpec.js'
+import { buildMapInstanceArtifacts } from '../../react-three-capacitor/src/game/MapInstance.js'
 import { buildCameraConstraintShapes } from '../../react-three-capacitor/src/game/CameraConstraint.js'
+
+const MAP_INSTANCE_ID = 'scenario4'
 
 const CAPSULE_RADIUS = 0.0282
 const bt = 0.025
@@ -104,10 +106,12 @@ const WORLD_SPEC: WorldSpec = {
   },
 }
 
-const ROOM_POSITIONS = computeRoomPositions(WORLD_SPEC)
-validateWorldSpec(WORLD_SPEC, ROOM_POSITIONS)
-const CAMERA_SHAPES = buildCameraConstraintShapes(WORLD_SPEC, ROOM_POSITIONS)
-const WALKABLE = computeWalkableArea(WORLD_SPEC, ROOM_POSITIONS, CAPSULE_RADIUS)
+const LOCAL_POSITIONS = computeRoomPositions(WORLD_SPEC)
+validateWorldSpec(WORLD_SPEC, LOCAL_POSITIONS)
+const ARTIFACTS = buildMapInstanceArtifacts(WORLD_SPEC, MAP_INSTANCE_ID)
+const ROOM_POSITIONS = ARTIFACTS.roomPositions
+const CAMERA_SHAPES = buildCameraConstraintShapes(WORLD_SPEC, LOCAL_POSITIONS)
+const WALKABLE = computeWalkableArea(WORLD_SPEC, LOCAL_POSITIONS, CAPSULE_RADIUS)
 
 const GAME_SPEC: GameSpec = {
   instructionSpecs: [],
@@ -117,11 +121,14 @@ const GAME_SPEC: GameSpec = {
 
 export const SCENARIO4_MAP: GameMap = {
   id: 'scenario4',
+  mapInstanceId: MAP_INSTANCE_ID,
   worldSpec: WORLD_SPEC,
   roomPositions: ROOM_POSITIONS,
   cameraShapes: CAMERA_SHAPES,
   walkable: WALKABLE,
   gameSpec: GAME_SPEC,
   npcs: [],
-  getRoomAtPosition: (x, z) => getRoomAtPosition(WORLD_SPEC, ROOM_POSITIONS, x, z),
+  getRoomAtPosition: ARTIFACTS.getRoomAtPosition,
+  getAdjacentRoomIds: ARTIFACTS.getAdjacentRoomIds,
+  isRoomOverlapping: ARTIFACTS.isRoomOverlapping,
 }

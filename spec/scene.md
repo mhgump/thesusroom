@@ -1,13 +1,16 @@
 # Scene — Spec
 
-- A world defines a collection of rooms and the connections between them.
-- Rooms are positioned in world space based on their connections; the first room is placed at the origin.
+- A map defines a collection of rooms, the doorways (connections) between them, and a default adjacency list naming which rooms are considered neighbours of each room.
+- Rooms are positioned in map-local space based on their connections; the first room is placed at the origin.
 - A connection defines a doorway between two rooms: the wall of each room the doorway opens on, its position along those walls, and its width.
-- A world defines which adjacent rooms are visible from each room.
 - A room defines a rectangular floor area with surrounding low barriers and optional floor and exterior textures.
 - Barrier geometry wraps the room perimeter with openings for each doorway and does not extend into adjacent rooms.
 - The floor shows a tiled texture; if no texture is specified a fallback texture is used.
 - Exterior planes render beyond room walls.
+- A world instance is composed of one or more map instances; each map instance contributes its rooms and connections to the world.
+- Every room in a world instance has a composite id of the form `{map_instance_id}_{room_id_from_map}`; the same map added twice yields two disjoint sets of rooms under different map-instance ids.
+- Rooms from different map instances may overlap in world-space coordinates. The connection point between any pair of rooms in the world must not overlap the connection point of any other pair along any room's edge.
+- A room that overlaps any other room in the world does not render for a player unless that player is currently inside it, or the server has explicitly toggled it visible for that player. Non-overlapping rooms render according to the map's default adjacency.
 - An orthographic camera follows the local player.
 - Each room defines an explicit camera rect; each connection between rooms defines an explicit transition zone (a convex polygon bridging the two rooms' camera rects).
 - Camera movement is bounded by the union of all room camera rects and transition zones.

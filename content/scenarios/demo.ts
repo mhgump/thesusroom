@@ -35,7 +35,7 @@ class DemoScript implements GameScript {
       ctx.setGeometryVisible(['door_open'], true)
 
       ctx.onPlayerEnterRoom((pid, roomId) => {
-        if (roomId !== 'room2') return
+        if (roomId !== 'demo_room2') return
         this.inRoom2.add(pid)
         // Lock the player to room2, wait for them to clear the doorway, then re-close it.
         ctx.lockPlayerToRoom(pid)
@@ -74,7 +74,7 @@ class DemoScript implements GameScript {
       // Reveal room 3: remove the room2 north wall and show room3 to all survivors.
       ctx.setGeometryVisible(['room2_north_wall'], false)
       ctx.setGeometryVisible(['room3_accessible'], true)
-      ctx.setRoomVisible(['room3'], true)
+      ctx.setRoomVisible(['demo_room3'], true)
       _terminateCb?.()
     })
   }
@@ -91,6 +91,7 @@ export const DEMO_SCENARIO: ScenarioSpec = {
     'room3_accessible': false,
   },
   initialRoomVisibility: {
-    'room3': false,
+    'demo_room3': false,
   },
+  requiredRoomIds: ['demo_room1', 'demo_room2', 'demo_room3'],
 }

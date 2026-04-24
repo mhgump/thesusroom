@@ -23,6 +23,12 @@ export interface RunScenarioLogEntry {
   message: string
 }
 
+export interface ServerLogEntry {
+  time: number
+  level: 'info' | 'warn' | 'error'
+  message: string
+}
+
 export interface RunScenarioOutput {
   run_id: string
   scenario_id: string
@@ -32,6 +38,7 @@ export interface RunScenarioOutput {
   effective_timeout_ms: number
   terminated_by: 'scenario' | 'timeout'
   logs: RunScenarioLogEntry[]
+  server_logs: ServerLogEntry[]
   // Absolute path — only set when recording was requested.
   video_path: string | null
   screenshot_path: string | null

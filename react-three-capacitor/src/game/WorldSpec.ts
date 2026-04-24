@@ -149,7 +149,7 @@ export function computeWalkableArea(
   return { rects }
 }
 
-// Returns the id of the room whose floor contains (x, z), or null.
+// Returns the local id of the room whose floor contains (x, z), or null.
 export function getRoomAtPosition(
   spec: WorldSpec,
   positions: Map<string, RoomWorldPos>,
@@ -163,6 +163,29 @@ export function getRoomAtPosition(
     }
   }
   return null
+}
+
+// Scoped room-id helpers. Every room in a world instance has a composite id of
+// the form `{map_instance_id}_{room_id_from_map}`.
+export function scopedRoomId(mapInstanceId: string, localRoomId: string): string {
+  return `${mapInstanceId}_${localRoomId}`
+}
+
+export function unscopeRoomId(scopedId: string, mapInstanceId: string): string | null {
+  const prefix = `${mapInstanceId}_`
+  return scopedId.startsWith(prefix) ? scopedId.slice(prefix.length) : null
+}
+
+// AABB-overlap check between two rooms given their positions and sizes. Used
+// at map build time to determine which rooms overlap in world-space coordinates
+// (overlapping rooms are hidden by default on the client).
+export function roomsOverlap(
+  aPos: RoomWorldPos, aRoom: RoomSpec,
+  bPos: RoomWorldPos, bRoom: RoomSpec,
+): boolean {
+  const gapX = Math.abs(aPos.x - bPos.x) - (aRoom.floorWidth  + bRoom.floorWidth)  / 2
+  const gapZ = Math.abs(aPos.z - bPos.z) - (aRoom.floorDepth + bRoom.floorDepth) / 2
+  return gapX < 0 && gapZ < 0
 }
 
 // Validates a WorldSpec after positions are computed. Throws on any violation.

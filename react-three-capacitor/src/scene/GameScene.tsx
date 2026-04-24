@@ -85,15 +85,21 @@ export function GameScene() {
     );
   }, -2);
 
-  const isRoomVisible = (id: string) => {
-    const override = playerRoomVisibilityOverride[id]
+  const isRoomVisible = (scopedId: string) => {
+    const override = playerRoomVisibilityOverride[scopedId]
     if (override !== undefined) return override
-    return roomVisibility[id] !== false
+    // Overlapping rooms are hidden by default unless the player is inside the
+    // room or an explicit server-side toggle says otherwise. Non-overlapping
+    // rooms follow the map's default adjacency rendering.
+    if (CURRENT_MAP.isRoomOverlapping(scopedId) && scopedId !== currentRoomId) return false
+    return roomVisibility[scopedId] !== false
   }
   const visibleIds = new Set(
-    [currentRoomId, ...(CURRENT_MAP.worldSpec.visibility[currentRoomId] ?? [])].filter(isRoomVisible)
+    [currentRoomId, ...CURRENT_MAP.getAdjacentRoomIds(currentRoomId)].filter(isRoomVisible)
   );
-  const roomsToRender = CURRENT_MAP.worldSpec.rooms.filter(r => visibleIds.has(r.id));
+  const roomsToRender = CURRENT_MAP.worldSpec.rooms.filter(r =>
+    visibleIds.has(`${CURRENT_MAP.mapInstanceId}_${r.id}`),
+  );
 
   return (
     <>
@@ -101,9 +107,10 @@ export function GameScene() {
       <directionalLight position={[0.48, 0.97, 0.64]} intensity={0.75} castShadow />
       <BgPlane />
       {roomsToRender.map(room => {
-        const pos = CURRENT_MAP.roomPositions.get(room.id)!;
+        const scopedId = `${CURRENT_MAP.mapInstanceId}_${room.id}`;
+        const pos = CURRENT_MAP.roomPositions.get(scopedId)!;
         return (
-          <group key={room.id} position={[pos.x, 0, pos.z]}>
+          <group key={scopedId} position={[pos.x, 0, pos.z]}>
             <Ground room={room} />
             <Barrier room={room} />
             <RoomOutsideTextures room={room} />

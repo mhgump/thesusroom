@@ -1,7 +1,7 @@
 import WebSocket from 'ws'
 import type { ServerMessage, MoveInput } from './types.js'
 import { World, TICK_RATE_HZ } from './World.js'
-import type { WalkableArea, PhysicsSpec, TouchedEvent } from './World.js'
+import type { WalkableArea, PhysicsSpec, TouchedEvent, WorldMapInstance } from './World.js'
 import { NpcManager } from './npc/NpcManager.js'
 import type { NpcSpec } from './npc/NpcSpec.js'
 import { GameScriptManager } from './GameScriptManager.js'
@@ -122,6 +122,10 @@ export class Room {
 
   clearCallbacks(): void {
     this.voteRegionChangeCallbacks.length = 0
+  }
+
+  registerMapInstance(instance: WorldMapInstance): void {
+    this.world.addMapInstance(instance)
   }
 
   handleMove(playerId: string, clientTick: number, inputs: MoveInput[]): void {

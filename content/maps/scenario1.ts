@@ -4,11 +4,13 @@ import type { GameMap } from '../../react-three-capacitor/src/game/GameMap.js'
 import {
   computeRoomPositions,
   computeWalkableArea,
-  getRoomAtPosition,
   validateWorldSpec,
 } from '../../react-three-capacitor/src/game/WorldSpec.js'
+import { buildMapInstanceArtifacts } from '../../react-three-capacitor/src/game/MapInstance.js'
 import { buildCameraConstraintShapes } from '../../react-three-capacitor/src/game/CameraConstraint.js'
 import type { WalkableArea } from '../../react-three-capacitor/src/game/WorldSpec.js'
+
+const MAP_INSTANCE_ID = 'scenario1'
 
 const CAPSULE_RADIUS = 0.0282
 
@@ -54,10 +56,12 @@ const WORLD_SPEC: WorldSpec = {
   visibility: { main: [] },
 }
 
-const ROOM_POSITIONS = computeRoomPositions(WORLD_SPEC)
-validateWorldSpec(WORLD_SPEC, ROOM_POSITIONS)
-const CAMERA_SHAPES = buildCameraConstraintShapes(WORLD_SPEC, ROOM_POSITIONS)
-const WALKABLE_DEFAULT = computeWalkableArea(WORLD_SPEC, ROOM_POSITIONS, CAPSULE_RADIUS)
+const LOCAL_POSITIONS = computeRoomPositions(WORLD_SPEC)
+validateWorldSpec(WORLD_SPEC, LOCAL_POSITIONS)
+const ARTIFACTS = buildMapInstanceArtifacts(WORLD_SPEC, MAP_INSTANCE_ID)
+const ROOM_POSITIONS = ARTIFACTS.roomPositions
+const CAMERA_SHAPES = buildCameraConstraintShapes(WORLD_SPEC, LOCAL_POSITIONS)
+const WALKABLE_DEFAULT = computeWalkableArea(WORLD_SPEC, LOCAL_POSITIONS, CAPSULE_RADIUS)
 
 const LOCKED_WALKABLE: WalkableArea = {
   rects: [
@@ -103,13 +107,16 @@ const GAME_SPEC: GameSpec = {
 
 export const SCENARIO1_MAP: GameMap = {
   id: 'scenario1',
+  mapInstanceId: MAP_INSTANCE_ID,
   worldSpec: WORLD_SPEC,
   roomPositions: ROOM_POSITIONS,
   cameraShapes: CAMERA_SHAPES,
   walkable: WALKABLE_DEFAULT,
   gameSpec: GAME_SPEC,
   npcs: [],
-  getRoomAtPosition: (x, z) => getRoomAtPosition(WORLD_SPEC, ROOM_POSITIONS, x, z),
+  getRoomAtPosition: ARTIFACTS.getRoomAtPosition,
+  getAdjacentRoomIds: ARTIFACTS.getAdjacentRoomIds,
+  isRoomOverlapping: ARTIFACTS.isRoomOverlapping,
   walkableVariants: [
     { triggerIds: ['s1_w1f', 's1_w2f', 's1_w3f', 's1_w4f'], walkable: LOCKED_WALKABLE },
   ],

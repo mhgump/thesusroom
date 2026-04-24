@@ -198,6 +198,9 @@ export class GameScriptManager {
       const newRoom = this.getRoomAtPosition(p.x, p.z)
       if (newRoom !== null && newRoom !== oldRoom) {
         this.playerCurrentRoom.set(playerId, newRoom)
+        // Keep the world's per-player room state aligned so accessible-rooms
+        // resolution (World.getAccessibleRooms) reflects the current room.
+        this.world.setPlayerRoom(playerId, newRoom)
         for (const cb of this.roomEnterListeners) cb(playerId, newRoom)
       }
     }

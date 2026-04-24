@@ -82,17 +82,14 @@ Network protocol and synchronization: messages, sequencing, prediction, remote i
 ### `npc`
 NPC framework: entity registration, tick triggers, context API, action/helper system.
 - Covers: NPC identity, trigger types, `allowedActions`/`allowedHelpers`, event emission, UX flags.
-- Does not cover: specific NPC behavior in the demo world (→ `demo_world`), game damage rules (→ `game`).
+- Does not cover: game damage rules (→ `game`).
 
 ### `game_script`
 Game script framework: one script per world, vote regions, instruction events, callbacks.
 - Covers: `GameScript` interface, `GameScriptContext` API, vote region tracking, instruction delivery, `after` timer, `onVoteChanged` callback, `ToggleVoteRegionOn/Off` and `InstructionEvent` event types, `GameSpec` structure.
-- Does not cover: specific demo script behavior (→ `demo_world`), player elimination mechanics (→ `game`), network delivery of instruction messages (→ `server-client`).
+- Does not cover: player elimination mechanics (→ `game`), network delivery of instruction messages (→ `server-client`).
 
-### `demo_world` *(assumptions only)*
-Concrete configuration of the default world: room dimensions, connections, NPC specs, routing policy, game script config.
-- Covers: Room 1/2/3/south_hall/south_room sizes, door widths, StillDamager behavior, player spawn point, world routing, vote regions, demo game script rules.
-- Has no `spec/` or `implementation/` counterpart; all content lives in `assumptions/demo_world.md`.
+Concrete world and scenario configurations (the demo room, individual scenarios, specific NPC placements, vote region coordinates, script parameters) are not documented — they live in the `content/` directory and speak for themselves.
 
 ---
 

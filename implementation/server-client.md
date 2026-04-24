@@ -17,9 +17,10 @@ src/store/
   gameStore.ts           — Player list, connection state (UI-only state; no position/event buffers)
 server/src/
   World.ts               — One-line re-export of ../../src/game/World.js; server instances are created with no events disabled, so touched/damage/animation all fire
-  Room.ts                — 20 Hz setInterval tick loop, move buffering, sort-by-clientTick, player management, NPC event merge, game script hooks
+  Room.ts                — 20 Hz setInterval tick loop, move buffering, sort-by-clientTick, player management, NPC event merge, game script hooks; `registerMapInstance` forwards the map's scoped room ids and default adjacency into the world
   GameServer.ts          — WebSocket server; parses scenario id from URL path; uses ScenarioRegistry
-  ScenarioRegistry.ts    — Maintains open room instances per scenario; creates rooms on demand
+  ScenarioRegistry.ts    — Maintains open world instances per scenario; derives scoped room ids and default adjacency from the map and calls `room.registerMapInstance`; asserts `ScenarioSpec.requiredRoomIds` are present in the attached map
+  GameScriptManager.ts   — Mirrors room transitions from `onPlayerMoved` into `world.setPlayerRoom`
   types.ts               — ServerMessage / ClientMessage types (server-side copy; kept in sync with src/network/types.ts)
 ```
 
@@ -29,11 +30,13 @@ There is a single `World` implementation at `src/game/World.ts`. The server's `s
 
 ## Server (`Room.ts`, `GameServer.ts`, `ScenarioRegistry.ts`)
 
-`ScenarioRegistry` owns a map from scenario id to `{ map: MapSpec; scenario: ScenarioSpec }` and a separate `openRooms` map from scenario id to open `Room`. `getOrCreateRoom(id)` returns the existing open room or creates a new one (passing an `onCloseScenario` callback that deletes the entry from `openRooms`). `prewarm(id)` pre-creates the room at startup. When `ctx.closeScenario()` is called inside a game script, the callback fires and the room is removed from `openRooms`; the room itself continues running for existing players.
+Each websocket room is one world instance: one `Room` owns one `World`, one map instance loaded into it, and one attached scenario. The code still calls the owner `Room` (it predates the "world instance" vocabulary) but the lifetime and identity are the world's.
 
-`GameServer` parses the first URL path segment from the WebSocket upgrade request as the scenario id (empty or `/` defaults to `demo`). It calls `ScenarioRegistry.getOrCreateRoom` and rejects the connection with close code 4004 if the result is null. `GameServer` stores a `playerRoom` map (player id → Room) to keep room instances alive as long as any player is connected; entries are removed on disconnect.
+`ScenarioRegistry` owns a map from scenario id to `{ map: GameMap; scenario: ScenarioSpec }` and a separate `openRooms` map from scenario id to open `Room`. `getOrCreateRoom(id)` returns the existing open world or creates a new one (passing an `onCloseScenario` callback that deletes the entry from `openRooms`). `prewarm(id)` pre-creates the world at startup. When `ctx.closeScenario()` is called inside a game script, the callback fires and the world is removed from `openRooms`; it keeps running for existing players. Before returning a new `Room`, `ScenarioRegistry` asserts `scenario.requiredRoomIds` are all present as scoped ids (`{mapInstanceId}_{localId}`) in the attached map and throws otherwise — content bugs surface at construction rather than as silently inert scripts. It then derives the scoped room id list and a scoped `defaultAdjacency: Map<string, string[]>` from `map.getAdjacentRoomIds` and calls `room.registerMapInstance({ mapInstanceId, scopedRoomIds, defaultAdjacency })`, which forwards a `WorldMapInstance` into `world.addMapInstance`. This wiring runs before any player joins, so accessible-room resolution works for the first connection.
 
-`Room` owns a `World` instance (all events enabled), a player map (id → WebSocket + colour), a `pendingMoves: Map<playerId, Array<{clientTick, inputs}>>`, a monotonically increasing `serverTick`, and a `setInterval` driving `runTick()` at `TICK_INTERVAL_MS = 1000 / TICK_RATE_HZ`.
+`GameServer` parses the first URL path segment from the WebSocket upgrade request as the scenario id (empty or `/` defaults to `demo`). It calls `ScenarioRegistry.getOrCreateRoom` and rejects the connection with close code 4004 if the result is null. `GameServer` stores a `playerRoom` map (player id → Room) to keep world instances alive as long as any player is connected; entries are removed on disconnect.
+
+`Room` owns a `World` instance (all events enabled), a player map (id → WebSocket + colour), a `pendingMoves: Map<playerId, Array<{clientTick, inputs}>>`, a monotonically increasing `serverTick`, and a `setInterval` driving `runTick()` at `TICK_INTERVAL_MS = 1000 / TICK_RATE_HZ`. `Room.registerMapInstance(instance)` is a thin pass-through to `world.addMapInstance` used by `ScenarioRegistry` at construction time.
 
 `handleMove(playerId, clientTick, inputs)` appends every incoming move to `pendingMoves[playerId]` unconditionally — moves are never dropped, reordered, or rejected. `runTick()`:
 

@@ -52,6 +52,29 @@ const SCENARIO_SPECS: Record<string, ScenarioSpec> = {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
 
+// Tee server-side console output into a structured buffer so the artifact can
+// expose scenario_script_logs / scenario_script_errors to downstream tools.
+interface ServerLogEntry { time: number; level: 'info' | 'warn' | 'error'; message: string }
+const serverLogs: ServerLogEntry[] = []
+const origLog = console.log.bind(console)
+const origWarn = console.warn.bind(console)
+const origErr = console.error.bind(console)
+function stringify(args: unknown[]): string {
+  return args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
+}
+console.log = (...args: unknown[]) => {
+  serverLogs.push({ time: Date.now(), level: 'info', message: stringify(args) })
+  origLog(...args)
+}
+console.warn = (...args: unknown[]) => {
+  serverLogs.push({ time: Date.now(), level: 'warn', message: stringify(args) })
+  origWarn(...args)
+}
+console.error = (...args: unknown[]) => {
+  serverLogs.push({ time: Date.now(), level: 'error', message: stringify(args) })
+  origErr(...args)
+}
+
 // ── CLI args ──────────────────────────────────────────────────────────────────
 
 const { values } = parseArgs({
@@ -364,6 +387,7 @@ const response = {
   video_path: videoOutPath,
   screenshot_path: screenshotOutPath,
   screenshot_has_content: screenshotHasContent,
+  server_logs: serverLogs,
   exit_code: process.exitCode ?? 0,
 }
 

@@ -18,7 +18,10 @@ export function HUD() {
   const settingsOpen = useGameStore((s) => s.settingsOpen)
   const setSettingsOpen = useGameStore((s) => s.setSettingsOpen)
 
-  const roomName = CURRENT_MAP.worldSpec.rooms.find(r => r.id === currentRoomId)?.name ?? currentRoomId
+  const localRoomId = currentRoomId.startsWith(`${CURRENT_MAP.mapInstanceId}_`)
+    ? currentRoomId.slice(CURRENT_MAP.mapInstanceId.length + 1)
+    : currentRoomId
+  const roomName = CURRENT_MAP.worldSpec.rooms.find(r => r.id === localRoomId)?.name ?? currentRoomId
 
   return (
     <div
