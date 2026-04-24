@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import { useGameStore } from '../store/gameStore'
-import { CURRENT_MAP } from '../../../content/maps'
+import { useClientWorld } from '../game/clientWorld'
 import { Textures } from '../game/textures'
 
 function makeWallMaterials(): THREE.Material[] {
@@ -18,17 +18,19 @@ export function GeometryLayer() {
   const currentRoomId = useGameStore((s) => s.currentRoomId)
   const roomVisibility = useGameStore((s) => s.roomVisibility)
   const playerRoomVisibilityOverride = useGameStore((s) => s.playerRoomVisibilityOverride)
+  const world = useClientWorld()
   const wallMats = useMemo(makeWallMaterials, [])
   const colorMaterialCache = useMemo(() => new Map<string, THREE.Material>(), [])
 
   const isRoomVisible = (scopedId: string) => {
     const override = playerRoomVisibilityOverride[scopedId]
     if (override !== undefined) return override
-    if (CURRENT_MAP.isRoomOverlapping(scopedId) && scopedId !== currentRoomId) return false
+    if (world?.isRoomOverlapping(scopedId) && scopedId !== currentRoomId) return false
     return roomVisibility[scopedId] !== false
   }
+  const adjacent = world?.getAdjacentRoomIds(currentRoomId) ?? []
   const visibleRoomIds = new Set(
-    [currentRoomId, ...CURRENT_MAP.getAdjacentRoomIds(currentRoomId)].filter(isRoomVisible),
+    [currentRoomId, ...adjacent].filter(isRoomVisible),
   )
 
   const getColorMaterial = (color: string): THREE.Material => {

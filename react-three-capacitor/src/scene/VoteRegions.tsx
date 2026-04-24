@@ -1,14 +1,14 @@
 import { Text } from '@react-three/drei'
-import { CURRENT_MAP } from '../../../content/maps'
+import { useClientWorld } from '../game/clientWorld'
 
 interface Props { visibleIds: Set<string> }
 
 export function VoteRegions({ visibleIds }: Props) {
+  const world = useClientWorld()
+  const regions = world?.getAllVoteRegions() ?? []
   return (
     <>
-      {CURRENT_MAP.voteRegions.filter(region =>
-        visibleIds.has(CURRENT_MAP.getRoomAtPosition(region.x, region.z) ?? '')
-      ).map(region => (
+      {regions.filter(region => visibleIds.has(region.roomId ?? '')).map(region => (
         <group key={region.id} position={[region.x, 0, region.z]}>
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, 0]}>
             <circleGeometry args={[region.radius, 64]} />

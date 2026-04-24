@@ -11,7 +11,12 @@ export function EliminationOverlay() {
 
   if (!localEliminated && !observerEnded) return null
 
-  const text = (localEliminated || observerEndReason === 'eliminated') ? 'ELIMINATED' : 'DISCONNECTED'
+  const text =
+    (localEliminated || observerEndReason === 'eliminated')
+      ? 'ELIMINATED'
+      : observerEndReason === 'replay_ended'
+        ? 'RECORDING ENDED'
+        : 'DISCONNECTED'
 
   return (
     <div

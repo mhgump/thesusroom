@@ -50,3 +50,9 @@ export {
   type AgentConversation,
   type AgentConversationTurn,
 } from './ops/agentConversations.js'
+export { PlayerRegistry } from './ops/playerRegistry.js'
+export {
+  PlayerRecordings,
+  type PlayerRecordingDoc,
+  type RecordingEvent,
+} from './ops/playerRecordings.js'

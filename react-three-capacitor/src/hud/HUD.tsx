@@ -6,7 +6,7 @@ import { ChoicePopup } from './ChoicePopup'
 import { RulePopup } from './RulePopup'
 import { RulesPanel } from './RulesPanel'
 import { SettingsPanel } from './SettingsPanel'
-import { CURRENT_MAP } from '../../../content/maps'
+import { useClientWorld } from '../game/clientWorld'
 
 export function HUD() {
   const connected = useGameStore((s) => s.connected)
@@ -17,11 +17,10 @@ export function HUD() {
   const inputMode = useGameStore((s) => s.inputMode)
   const settingsOpen = useGameStore((s) => s.settingsOpen)
   const setSettingsOpen = useGameStore((s) => s.setSettingsOpen)
+  const world = useClientWorld()
 
-  const localRoomId = currentRoomId.startsWith(`${CURRENT_MAP.mapInstanceId}_`)
-    ? currentRoomId.slice(CURRENT_MAP.mapInstanceId.length + 1)
-    : currentRoomId
-  const roomName = CURRENT_MAP.rooms.find(r => r.id === localRoomId)?.name ?? currentRoomId
+  const roomView = world?.getRoomByScopedId(currentRoomId)
+  const roomName = roomView?.room.name ?? currentRoomId
 
   return (
     <div

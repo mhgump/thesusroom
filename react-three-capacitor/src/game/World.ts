@@ -1,7 +1,11 @@
 import type RAPIER_TYPE from '@dimforge/rapier2d-compat'
-import { buildMapInstanceArtifacts } from './MapInstance.js'
+import { buildMapInstanceArtifacts, type MapInstanceArtifacts } from './MapInstance.js'
 import type { GameMap } from './GameMap.js'
-import type { ButtonConfig, ButtonSpec, ButtonState } from './GameSpec.js'
+import type { ButtonConfig, ButtonSpec, ButtonState, VoteRegionSpec } from './GameSpec.js'
+import type { RoomSpec } from './RoomSpec.js'
+import type { RoomWorldPos } from './WorldSpec.js'
+import { scopedRoomId } from './WorldSpec.js'
+import { buildCameraConstraintShapes, type CameraConstraintShapes, type CameraRect, type CameraZone } from './CameraConstraint.js'
 
 export type AnimationState = 'IDLE' | 'WALKING'
 export type WorldEventType =
@@ -164,6 +168,31 @@ export interface WorldMapInstance {
   scopedRoomIds: string[]
 }
 
+// A room as seen by the renderer: the local RoomSpec plus world-space centre
+// and the scoping metadata needed to key into visibility/adjacency maps.
+export interface WorldRoomView {
+  scopedId: string
+  mapInstanceId: string
+  localRoomId: string
+  room: RoomSpec
+  worldPos: RoomWorldPos
+}
+
+// Internal bookkeeping per added map. Keeps the artifacts handy for rendering
+// accessors, plus the lists of ids the map introduced so `removeMap` can tear
+// them down precisely.
+interface WorldMapInstanceInternal {
+  mapInstanceId: string
+  scopedRoomIds: string[]
+  map: GameMap
+  artifacts: MapInstanceArtifacts
+  cameraShapes: CameraConstraintShapes
+  rooms: WorldRoomView[]
+  geometryIds: string[]
+  voteRegionIds: string[]
+  buttonIds: string[]
+}
+
 // A point-in-time snapshot of everything a World owns that can't be rederived
 // from the code in `GameMap`s. The Rapier state and per-room AABBs *are*
 // rederivable, so they aren't in the dump — restore rebuilds them by
@@ -238,7 +267,19 @@ export class World {
   private moveQueue: Map<string, MoveInput[]> = new Map()
 
   // Registered map instances, keyed by mapInstanceId.
-  private readonly mapInstances: Map<string, WorldMapInstance> = new Map()
+  private readonly mapInstances: Map<string, WorldMapInstanceInternal> = new Map()
+
+  // Cache of scoped-id → room view for fast lookups in getRoomByScopedId.
+  private readonly roomViewByScopedId: Map<string, WorldRoomView> = new Map()
+
+  // Union of overlap sets from every attached map's artifacts. Kept flat so
+  // isRoomOverlapping can answer in O(1) without touching each instance.
+  private readonly overlappingRoomIds: Set<string> = new Set()
+
+  // Subscribers re-rendered when the set of attached maps changes (addMap /
+  // removeMap). The React hook `useClientWorld` wires into this.
+  private readonly changeSubscribers: Set<() => void> = new Set()
+  private mapsVersion = 0
 
   // Per-room world-space floor AABB, keyed by scoped room id. Populated by addMap.
   private readonly roomBounds: Map<string, RoomBounds> = new Map()
@@ -317,8 +358,8 @@ export class World {
   // connections, load the default adjacency, instantiate every geometry piece
   // as a Rapier collider in global coords.
   addMap(map: GameMap): WorldMapInstance {
-    const { scopedRoomIds, roomBounds, geometry, adjacency } =
-      buildMapInstanceArtifacts(map, map.mapInstanceId)
+    const artifacts = buildMapInstanceArtifacts(map, map.mapInstanceId)
+    const { scopedRoomIds, roomBounds, geometry, adjacency, roomPositions } = artifacts
 
     for (const [scopedId, bounds] of roomBounds) {
       this.roomBounds.set(scopedId, bounds)
@@ -330,17 +371,20 @@ export class World {
       this.connections.set(scopedId, existing)
     }
 
+    const geometryIds: string[] = []
     for (const g of geometry) {
       const body = this.rapierWorld.createRigidBody(this.rapier.RigidBodyDesc.fixed())
       const desc = this.rapier.ColliderDesc.cuboid(g.hw, g.hd).setTranslation(g.cx, g.cz)
       const collider = this.rapierWorld.createCollider(desc, body)
       this.geometries.set(g.id, { cx: g.cx, cz: g.cz, hw: g.hw, hd: g.hd, collider })
       this.geometryState.set(g.id, true)
+      geometryIds.push(g.id)
     }
 
     // Load map-authored buttons. Each gets its initial config (copied from the
     // spec so scenarios can mutate without touching the author-time shape), its
     // initial state, and an empty occupant set.
+    const buttonIds: string[] = []
     for (const btn of map.buttons ?? []) {
       this.buttonSpecs.set(btn.id, btn)
       this.buttonConfigs.set(btn.id, {
@@ -351,30 +395,226 @@ export class World {
       })
       this.buttonStates.set(btn.id, btn.initialState ?? 'idle')
       this.buttonOccupants.set(btn.id, new Set())
+      buttonIds.push(btn.id)
     }
 
     // Load map-authored vote region geometries. Active/inactive is scenario-
     // controlled and starts empty.
+    const voteRegionIds: string[] = []
     for (const region of map.voteRegions) {
-      this.voteRegionSpecs.set(region.id, {
-        id: region.id, x: region.x, z: region.z, radius: region.radius,
-      })
+      this.voteRegionSpecs.set(region.id, region)
+      voteRegionIds.push(region.id)
+    }
+
+    // Build the room views that rendering code iterates.
+    const rooms: WorldRoomView[] = []
+    for (const room of map.rooms) {
+      const scopedId = scopedRoomId(map.mapInstanceId, room.id)
+      const worldPos = roomPositions.get(scopedId)
+      if (!worldPos) continue
+      const view: WorldRoomView = {
+        scopedId,
+        mapInstanceId: map.mapInstanceId,
+        localRoomId: room.id,
+        room,
+        worldPos,
+      }
+      rooms.push(view)
+      this.roomViewByScopedId.set(scopedId, view)
+    }
+
+    const cameraShapes = buildCameraConstraintShapes(map, new Map(
+      map.rooms.map(r => [r.id, roomPositions.get(scopedRoomId(map.mapInstanceId, r.id))!]),
+    ))
+
+    // Recompute the union overlap set so it reflects every currently-attached
+    // map. We rebuild from scratch because a new map may have created
+    // overlaps between rooms from different instances as well — but the
+    // MapInstance artifacts only flag within-map overlaps, so the union
+    // suffices.
+    this.overlappingRoomIds.clear()
+    for (const inst of this.mapInstances.values()) {
+      for (const sid of inst.scopedRoomIds) {
+        if (inst.artifacts.isRoomOverlapping(sid)) this.overlappingRoomIds.add(sid)
+      }
+    }
+    for (const sid of scopedRoomIds) {
+      if (artifacts.isRoomOverlapping(sid)) this.overlappingRoomIds.add(sid)
     }
 
     this.rapierWorld.step()
 
-    const instance: WorldMapInstance = { mapInstanceId: map.mapInstanceId, scopedRoomIds }
-    this.mapInstances.set(map.mapInstanceId, instance)
-    return instance
+    const internal: WorldMapInstanceInternal = {
+      mapInstanceId: map.mapInstanceId,
+      scopedRoomIds,
+      map,
+      artifacts,
+      cameraShapes,
+      rooms,
+      geometryIds,
+      voteRegionIds,
+      buttonIds,
+    }
+    this.mapInstances.set(map.mapInstanceId, internal)
+    this.notifyChange()
+    return { mapInstanceId: internal.mapInstanceId, scopedRoomIds: internal.scopedRoomIds }
+  }
+
+  // Remove a previously-added map. Tears down every collider, bound,
+  // adjacency edge, button, vote region, and per-player override the map
+  // introduced. Safe to call while players remain in the world — any player
+  // whose current room or accessible-room override referenced the removed
+  // map's rooms is cleared, and the caller is expected to reposition them.
+  removeMap(mapInstanceId: string): void {
+    const instance = this.mapInstances.get(mapInstanceId)
+    if (!instance) return
+    const scoped = new Set(instance.scopedRoomIds)
+
+    for (const geomId of instance.geometryIds) {
+      const gc = this.geometries.get(geomId)
+      if (gc) {
+        const body = gc.collider.parent()
+        if (body) this.rapierWorld.removeRigidBody(body)
+        this.geometries.delete(geomId)
+      }
+      this.geometryState.delete(geomId)
+    }
+
+    for (const sid of scoped) {
+      this.roomBounds.delete(sid)
+      this.connections.delete(sid)
+      this.roomViewByScopedId.delete(sid)
+      this.globalRoomVisible.delete(sid)
+      this.overlappingRoomIds.delete(sid)
+    }
+    for (const neighbours of this.connections.values()) {
+      for (const sid of scoped) neighbours.delete(sid)
+    }
+    for (const m of this.playerRoomVisible.values()) {
+      for (const sid of scoped) m.delete(sid)
+    }
+    for (const set of this.playerAccessibleRoomsOverride.values()) {
+      for (const sid of scoped) set.delete(sid)
+    }
+    for (const [pid, rid] of this.playerRoom) {
+      if (rid && scoped.has(rid)) this.playerRoom.set(pid, null)
+    }
+
+    for (const bid of instance.buttonIds) {
+      this.buttonSpecs.delete(bid)
+      this.buttonConfigs.delete(bid)
+      this.buttonStates.delete(bid)
+      this.buttonOccupants.delete(bid)
+      const cancel = this.buttonCooldownCancels.get(bid)
+      if (cancel) { cancel(); this.buttonCooldownCancels.delete(bid) }
+      this.buttonCooldownFireAtTick.delete(bid)
+    }
+
+    const removedVoteRegionIds = new Set(instance.voteRegionIds)
+    for (const rid of removedVoteRegionIds) {
+      this.voteRegionSpecs.delete(rid)
+      this.activeVoteRegions.delete(rid)
+    }
+    for (const [pid, rid] of this.playerVoteRegion) {
+      if (rid && removedVoteRegionIds.has(rid)) this.playerVoteRegion.set(pid, null)
+    }
+    for (const m of this.playerGeomOverride.values()) {
+      for (const gid of instance.geometryIds) m.delete(gid)
+    }
+
+    this.mapInstances.delete(mapInstanceId)
+    this.rapierWorld.step()
+    this.notifyChange()
   }
 
   getMapInstance(mapInstanceId: string): WorldMapInstance | undefined {
-    return this.mapInstances.get(mapInstanceId)
+    const inst = this.mapInstances.get(mapInstanceId)
+    return inst ? { mapInstanceId: inst.mapInstanceId, scopedRoomIds: [...inst.scopedRoomIds] } : undefined
   }
 
   getRoomsInMapInstance(mapInstanceId: string): string[] {
     const instance = this.mapInstances.get(mapInstanceId)
     return instance ? [...instance.scopedRoomIds] : []
+  }
+
+  // ── Rendering-facing accessors ─────────────────────────────────────────────
+  // Everything below is read by client rendering code (GameScene, HUD, etc.)
+  // via the `useClientWorld` hook. Server usage should stick to the existing
+  // room-bound / connection primitives above.
+
+  // Every room across every attached map instance, with its world-space
+  // centre. Order is stable per `addMap` call (map order → room order within
+  // each map).
+  getAllRooms(): WorldRoomView[] {
+    const out: WorldRoomView[] = []
+    for (const inst of this.mapInstances.values()) out.push(...inst.rooms)
+    return out
+  }
+
+  getRoomByScopedId(scopedId: string): WorldRoomView | undefined {
+    return this.roomViewByScopedId.get(scopedId)
+  }
+
+  // Return the union of every map's camera rects and zones. The camera
+  // constraint clamps to this union, so players in either the hallway or a
+  // scenario room get a sensible follow target.
+  getCameraShapes(): CameraConstraintShapes {
+    const rects: CameraRect[] = []
+    const zones: CameraZone[] = []
+    for (const inst of this.mapInstances.values()) {
+      for (const r of inst.cameraShapes.rects) rects.push(r)
+      for (const z of inst.cameraShapes.zones) zones.push(z)
+    }
+    return { rects, zones }
+  }
+
+  // Adjacent rooms per the world's current connection state (default
+  // adjacency plus any runtime mutations from `setConnectionEnabled`).
+  getAdjacentRoomIds(scopedRoomId: string): string[] {
+    const set = this.connections.get(scopedRoomId)
+    return set ? [...set] : []
+  }
+
+  // Returns the scoped id of the containing room, or null if (x, z) lies in
+  // no attached map's floor AABB. Iterates per-map so a point inside two
+  // overlapping rooms falls out as the first match.
+  getRoomAtPosition(x: number, z: number): string | null {
+    for (const inst of this.mapInstances.values()) {
+      const sid = inst.artifacts.getRoomAtPosition(x, z)
+      if (sid !== null) return sid
+    }
+    return null
+  }
+
+  isRoomOverlapping(scopedRoomId: string): boolean {
+    return this.overlappingRoomIds.has(scopedRoomId)
+  }
+
+  // Full vote region specs with the scoped containing-room id baked in. The
+  // client uses the scoped room id to gate rendering by room visibility.
+  getAllVoteRegions(): Array<VoteRegionSpec & { roomId: string | null }> {
+    const out: Array<VoteRegionSpec & { roomId: string | null }> = []
+    for (const inst of this.mapInstances.values()) {
+      for (const region of inst.map.voteRegions) {
+        out.push({ ...region, roomId: this.getRoomAtPosition(region.x, region.z) })
+      }
+    }
+    return out
+  }
+
+  // Version bumped on every add/removeMap. Subscribers are notified
+  // synchronously; the React `useClientWorld` hook wires this into a
+  // re-render.
+  getMapsVersion(): number { return this.mapsVersion }
+
+  subscribeToMapChanges(cb: () => void): () => void {
+    this.changeSubscribers.add(cb)
+    return () => { this.changeSubscribers.delete(cb) }
+  }
+
+  private notifyChange(): void {
+    this.mapsVersion++
+    for (const cb of this.changeSubscribers) cb()
   }
 
   // ── Rooms & accessibility ──────────────────────────────────────────────────

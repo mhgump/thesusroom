@@ -21,6 +21,7 @@ export type ServerMessage =
   | { type: 'notification'; text: string }
   | { type: 'error'; message: string }
   | { type: 'observer_player_left'; eliminated: boolean }
+  | { type: 'replay_ended' }
 
 export type ClientMessage =
   | { type: 'move'; tick: number; inputs: MoveInput[] }

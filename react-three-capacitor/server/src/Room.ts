@@ -10,6 +10,7 @@ import { Scenario } from './Scenario.js'
 import type { ScenarioConfig, ScenarioDeps } from './Scenario.js'
 import type { GameMap } from '../../src/game/GameMap.js'
 import type { BotSpec } from './bot/BotTypes.js'
+import type { PlayerRecordingManager } from './PlayerRecordingManager.js'
 
 const NPC_COLOR = '#888888'
 const SIM_MS_PER_TICK = 1000 / TICK_RATE_HZ
@@ -41,7 +42,7 @@ function rgbDist(a: [number, number, number], b: [number, number, number]): numb
   return Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db)
 }
 
-interface PlayerState { id: string; ws: WebSocket; color: string; index: number }
+interface PlayerState { id: string; ws: WebSocket; color: string; index: number; browserUuid: string | null }
 interface PendingMove { clientTick: number; inputs: MoveInput[] }
 
 // A point-in-time snapshot of a MultiplayerRoom, combining its World's dump
@@ -79,6 +80,9 @@ export interface MultiplayerRoomOptions {
   // the terminating scenario id. Production leaves this unset; the
   // run-scenario CLI wires it to resolve its done promise.
   onScenarioTerminate?: (scenarioId: string) => void
+  // Captures outgoing messages per human player for first-minute replay.
+  // Optional: tests and harnesses that don't care about recording can omit.
+  recordingManager?: PlayerRecordingManager
 }
 
 // A MultiplayerRoom owns one World, one ScenarioManager, the tick loop, and
@@ -106,6 +110,7 @@ export class MultiplayerRoom {
   private readonly onCloseScenario?: () => void
   private readonly onRoomDone?: () => void
   private readonly onScenarioTerminate?: (scenarioId: string) => void
+  private readonly recordingManager?: PlayerRecordingManager
   private readonly spawnBotFn: (spec: BotSpec) => void
   private readonly spawnPosition: { x: number; z: number }
   // Every map attached via `addMap()`, in attach order. Kept for flattening
@@ -119,12 +124,13 @@ export class MultiplayerRoom {
   private readonly readyPlayerIds: Set<string> = new Set()
 
   constructor(opts: MultiplayerRoomOptions) {
-    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn, spawnPosition, onScenarioTerminate } = opts
+    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn, spawnPosition, onScenarioTerminate, recordingManager } = opts
     this.roomId = roomId
     this.instanceIndex = instanceIndex
     this.onCloseScenario = onCloseScenario
     this.onRoomDone = onRoomDone
     this.onScenarioTerminate = onScenarioTerminate
+    this.recordingManager = recordingManager
     this.spawnBotFn = spawnBotFn ?? (() => {})
     this.spawnPosition = spawnPosition ?? { x: 0, z: 0 }
     this.tickRateHz = tickRateHz ?? TICK_RATE_HZ
@@ -358,12 +364,19 @@ export class MultiplayerRoom {
     this.scheduledCbs = remaining
   }
 
-  connectPlayer(ws: WebSocket): string {
+  connectPlayer(ws: WebSocket, browserUuid: string | null = null): string {
     const playerId = crypto.randomUUID()
     const color = this.pickColor()
     const index = this.nextPlayerIndex++
-    this.players.set(playerId, { id: playerId, ws, color, index })
+    this.players.set(playerId, { id: playerId, ws, color, index, browserUuid })
     this.world.addPlayer(playerId, this.spawnPosition.x, this.spawnPosition.z)
+
+    if (browserUuid && this.recordingManager) {
+      // Synchronous registration so the welcome message (fired below) is
+      // captured. The manager serializes its own DataBackend I/O in the
+      // background.
+      this.recordingManager.onPlayerConnected({ browserUuid, inGamePlayerId: playerId, routingKey: this.roomId })
+    }
 
     const wp = this.world.getPlayer(playerId)!
     this.sendToPlayer(playerId, {
@@ -448,6 +461,11 @@ export class MultiplayerRoom {
     this.pendingMoves.delete(playerId)
     this.readyPlayerIds.delete(playerId)
     this.broadcast({ type: 'player_left', playerId })
+    // Finalize the player's recording now (if any) — captures partial
+    // sessions shorter than the configured duration. The manager's own
+    // guards make this a no-op for bots, observers, and players whose
+    // recordings already finished.
+    this.recordingManager?.onPlayerDisconnected(playerId)
     console.log(`[MultiplayerRoom:${this.roomId}] -player ${playerId} (total:${this.players.size})`)
     this.maybeTriggerRoomDone()
   }
@@ -516,6 +534,9 @@ export class MultiplayerRoom {
   }
 
   private broadcast(msg: ServerMessage): void {
+    if (this.recordingManager) {
+      for (const pid of this.players.keys()) this.recordingManager.onMessageToPlayer(pid, msg, this.serverTick)
+    }
     const data = JSON.stringify(msg)
     for (const p of this.players.values()) {
       if (p.ws.readyState === WebSocket.OPEN) p.ws.send(data)
@@ -523,6 +544,7 @@ export class MultiplayerRoom {
   }
 
   private sendToPlayer(playerId: string, msg: ServerMessage): void {
+    this.recordingManager?.onMessageToPlayer(playerId, msg, this.serverTick)
     const p = this.players.get(playerId)
     const obs = this.observers.get(playerId)
     if (!p && !obs?.size) return

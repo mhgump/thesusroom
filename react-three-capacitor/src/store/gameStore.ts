@@ -24,7 +24,7 @@ export interface Notification {
 interface GameState {
   connected: boolean
   observerMode: boolean
-  observerEndReason: 'none' | 'eliminated' | 'disconnected'
+  observerEndReason: 'none' | 'eliminated' | 'disconnected' | 'replay_ended'
   playerId: string | null
   localColor: string
   initialPosition: { x: number; z: number }
@@ -54,7 +54,7 @@ interface GameState {
   setConnected: (v: boolean) => void
   setSceneReady: (v: boolean) => void
   setObserverMode: (v: boolean) => void
-  setObserverEndReason: (r: 'none' | 'eliminated' | 'disconnected') => void
+  setObserverEndReason: (r: 'none' | 'eliminated' | 'disconnected' | 'replay_ended') => void
   setPlayerId: (id: string) => void
   setLocalColor: (color: string) => void
   setInitialPosition: (x: number, z: number) => void

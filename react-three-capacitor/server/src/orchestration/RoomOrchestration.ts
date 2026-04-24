@@ -1,4 +1,5 @@
 import type { MultiplayerRoom } from '../Room.js'
+import type { PlayerRecordingManager } from '../PlayerRecordingManager.js'
 
 // Handed to an orchestration when the framework asks it to create a new room.
 // The orchestration is expected to wire the room's lifecycle callbacks back
@@ -18,6 +19,11 @@ export interface OrchestrationContext {
   // Fires when the room can be cleaned up (last player disconnected after
   // close). The orchestration must invoke this exactly once.
   onDestroy: () => void
+  // Manager that captures per-player wire messages for first-minute replay.
+  // Orchestrations should forward it to every constructed MultiplayerRoom
+  // via `MultiplayerRoomOptions.recordingManager`. Absent in tests or
+  // harnesses that don't set up a backend.
+  recordingManager?: PlayerRecordingManager
 }
 
 // A pluggable policy for how a multiplayer room is assembled, populated, and

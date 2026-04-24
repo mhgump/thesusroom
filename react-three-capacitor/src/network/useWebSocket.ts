@@ -20,18 +20,31 @@ function getWsPath(): string {
   // Observer paths pass through verbatim so the server routes them to the
   // observer handler rather than the player handler.
   if (/^observe\/[^/]+\/\d+\/\d+$/.test(path)) return path
+  // Replay paths likewise route to the replay handler by exact path.
+  if (/^recordings\/\d+$/.test(path)) return path
   // Everything else must be an `r_{scenario}` routing key. An empty path
-  // (root URL) resolves to `r_initial` — the bundled initial scenario.
-  if (path.length === 0) return 'r_initial'
+  // (root URL) resolves to `hub` — the combined hub world fronting the
+  // default target scenario with a solo initial hallway.
+  if (path.length === 0) return 'hub'
   return path.split('/')[0]
+}
+
+function readSrUidCookie(): string | null {
+  const m = document.cookie.match(/(?:^|;\s*)sr_uid=([0-9a-f-]{36})/)
+  return m ? m[1] : null
 }
 
 function getWsUrl(): string {
   const wsPath = getWsPath()
   const envUrl = import.meta.env.VITE_WS_URL
-  if (envUrl) return `${envUrl}/${wsPath}`
-  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${window.location.host}/${wsPath}`
+  const base = envUrl
+    ? `${envUrl}/${wsPath}`
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/${wsPath}`
+  // Cross-origin WS (dev setup with VITE_WS_URL on a different port) drops
+  // the sr_uid cookie, so forward it as a query param. The server prefers
+  // the cookie when both are present.
+  const uid = readSrUidCookie()
+  return uid ? `${base}?uid=${uid}` : base
 }
 
 let singleton: WebSocketClient | null = null
@@ -194,6 +207,10 @@ export function useWebSocket(): void {
 
         case 'observer_player_left':
           store.setObserverEndReason(msg.eliminated ? 'eliminated' : 'disconnected')
+          break
+
+        case 'replay_ended':
+          store.setObserverEndReason('replay_ended')
           break
       }
     })

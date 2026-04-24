@@ -9,7 +9,7 @@ import { TapToMoveLayer } from './TapToMoveLayer';
 import { VoteRegions } from './VoteRegions';
 import { GeometryLayer } from './GeometryLayer';
 import { ButtonLayer } from './ButtonLayer';
-import { CURRENT_MAP } from '../../../content/maps';
+import { useClientWorld } from '../game/clientWorld';
 import { localPlayerPos } from '../game/localPlayerPos';
 import { useGameStore } from '../store/gameStore';
 import { advanceRenderTick } from '../network/positionBuffer';
@@ -31,6 +31,7 @@ export function GameScene() {
   const roomVisibility = useGameStore((s) => s.roomVisibility);
   const playerRoomVisibilityOverride = useGameStore((s) => s.playerRoomVisibilityOverride);
   const camTargetRef = useRef<Vec2 | null>(null);
+  const world = useClientWorld();
 
   useEffect(() => {
     const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 10);
@@ -64,7 +65,8 @@ export function GameScene() {
   useFrame((state, delta) => {
     const cam = state.camera;
     if (!(cam instanceof THREE.OrthographicCamera)) return;
-    const { x: tx, z: tz } = clampToShapes(CURRENT_MAP.cameraShapes, localPlayerPos.x, localPlayerPos.z);
+    if (!world) return;
+    const { x: tx, z: tz } = clampToShapes(world.getCameraShapes(), localPlayerPos.x, localPlayerPos.z);
 
     // Initialise target on first frame to avoid a visible jump from origin.
     if (!camTargetRef.current) {
@@ -90,31 +92,27 @@ export function GameScene() {
     // Overlapping rooms are hidden by default unless the player is inside the
     // room or an explicit server-side toggle says otherwise. Non-overlapping
     // rooms follow the map's default adjacency rendering.
-    if (CURRENT_MAP.isRoomOverlapping(scopedId) && scopedId !== currentRoomId) return false
+    if (world?.isRoomOverlapping(scopedId) && scopedId !== currentRoomId) return false
     return roomVisibility[scopedId] !== false
   }
+  const adjacent = world?.getAdjacentRoomIds(currentRoomId) ?? []
   const visibleIds = new Set(
-    [currentRoomId, ...CURRENT_MAP.getAdjacentRoomIds(currentRoomId)].filter(isRoomVisible)
+    [currentRoomId, ...adjacent].filter(isRoomVisible)
   );
-  const roomsToRender = CURRENT_MAP.rooms.filter(r =>
-    visibleIds.has(`${CURRENT_MAP.mapInstanceId}_${r.id}`),
-  );
+  const allRooms = world?.getAllRooms() ?? []
+  const roomsToRender = allRooms.filter(r => visibleIds.has(r.scopedId))
 
   return (
     <>
       <ambientLight intensity={0.65} />
       <directionalLight position={[0.48, 0.97, 0.64]} intensity={0.75} castShadow />
       <BgPlane />
-      {roomsToRender.map(room => {
-        const scopedId = `${CURRENT_MAP.mapInstanceId}_${room.id}`;
-        const pos = CURRENT_MAP.roomPositions.get(scopedId)!;
-        return (
-          <group key={scopedId} position={[pos.x, 0, pos.z]}>
-            <Ground room={room} />
-            <RoomOutsideTextures room={room} />
-          </group>
-        );
-      })}
+      {roomsToRender.map(view => (
+        <group key={view.scopedId} position={[view.worldPos.x, 0, view.worldPos.z]}>
+          <Ground room={view.room} />
+          <RoomOutsideTextures room={view.room} />
+        </group>
+      ))}
       <GeometryLayer />
       <ButtonLayer />
       <VoteRegions visibleIds={visibleIds} />

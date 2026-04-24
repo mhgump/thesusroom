@@ -6,7 +6,7 @@ import type { RemotePlayerInfo } from '../store/gameStore'
 import { getInterpolatedPos, consumeRemoteEvents } from '../network/positionBuffer'
 import { CapsuleFallback } from './animation/CapsuleFallback'
 import type { AnimationState } from '../game/World'
-import { CURRENT_MAP } from '../../../content/maps'
+import { getClientWorld } from '../game/clientWorld'
 import { HeartSprite } from './HeartSprite'
 
 const CAPSULE_CENTER_Y = 0.0282 + 0.0806 / 2
@@ -34,18 +34,18 @@ function RemotePlayerMesh({ info }: { info: RemotePlayerInfo }) {
       // Hide remote players who are inside a room not visible from the local player's room.
       // Players in corridors (not inside any room floor) are always shown.
       const { currentRoomId } = useGameStore.getState()
-      const visibleRooms = new Set([currentRoomId, ...CURRENT_MAP.getAdjacentRoomIds(currentRoomId)])
+      const world = getClientWorld()
       let visible = true
-      for (const room of CURRENT_MAP.rooms) {
-        const scopedId = `${CURRENT_MAP.mapInstanceId}_${room.id}`
-        if (visibleRooms.has(scopedId)) continue
-        const roomPos = CURRENT_MAP.roomPositions.get(scopedId)
-        if (!roomPos) continue
-        const hw = room.floorWidth / 2
-        const hd = room.floorDepth / 2
-        if (Math.abs(pos.x - roomPos.x) <= hw && Math.abs(pos.z - roomPos.z) <= hd) {
-          visible = false
-          break
+      if (world) {
+        const visibleRooms = new Set([currentRoomId, ...world.getAdjacentRoomIds(currentRoomId)])
+        for (const view of world.getAllRooms()) {
+          if (visibleRooms.has(view.scopedId)) continue
+          const hw = view.room.floorWidth / 2
+          const hd = view.room.floorDepth / 2
+          if (Math.abs(pos.x - view.worldPos.x) <= hw && Math.abs(pos.z - view.worldPos.z) <= hd) {
+            visible = false
+            break
+          }
         }
       }
       g.visible = visible

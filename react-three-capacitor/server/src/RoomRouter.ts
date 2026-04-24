@@ -1,6 +1,7 @@
 import type WebSocket from 'ws'
 import type { MultiplayerRoom } from './Room.js'
 import type { RoomOrchestration, RoutingResolver, OrchestrationContext } from './orchestration/RoomOrchestration.js'
+import type { PlayerRecordingManager } from './PlayerRecordingManager.js'
 
 // Owns the live set of multiplayer rooms keyed by routing key. Decides
 // whether to reuse an existing open room or spin up a new one, and keeps a
@@ -19,7 +20,10 @@ export class RoomRouter {
   // single backend load rather than racing to construct duplicate orchestrations.
   private readonly orchestrationByKey: Map<string, Promise<RoomOrchestration | null>> = new Map()
 
-  constructor(private readonly resolver: RoutingResolver) {}
+  constructor(
+    private readonly resolver: RoutingResolver,
+    private readonly recordingManager?: PlayerRecordingManager,
+  ) {}
 
   // Route a newly connected player to an open room for the given key,
   // creating one if none exist. Returns null if the key is unknown — callers
@@ -30,11 +34,11 @@ export class RoomRouter {
   // connectPlayer sequence runs synchronously so two continuations resolving
   // off the same shared promise end up in the same room (first creates it,
   // second picks it) with no explicit per-key lock.
-  async routePlayer(routingKey: string, ws: WebSocket): Promise<{ room: MultiplayerRoom; playerId: string } | null> {
+  async routePlayer(routingKey: string, ws: WebSocket, browserUuid: string | null = null): Promise<{ room: MultiplayerRoom; playerId: string } | null> {
     const orch = await this.resolveOrchestration(routingKey)
     if (!orch) return null
     const room = this.pickOpenRoomForKey(routingKey, orch) ?? this.ensureRoomForKey(routingKey, orch)
-    const playerId = room.connectPlayer(ws)
+    const playerId = room.connectPlayer(ws, browserUuid)
     return { room, playerId }
   }
 
@@ -45,6 +49,14 @@ export class RoomRouter {
   hasRoomAndPlayer(routingKey: string, i: number, j: number): boolean {
     const room = this.getRoomByIndex(routingKey, i)
     return room !== null && room.getPlayerIdByIndex(j) !== null
+  }
+
+  // Returns true if `routingKey` resolves to a valid orchestration (i.e. a
+  // WebSocket connection with that path would be accepted). Shares the
+  // router's orchestration cache so a successful check is free for the
+  // subsequent routePlayer call.
+  async canRouteKey(routingKey: string): Promise<boolean> {
+    return (await this.resolveOrchestration(routingKey)) !== null
   }
 
   private async resolveOrchestration(routingKey: string): Promise<RoomOrchestration | null> {
@@ -88,6 +100,7 @@ export class RoomRouter {
       instanceIndex,
       onClose: () => this.removeFromOpen(routingKey, room),
       onDestroy: () => this.freeSlot(routingKey, instanceIndex),
+      recordingManager: this.recordingManager,
     }
     room = orch.createRoom(ctx)
 

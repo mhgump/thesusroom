@@ -8,7 +8,7 @@ import { CapsuleFallback } from './animation/CapsuleFallback'
 import { useWsSend } from '../network/useWebSocket'
 import { consumeMoveAcks, getInterpolatedPos } from '../network/positionBuffer'
 import { localPlayerPos } from '../game/localPlayerPos'
-import { CURRENT_MAP } from '../../../content/maps'
+import { getClientWorld } from '../game/clientWorld'
 import { localWorld } from '../game/localWorld'
 import { HeartSprite } from './HeartSprite'
 
@@ -63,12 +63,13 @@ export function Player() {
 
     // ── Observer mode: no World, no prediction, no sends ────────────────────
     if (store.observerMode) {
+      const obsWorld = getClientWorld()
       for (const ack of consumeMoveAcks()) {
         groupRef.current.position.x = ack.x
         groupRef.current.position.z = ack.z
         localPlayerPos.x = ack.x
         localPlayerPos.z = ack.z
-        const newRoomId = CURRENT_MAP.getRoomAtPosition(ack.x, ack.z) ?? localPlayerPos.roomId
+        const newRoomId = obsWorld?.getRoomAtPosition(ack.x, ack.z) ?? localPlayerPos.roomId
         if (newRoomId !== localPlayerPos.roomId) {
           localPlayerPos.roomId = newRoomId
           store.setCurrentRoomId(newRoomId)
@@ -86,25 +87,26 @@ export function Player() {
     }
 
     if (initializedForRef.current !== playerId) {
-      const w = new World(['touched'])
-      w.addMap(CURRENT_MAP)
-      w.addPlayer(playerId, store.initialPosition.x, store.initialPosition.z)
+      const w = getClientWorld()
+      if (!w) return
+      if (!w.getPlayer(playerId)) {
+        w.addPlayer(playerId, store.initialPosition.x, store.initialPosition.z)
+      }
       // Apply any geometry state already received before World was ready.
       const vis = useGameStore.getState().geometryVisibility
       const localOverride = useGameStore.getState().localGeometryOverride
-      for (const room of CURRENT_MAP.rooms) {
-        for (const geom of room.geometry ?? []) {
-          if (vis[geom.id] === false) w.toggleGeometryOff(geom.id)
-          const ov = localOverride[geom.id]
-          if (ov !== undefined) {
-            if (ov) w.toggleGeometryOn(geom.id, playerId)
-            else w.toggleGeometryOff(geom.id, playerId)
-          }
-        }
+      for (const [geomId, visible] of Object.entries(vis)) {
+        if (visible === false) w.toggleGeometryOff(geomId)
+      }
+      for (const [geomId, ov] of Object.entries(localOverride)) {
+        if (ov) w.toggleGeometryOn(geomId, playerId)
+        else w.toggleGeometryOff(geomId, playerId)
       }
       for (const id of Object.keys(store.remotePlayers)) {
-        const pos = getInterpolatedPos(id)
-        w.addPlayer(id, pos?.x ?? 0, pos?.z ?? 0)
+        if (!w.getPlayer(id)) {
+          const pos = getInterpolatedPos(id)
+          w.addPlayer(id, pos?.x ?? 0, pos?.z ?? 0)
+        }
       }
       worldRef.current = w
       localWorld.current = w
@@ -257,7 +259,7 @@ export function Player() {
     localPlayerPos.x = player.x
     localPlayerPos.z = player.z
 
-    const newRoomId = CURRENT_MAP.getRoomAtPosition(player.x, player.z) ?? localPlayerPos.roomId
+    const newRoomId = world.getRoomAtPosition(player.x, player.z) ?? localPlayerPos.roomId
     if (newRoomId !== localPlayerPos.roomId) {
       localPlayerPos.roomId = newRoomId
       store.setCurrentRoomId(newRoomId)

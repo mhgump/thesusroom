@@ -1,19 +1,23 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { GameScene } from './scene/GameScene';
 import { HUD } from './hud/HUD';
 import { useWebSocket } from './network/useWebSocket';
 import { useGameStore } from './store/gameStore';
+import { ensureClientWorld } from './game/clientWorld';
 
 export default function App() {
   const sceneReady = useGameStore((s) => s.sceneReady);
   const setSceneReady = useGameStore((s) => s.setSceneReady);
   const setObserverMode = useGameStore((s) => s.setObserverMode);
+  const [worldReady, setWorldReady] = useState(false);
 
   useEffect(() => {
-    if (/^\/observe\/[^/]+\/\d+\/\d+$/.test(window.location.pathname)) {
+    const p = window.location.pathname;
+    if (/^\/observe\/[^/]+\/\d+\/\d+$/.test(p) || /^\/recordings\/\d+$/.test(p)) {
       setObserverMode(true);
     }
+    ensureClientWorld().then(() => setWorldReady(true));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -33,14 +37,16 @@ export default function App() {
         overflow: 'hidden',
       }}
     >
-      <Canvas
-        orthographic
-        gl={{ antialias: true, powerPreference: 'high-performance' }}
-        style={{ width: '100%', height: '100%' }}
-        onCreated={handleCreated}
-      >
-        <GameScene />
-      </Canvas>
+      {worldReady && (
+        <Canvas
+          orthographic
+          gl={{ antialias: true, powerPreference: 'high-performance' }}
+          style={{ width: '100%', height: '100%' }}
+          onCreated={handleCreated}
+        >
+          <GameScene />
+        </Canvas>
+      )}
 
       {sceneReady && <HUD />}
 
