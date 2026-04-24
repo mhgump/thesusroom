@@ -64,8 +64,20 @@ export class PlayerRecordingManager {
   }): void {
     const { browserUuid, inGamePlayerId, routingKey } = params
 
-    // Same browser already has a recording in-flight (or about to): ignore.
-    if (this.byBrowser.has(browserUuid)) return
+    // Same browser already has an in-flight recording. The hub-transfer
+    // flow releases the player from a solo MR and immediately reseats
+    // them on the target MR under a new in-game id — rebind the
+    // playerId-keyed lookup so subsequent messages keep appending to the
+    // same buffer rather than starting a second (aborted) recording.
+    const existing = this.byBrowser.get(browserUuid)
+    if (existing) {
+      if (existing.inGamePlayerId !== inGamePlayerId) {
+        this.byPlayerId.delete(existing.inGamePlayerId)
+        existing.inGamePlayerId = inGamePlayerId
+        this.byPlayerId.set(inGamePlayerId, browserUuid)
+      }
+      return
+    }
 
     const state: RecordingState = {
       browserUuid,

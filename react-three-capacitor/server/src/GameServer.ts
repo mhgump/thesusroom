@@ -2,10 +2,12 @@ import { WebSocketServer, WebSocket } from 'ws'
 import type http from 'http'
 import type { IncomingMessage } from 'http'
 import { ContentRegistry } from './ContentRegistry.js'
+import { MultiplayerRoomRegistry } from './MultiplayerRoomRegistry.js'
 import { RoomRouter } from './RoomRouter.js'
 import { createDefaultScenarioResolver } from './orchestration/index.js'
 import { BotManager } from './bot/BotManager.js'
 import { MultiplayerRoom } from './Room.js'
+import { ScenarioRunRegistry } from './scenarioRun/ScenarioRunRegistry.js'
 import type { ClientMessage, ServerMessage } from './types.js'
 import { PlayerRecordingManager } from './PlayerRecordingManager.js'
 import { MAP as INITIAL_MAP } from '../../../assets/initial/map.js'
@@ -87,13 +89,15 @@ let soloHallwayCounter = 0
 export class GameServer {
   private readonly wss: WebSocketServer
   private readonly content: ContentRegistry
+  private readonly roomRegistry: MultiplayerRoomRegistry
   private readonly router: RoomRouter
   private readonly playerRoom: Map<string, MultiplayerRoom> = new Map()
   private readonly botManager: BotManager
-  private readonly observerReadyListeners: Set<() => void> = new Set()
+  private readonly observerReadyListeners: Map<string, Set<() => void>> = new Map()
   private readonly playerRegistry: PlayerRegistry
   private readonly playerRecordings: PlayerRecordings
   private readonly recordingManager: PlayerRecordingManager
+  private readonly scenarioRunRegistry: ScenarioRunRegistry
 
   constructor(
     content: ContentRegistry,
@@ -126,11 +130,18 @@ export class GameServer {
     this.playerRecordings = new PlayerRecordings(dataBackend)
     this.recordingManager = new PlayerRecordingManager(this.playerRegistry, this.playerRecordings)
 
+    this.scenarioRunRegistry = new ScenarioRunRegistry(this.content, this.botManager)
+
     const resolver = createDefaultScenarioResolver(this.content, (routingKey, spec) => {
       this.botManager.spawnBot(routingKey, spec)
-    }, options)
-    this.router = new RoomRouter(resolver, this.recordingManager)
+    }, this.scenarioRunRegistry, options)
+    this.roomRegistry = new MultiplayerRoomRegistry(this.recordingManager)
+    this.router = new RoomRouter(resolver, this.roomRegistry)
     this.wss.on('connection', this.handleConnection.bind(this))
+  }
+
+  getScenarioRunRegistry(): ScenarioRunRegistry {
+    return this.scenarioRunRegistry
   }
 
   getRecordings(): PlayerRecordings {
@@ -153,9 +164,21 @@ export class GameServer {
     return this.botManager
   }
 
-  onObserverReady(cb: () => void): () => void {
-    this.observerReadyListeners.add(cb)
-    return () => { this.observerReadyListeners.delete(cb) }
+  // Per-routing-key observer-ready subscription. Callback fires when any
+  // observer connection for `routingKey` emits a `ready` client message.
+  // Scenario-runs use this to delay scenario start until the recording
+  // browser is ready; concurrent runs don't cross-fire because the key
+  // uniquely identifies the run.
+  onObserverReady(routingKey: string, cb: () => void): () => void {
+    let set = this.observerReadyListeners.get(routingKey)
+    if (!set) { set = new Set(); this.observerReadyListeners.set(routingKey, set) }
+    set.add(cb)
+    return () => {
+      const cur = this.observerReadyListeners.get(routingKey)
+      if (!cur) return
+      cur.delete(cb)
+      if (cur.size === 0) this.observerReadyListeners.delete(routingKey)
+    }
   }
 
   private async handleConnection(ws: WebSocket, request: IncomingMessage): Promise<void> {
@@ -326,7 +349,13 @@ export class GameServer {
       try {
         const msg = JSON.parse(data.toString())
         if (msg.type === 'ready') {
-          for (const cb of this.observerReadyListeners) cb()
+          const listeners = this.observerReadyListeners.get(routingKey)
+          if (listeners) for (const cb of listeners) cb()
+          // Scenario-run rooms also flip the run's `observerReadyFired` flag
+          // so the final response reports whether the browser ever actually
+          // connected. Unaffected for r_* keys.
+          const run = this.scenarioRunRegistry.getByRoutingKey(routingKey)
+          if (run && !run.observerReadyFired) run.fireObserverReady()
         }
       } catch { /* ignore */ }
     })
@@ -369,11 +398,14 @@ export class GameServer {
       })
     }
 
-    // Send replay_ended slightly after the last scheduled event so the
-    // client gets the last message first. If the recording has no events,
-    // end immediately.
+    // Send replay_ended a small buffer after the last event so the last
+    // frame of game state is visible before the overlay takes over.
+    // setTimeouts at the same delay fire in insertion order, but the
+    // rendering pipeline needs a frame or two to paint what arrived just
+    // before the overlay flips.
     const lastOffset = doc.events.length > 0 ? doc.events[doc.events.length - 1].tOffsetMs : 0
-    schedule(lastOffset, () => {
+    const REPLAY_END_BUFFER_MS = 250
+    schedule(lastOffset + REPLAY_END_BUFFER_MS, () => {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'replay_ended' } satisfies ServerMessage))
     })
   }

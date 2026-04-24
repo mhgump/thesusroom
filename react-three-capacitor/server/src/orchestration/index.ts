@@ -1,4 +1,6 @@
-export type { OrchestrationContext, RoomOrchestration, RoutingResolver } from './RoomOrchestration.js'
+export type { RoomCreationContext, RoomOrchestration, RoutingResolver } from './RoomOrchestration.js'
 export { DefaultScenarioOrchestration } from './DefaultScenarioOrchestration.js'
+export { ScenarioRunOrchestration } from './ScenarioRunOrchestration.js'
 export { createDefaultScenarioResolver } from './resolvers.js'
+export { createScenarioRoom } from './scenarioRoom.js'
 export { computeHubAttachment, shiftMapToOrigin } from './hubAttachment.js'

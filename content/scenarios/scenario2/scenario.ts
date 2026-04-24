@@ -4,7 +4,7 @@ import type {
   GameScriptContext,
   PlayerEnterRoomPayload,
 } from '../../../react-three-capacitor/server/src/GameScript.js'
-import { SCENARIO2_BOT } from '../../bots/scenario2/filler/bot.js'
+import { MOVER_BOT } from '../../bots/scenario2/mover/bot.js'
 
 // Sim-time delays (ms). ctx.after is tick-driven, so these scale with server
 // tick rate — 50ms of sim time = 1 tick at the canonical 20Hz.
@@ -67,7 +67,7 @@ const script: GameScript<S2State> = {
     fillBots(state, ctx) {
       if (state.doorOpened) return
       const needed = 4 - ctx.getPlayerIds().length
-      for (let i = 0; i < needed; i++) ctx.spawnBot(SCENARIO2_BOT)
+      for (let i = 0; i < needed; i++) ctx.spawnBot(MOVER_BOT)
     },
 
     onEnterRoom(state, ctx, payload: PlayerEnterRoomPayload) {
@@ -106,6 +106,10 @@ const script: GameScript<S2State> = {
     eliminateStragglers(state, ctx) {
       for (const pid of ctx.getPlayerIds()) {
         if (!state.inRoom2[pid]) ctx.eliminatePlayer(pid)
+      }
+      if (ctx.getPlayerIds().length === 0) {
+        ctx.terminate()
+        return
       }
       checkAllInRoom2(state, ctx)
     },

@@ -39,7 +39,9 @@ export const CURRENT_SCENARIO_ID: string | null =
 // CURRENT_SCENARIO_ID is fetched at runtime. Initial loads statically (see
 // INITIAL_MAP above) so the `/` root renders without a chunk fetch — visiting
 // the site is enough to see the initial map even if WebSocket never connects.
-const MAP_LOADERS = import.meta.glob('./*/map.ts') as Record<string, () => Promise<{ MAP: GameMap }>>
+// Cast via `unknown` because `import.meta.glob` is a Vite-runtime extension
+// (not part of the TS lib), and the server's tsc sees this file too.
+const MAP_LOADERS = (import.meta as unknown as { glob: (p: string) => Record<string, () => Promise<{ MAP: GameMap }>> }).glob('./*/map.ts')
 
 async function loadCurrentMap(): Promise<GameMap> {
   if (CURRENT_SCENARIO_ID === null) return INITIAL_MAP

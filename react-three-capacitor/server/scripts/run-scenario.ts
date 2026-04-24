@@ -1,67 +1,53 @@
 /**
- * Run a single scenario with a given set of bots.
+ * Run a single scenario against an already-running multiplayer server.
+ *
+ * The thin client:
+ *  1) POSTs a run spec to /scenario-run on the main server, which registers
+ *     a one-shot routing key `sr_<id>` and a one-shot room behind it.
+ *  2) Connects CLI-driven bots over WebSocket to that routing key.
+ *  3) Optionally launches Playwright + ffmpeg against
+ *     http://<host>/observe/<key>/0/<recordBotIndex> to record video.
+ *  4) Long-polls GET /scenario-run/:id/result until the server reports the
+ *     run terminated, then merges CLI-bot logs and writes response.json.
+ *
+ * Requires the main server to be running on $SERVER_URL (default
+ * http://localhost:8080). If the server isn't up, start it first:
+ *   cd react-three-capacitor/server && npm run dev
+ *
+ * Recording additionally requires a built frontend so the main server can
+ * serve /observe:
+ *   cd react-three-capacitor && npm run build
+ * and playwright chromium installed:
+ *   npx playwright install chromium
  *
  * Usage (from react-three-capacitor/server/):
  *   npx tsx scripts/run-scenario.ts \
  *     [--scenario <id>]               default: scenario2
- *     [--bots <path:Export> ...]      bot specs relative to project root, e.g.
- *                                     content/bots/scenario2/filler/bot.ts:SCENARIO2_BOT
- *     [--record-bot-index <n>]        bot index to observe + record video for.
- *                                     Optional; default: no recording.
- *                                     Must be < bot count when set.
- *     [--log-bot-indices <csv>]       comma-separated bot indices to collect logs
- *                                     from. Default: all bots. Use "" for none.
- *     [--output-dir <dir>]            directory for video / screenshot / response.
- *                                     Required when --record-bot-index is set.
- *     [--response-json <file>]        write structured JSON response to this file.
- *     [--timeout <ms>]                override scenario timeout.
- *
- * Requires the frontend to be built first (only if recording):
- *   cd react-three-capacitor && npm run build
- *
- * Requires playwright chromium (only if recording):
- *   npx playwright install chromium
+ *     [--bots <path:Export> ...]      bot specs relative to project root
+ *     [--record-bot-index <n>]        enables video recording
+ *     [--log-bot-indices <csv>]       default: all bots. "" for none.
+ *     [--output-dir <dir>]            video / screenshot / response.json
+ *     [--response-json <file>]        override response.json path
+ *     [--timeout <ms>]                override scenario sim-ms timeout
+ *     [--tick-rate-hz <hz>]           default: 240
+ *     [--capture-fps <hz>]            default: 60
+ *     [--server-url <url>]            default: $SERVER_URL or http://localhost:8080
+ *     [--run-id <id>]                 default: <scenario>/<test-spec>/<index>
+ *     [--test-spec-name <name>]       default: _adhoc
+ *     [--run-index <n>]               default: 0
  */
 
 import { parseArgs } from 'node:util'
-import http from 'node:http'
-import net from 'node:net'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import express from 'express'
-import { initPhysics } from '../src/World.js'
-import { GameServer } from '../src/GameServer.js'
-import { ContentRegistry } from '../src/ContentRegistry.js'
 import { BotClient } from '../src/bot/BotClient.js'
 import { formatLogs, type LogEntry } from './logFormat.js'
 import type { BotSpec } from '../src/bot/BotTypes.js'
+import type { ScenarioRunRequest, ScenarioRunRegistered, ScenarioRunServerResult } from '../src/scenarioRun/types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
-
-// Tee server-side console output into a structured buffer so the artifact can
-// expose scenario_script_logs / scenario_script_errors to downstream tools.
-interface ServerLogEntry { time: number; level: 'info' | 'warn' | 'error'; message: string }
-const serverLogs: ServerLogEntry[] = []
-const origLog = console.log.bind(console)
-const origWarn = console.warn.bind(console)
-const origErr = console.error.bind(console)
-function stringify(args: unknown[]): string {
-  return args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
-}
-console.log = (...args: unknown[]) => {
-  serverLogs.push({ time: Date.now(), level: 'info', message: stringify(args) })
-  origLog(...args)
-}
-console.warn = (...args: unknown[]) => {
-  serverLogs.push({ time: Date.now(), level: 'warn', message: stringify(args) })
-  origWarn(...args)
-}
-console.error = (...args: unknown[]) => {
-  serverLogs.push({ time: Date.now(), level: 'error', message: stringify(args) })
-  origErr(...args)
-}
 
 // ── CLI args ──────────────────────────────────────────────────────────────────
 
@@ -80,6 +66,7 @@ const { values } = parseArgs({
     timeout:             { type: 'string'                   },
     'tick-rate-hz':      { type: 'string',  default: '240'  },
     'capture-fps':       { type: 'string',  default: '60'   },
+    'server-url':        { type: 'string'                   },
   },
   strict: true,
 })
@@ -98,7 +85,7 @@ const RESPONSE_JSON    = values['response-json']
 const TEST_SPEC_NAME   = values['test-spec-name'] ?? '_adhoc'
 const RUN_INDEX        = values['run-index'] !== undefined ? parseInt(values['run-index'], 10) : 0
 const RUN_ID           = values['run-id'] ?? `${SCENARIO_ID}/${TEST_SPEC_NAME}/${RUN_INDEX}`
-const TIMEOUT_OVERRIDE = values.timeout ? parseInt(values.timeout, 10) : undefined
+const TIMEOUT_OVERRIDE = values.timeout ? parseInt(values.timeout, 10) : null
 
 const TICK_RATE_HZ = parseFloat(values['tick-rate-hz'] ?? '240')
 if (!Number.isFinite(TICK_RATE_HZ) || TICK_RATE_HZ <= 0) {
@@ -106,31 +93,23 @@ if (!Number.isFinite(TICK_RATE_HZ) || TICK_RATE_HZ <= 0) {
   process.exit(1)
 }
 const TICK_MS = 1000 / TICK_RATE_HZ
-const SPEED_MULTIPLIER = TICK_RATE_HZ / 20
 const CAPTURE_FPS = parseFloat(values['capture-fps'] ?? '60')
 if (!Number.isFinite(CAPTURE_FPS) || CAPTURE_FPS <= 0) {
   console.error(`--capture-fps must be > 0 — got ${values['capture-fps']}`)
   process.exit(1)
 }
 
-console.log('[run-scenario] tickRateHz=%d tickMs=%s speedMult=%d captureFps=%d', TICK_RATE_HZ, TICK_MS.toFixed(3), SPEED_MULTIPLIER, CAPTURE_FPS)
+const SERVER_URL = (values['server-url'] ?? process.env.SERVER_URL ?? 'http://localhost:8080').replace(/\/+$/, '')
+const WS_URL = SERVER_URL.replace(/^http/, 'ws')
 
 // Parse --log-bot-indices: undefined → all bots, "" → none, "0,2" → [0, 2]
 const LOG_BOT_INDICES: number[] | null = values['log-bot-indices'] === undefined
-  ? null  // sentinel for "all"
+  ? null
   : values['log-bot-indices'] === ''
     ? []
     : values['log-bot-indices'].split(',').map(s => parseInt(s.trim(), 10))
 
-// ── Load content registry (maps + scenarios) via data backend ────────────────
-
-const contentRegistry = new ContentRegistry()
-const entry = await contentRegistry.get(SCENARIO_ID)
-if (!entry) {
-  console.error(`Unknown scenario: ${SCENARIO_ID}. Add it to content/scenario_map.json.`)
-  process.exit(1)
-}
-const scenarioSpec = entry.scenario
+console.log('[run-scenario] server=%s tickRateHz=%d tickMs=%s captureFps=%d', SERVER_URL, TICK_RATE_HZ, TICK_MS.toFixed(3), CAPTURE_FPS)
 
 // ── Load bot specs from CLI args ──────────────────────────────────────────────
 
@@ -152,8 +131,6 @@ for (const arg of BOT_ARGS) {
   botSpecs.push(mod[exportName] as BotSpec)
 }
 
-// ── Validate record-bot-index against bot count ───────────────────────────────
-
 if (RECORD_BOT_INDEX !== null) {
   if (!Number.isInteger(RECORD_BOT_INDEX) || RECORD_BOT_INDEX < 0 || RECORD_BOT_INDEX >= botSpecs.length) {
     console.error(`--record-bot-index must be an integer in [0, ${botSpecs.length}) — got ${values['record-bot-index']}`)
@@ -164,8 +141,6 @@ if (RECORD_BOT_INDEX !== null) {
     process.exit(1)
   }
 }
-
-// ── Validate log-bot-indices ──────────────────────────────────────────────────
 
 if (LOG_BOT_INDICES !== null) {
   for (const i of LOG_BOT_INDICES) {
@@ -180,126 +155,60 @@ const logBotIndexSet: Set<number> | null = LOG_BOT_INDICES === null
   ? null
   : new Set(LOG_BOT_INDICES)
 
-// ── Validate frontend build (only if recording) ───────────────────────────────
+if (OUTPUT_DIR) fs.mkdirSync(OUTPUT_DIR, { recursive: true })
 
-const staticDir = path.resolve(__dirname, '../../dist')
-if (RECORD_BOT_INDEX !== null && !fs.existsSync(path.join(staticDir, 'index.html'))) {
-  console.error(`Frontend build not found at ${staticDir}`)
-  console.error('Run: cd react-three-capacitor && npm run build')
+// ── Register the run with the server ──────────────────────────────────────────
+
+const registerReq: ScenarioRunRequest = {
+  run_id: RUN_ID,
+  scenario_id: SCENARIO_ID,
+  test_spec_name: TEST_SPEC_NAME,
+  run_index: RUN_INDEX,
+  bot_count: botSpecs.length,
+  record_bot_index: RECORD_BOT_INDEX,
+  log_bot_indices: LOG_BOT_INDICES,
+  timeout_ms: TIMEOUT_OVERRIDE,
+  tick_rate_hz: TICK_RATE_HZ,
+}
+
+async function postRegister(): Promise<ScenarioRunRegistered> {
+  const res = await fetch(`${SERVER_URL}/scenario-run`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(registerReq),
+  })
+  if (res.status !== 201) {
+    const text = await res.text()
+    throw new Error(`POST /scenario-run failed: ${res.status} ${text}`)
+  }
+  return res.json() as Promise<ScenarioRunRegistered>
+}
+
+let registered: ScenarioRunRegistered
+try {
+  registered = await postRegister()
+} catch (err) {
+  console.error(`[run-scenario] register failed: ${err instanceof Error ? err.message : err}`)
+  console.error(`[run-scenario] is the server running at ${SERVER_URL}?`)
   process.exit(1)
 }
 
-if (OUTPUT_DIR) fs.mkdirSync(OUTPUT_DIR, { recursive: true })
+const ROUTING_KEY = registered.routing_key
+const ROUTING_RUN_ID = registered.routing_run_id
+console.log(`[run-scenario] registered: routingKey=${ROUTING_KEY} effectiveTimeout=${registered.effective_timeout_ms}ms`)
 
-// ── Register termination callback before GameServer starts ────────────────────
-
-let terminationResolve!: () => void
-const terminationPromise = new Promise<void>(resolve => { terminationResolve = resolve })
-let terminatedByScenario = false
-const onScenarioTerminate = (terminatedId: string) => {
-  if (terminatedId !== scenarioSpec.id) return
-  terminatedByScenario = true
-  terminationResolve()
-}
-
-// ── Physics + Server ──────────────────────────────────────────────────────────
-
-await initPhysics()
-
-async function findFreePort(start: number): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer()
-    srv.listen(start, () => {
-      const addr = srv.address() as net.AddressInfo
-      srv.close(() => resolve(addr.port))
-    })
-    srv.on('error', () => findFreePort(start + 1).then(resolve, reject))
-  })
-}
-
-const PORT = await findFreePort(8090)
-
-const app = express()
-if (RECORD_BOT_INDEX !== null) app.use(express.static(staticDir))
-
-const httpServer = http.createServer(app)
-// When recording, leave the scenario in its "created but not started" state
-// until the observer browser is recording. Bots can connect and auto-ready
-// freely during that window; the Scenario buffers their connect/ready events
-// and replays them in order when `startScenario(id)` is called. Non-recording
-// runs start the scenario immediately.
-const AUTO_START = RECORD_BOT_INDEX === null
-const gameServer = new GameServer(contentRegistry, httpServer, PORT, {
-  tickRateHz: TICK_RATE_HZ,
-  autoStartScenario: AUTO_START,
-  onScenarioTerminate,
-})
-
-let observerReadyFired = false
-const observerReadyPromise = new Promise<void>(resolve => {
-  const unsub = gameServer.onObserverReady(() => {
-    observerReadyFired = true
-    unsub()
-    resolve()
-  })
-})
-
-if (RECORD_BOT_INDEX !== null) {
-  app.get('/observe/:key/:i/:j', (req, res) => {
-    const i = parseInt(req.params.i, 10)
-    const j = parseInt(req.params.j, 10)
-    if (!gameServer.getRouter().hasRoomAndPlayer(req.params.key, i, j)) {
-      res.status(404).send('<html><body><p>not found</p></body></html>')
-      return
-    }
-    const wsShim = `<script>
-(function(){
-  var _WS=window.WebSocket;
-  window.WebSocket=function WS(url,protocols){
-    var u=String(url).replace(/^wss?:\\/\\/[^/]+/,'ws://localhost:${PORT}');
-    return protocols!==undefined?new _WS(u,protocols):new _WS(u);
-  };
-  window.WebSocket.CONNECTING=_WS.CONNECTING;
-  window.WebSocket.OPEN=_WS.OPEN;
-  window.WebSocket.CLOSING=_WS.CLOSING;
-  window.WebSocket.CLOSED=_WS.CLOSED;
-  window.WebSocket.prototype=_WS.prototype;
-})();
-</script>`
-    const html = fs.readFileSync(path.join(staticDir, 'index.html'), 'utf8')
-      .replace('<head>', `<head><base href="/">${wsShim}`)
-    res.setHeader('Content-Type', 'text/html')
-    res.send(html)
-  })
-
-  app.get('*', (_req, res) => {
-    res.sendFile(path.join(staticDir, 'index.html'))
-  })
-}
-
-await new Promise<void>(resolve => httpServer.listen(PORT, resolve))
-console.log(`[run-scenario] server on http://localhost:${PORT}`)
-
-// ── Connect bots ──────────────────────────────────────────────────────────────
-
-const ROUTING_KEY = `r_${SCENARIO_ID}`
+// ── Connect CLI-driven bots ──────────────────────────────────────────────────
 
 const botClients: BotClient[] = []
 for (const spec of botSpecs) {
-  const client = new BotClient(`ws://localhost:${PORT}`, ROUTING_KEY, spec, { tickMs: TICK_MS })
+  const client = new BotClient(WS_URL, ROUTING_KEY, spec, { tickMs: TICK_MS })
   client.start()
   botClients.push(client)
   await new Promise(r => setTimeout(r, 100))
 }
 
-// Wait for bots to register on the server.
+// Let bots register on the server.
 await new Promise(r => setTimeout(r, 300))
-
-// Scenario timeouts are expressed in sim-ms; scale to wall-clock by the speed
-// multiplier so a 90s / 1800-tick scenario takes 7.5s wall at 240Hz.
-const simTimeoutMs = TIMEOUT_OVERRIDE ?? scenarioSpec.timeoutMs
-const effectiveTimeout = simTimeoutMs / SPEED_MULTIPLIER
-const timeoutPromise = new Promise<void>(resolve => setTimeout(resolve, effectiveTimeout))
 
 // ── Optionally launch browser and record ──────────────────────────────────────
 
@@ -318,7 +227,7 @@ let screenshotHasContent: boolean | null = null
 
 if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
   const { chromium } = await import('playwright')
-  const observeUrl = `http://localhost:${PORT}/observe/${ROUTING_KEY}/0/${RECORD_BOT_INDEX}`
+  const observeUrl = `${SERVER_URL}/observe/${ROUTING_KEY}/0/${RECORD_BOT_INDEX}`
   console.log(`[run-scenario] observing ${observeUrl}`)
 
   browser = await chromium.launch({ headless: true })
@@ -331,19 +240,7 @@ if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
   page.on('pageerror', err => console.error(`[browser:pageerror] ${err.message}`))
 
   await page.goto(observeUrl)
-
-  const OBSERVER_READY_FALLBACK_MS = 10_000
-  const observerReadyResult = await Promise.race([
-    observerReadyPromise.then(() => 'ready' as const),
-    new Promise<'timeout'>(resolve => setTimeout(() => resolve('timeout'), OBSERVER_READY_FALLBACK_MS)),
-  ])
-  if (observerReadyResult === 'ready') {
-    console.log('[run-scenario] observer ready signal received — starting screencast')
-  } else {
-    console.warn(`[run-scenario] observer ready signal did not arrive within ${OBSERVER_READY_FALLBACK_MS}ms — starting screencast anyway`)
-  }
-
-  console.log(`[run-scenario] recording started (timeout: ${effectiveTimeout}ms)`)
+  console.log(`[run-scenario] recording started (server timeout: ${registered.effective_timeout_ms}ms)`)
 
   const { spawn } = await import('node:child_process')
   videoOutPath = path.join(OUTPUT_DIR, `${RECORD_BOT_INDEX}.mp4`)
@@ -370,22 +267,9 @@ if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
   })
   await cdpSession.send('Page.startScreencast', { format: 'jpeg', quality: 80, everyNthFrame: 1 })
 
-  // Observer is recording. Start the scenario — replays onPlayerConnect for
-  // every bot that connected during the created-not-started phase and
-  // onPlayerReady for every bot that auto-readied, in arrival order.
-  // Scenario-spawned bots (bot-fill etc.) and later ready signals flow
-  // through normally.
-  const room = gameServer.getRouter().getRoomByIndex(ROUTING_KEY, 0)
-  if (room) {
-    room.startScenario(SCENARIO_ID)
-    console.log('[run-scenario] scenario started')
-  } else {
-    console.warn('[run-scenario] no room to start — scenario will not run')
-  }
-
-  // Wait a bit, grab screenshot, verify non-black pixels.
-  const SCREENSHOT_DELAY = Math.min(3_000, effectiveTimeout / 2)
-  await Promise.race([new Promise(r => setTimeout(r, SCREENSHOT_DELAY)), timeoutPromise])
+  // Grab screenshot shortly after start, verify non-black pixels.
+  const SCREENSHOT_DELAY = Math.min(3_000, registered.effective_timeout_ms / 2)
+  await new Promise(r => setTimeout(r, SCREENSHOT_DELAY))
 
   const screenshotBuf = await page.screenshot()
   screenshotOutPath = path.join(OUTPUT_DIR, `${RECORD_BOT_INDEX}-screenshot.png`)
@@ -417,16 +301,30 @@ if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
   }
 }
 
-// ── Wait for termination or timeout ──────────────────────────────────────────
+// ── Wait for termination by long-polling the server ──────────────────────────
 
-await Promise.race([terminationPromise, timeoutPromise])
+async function awaitResult(): Promise<ScenarioRunServerResult> {
+  // Hard cap well beyond the server's own timeout so a pathological hang
+  // surfaces as a CLI-side error instead of an infinite poll.
+  const deadline = Date.now() + Math.max(60_000, registered.effective_timeout_ms * 3)
+  while (Date.now() < deadline) {
+    const res = await fetch(`${SERVER_URL}/scenario-run/${ROUTING_RUN_ID}/result`)
+    if (res.status === 200) return res.json() as Promise<ScenarioRunServerResult>
+    if (res.status === 202) continue
+    const text = await res.text()
+    throw new Error(`GET /scenario-run/${ROUTING_RUN_ID}/result: ${res.status} ${text}`)
+  }
+  throw new Error(`timed out waiting for result from ${SERVER_URL}`)
+}
 
-// Small buffer so the final state renders in the recording
-if (context) await new Promise(r => setTimeout(r, 2_000))
+const serverResult = await awaitResult()
 
 // ── Finalize recording ────────────────────────────────────────────────────────
 
 if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
+  // Small buffer so the final state renders in the recording
+  if (context) await new Promise(r => setTimeout(r, 2_000))
+
   console.log('[run-scenario] stopping recording...')
   if (cdp) { try { await cdp.send('Page.stopScreencast') } catch { /* ignore */ } }
   if (context) await context.close()
@@ -439,7 +337,7 @@ if (RECORD_BOT_INDEX !== null && OUTPUT_DIR) {
   console.log(`[run-scenario] saved: ${videoOutPath}`)
 }
 
-// ── Collect bot logs (filtered by --log-bot-indices) ──────────────────────────
+// ── Merge logs ────────────────────────────────────────────────────────────────
 
 const cliBotLogs: LogEntry[] = botClients.flatMap((c, i) =>
   (logBotIndexSet === null || logBotIndexSet.has(i))
@@ -452,23 +350,8 @@ const cliBotLogs: LogEntry[] = botClients.flatMap((c, i) =>
       }))
     : [],
 )
-const scenarioBotLogs: LogEntry[] = gameServer.getBotManager().collectLogs().map(e => ({
-  time: e.log.time,
-  level: e.log.level,
-  source: 'scenario-bot' as const,
-  bot_index: e.clientIndex,
-  message: e.log.message,
-}))
 
-const allBotLogs: LogEntry[] = [...cliBotLogs, ...scenarioBotLogs].sort((a, b) => a.time - b.time)
-
-const serverLogEntries: LogEntry[] = serverLogs.map(e => ({
-  time: e.time,
-  level: e.level,
-  source: 'server' as const,
-  bot_index: null,
-  message: e.message,
-}))
+const allBotLogs: LogEntry[] = [...cliBotLogs, ...serverResult.scenario_bot_logs].sort((a, b) => a.time - b.time)
 
 // ── Build structured response ─────────────────────────────────────────────────
 
@@ -492,6 +375,10 @@ interface ScenarioRunResult {
     screenshot_path: string | null
     screenshot_has_content: boolean | null
     observer_ready_fired: boolean
+    final_state: {
+      survivor_count: number
+      survivor_player_ids: string[]
+    }
   }
   server_logs: string
 }
@@ -506,18 +393,19 @@ const response: ScenarioRunResult = {
     bot_count: botSpecs.length,
     record_bot_index: RECORD_BOT_INDEX,
     log_bot_indices: LOG_BOT_INDICES,
-    effective_timeout_ms: effectiveTimeout,
+    effective_timeout_ms: serverResult.effective_timeout_ms,
   },
   logs: formatLogs(allBotLogs),
   termination_metadata: {
-    terminated_by: terminatedByScenario ? 'scenario' : 'timeout',
-    exit_code: process.exitCode ?? 0,
+    terminated_by: serverResult.termination_metadata.terminated_by,
+    exit_code: serverResult.termination_metadata.exit_code,
     video_path: videoOutPath,
     screenshot_path: screenshotOutPath,
     screenshot_has_content: screenshotHasContent,
-    observer_ready_fired: observerReadyFired,
+    observer_ready_fired: serverResult.termination_metadata.observer_ready_fired,
+    final_state: serverResult.termination_metadata.final_state,
   },
-  server_logs: formatLogs(serverLogEntries),
+  server_logs: formatLogs(serverResult.server_logs),
 }
 
 if (RESPONSE_JSON) {
@@ -536,5 +424,4 @@ if (OUTPUT_DIR) {
 // ── Shutdown ──────────────────────────────────────────────────────────────────
 
 for (const bot of botClients) bot.stop()
-httpServer.close()
 process.exit(process.exitCode ?? 0)

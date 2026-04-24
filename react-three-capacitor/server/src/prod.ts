@@ -7,6 +7,7 @@ import { ContentRegistry } from './ContentRegistry.js'
 import { initPhysics } from './World.js'
 import { attachNumberDisplay, buildDefaultNumberDisplayRoutes } from './NumberDisplay.js'
 import { attachSrUidCookie, attachValidationRoutes } from './httpRoutes.js'
+import { attachScenarioRunRoutes } from './scenarioRun/scenarioRunRoutes.js'
 
 const PORT = parseInt(process.env.PORT ?? '8080', 10)
 await initPhysics()
@@ -26,6 +27,7 @@ const server = http.createServer(app)
 const gameServer = new GameServer(content, server, PORT)
 
 attachNumberDisplay(server, app, buildDefaultNumberDisplayRoutes())
+attachScenarioRunRoutes(app, gameServer)
 
 const sendSpa = (res: express.Response): void => {
   res.sendFile(path.join(staticDir, 'index.html'))

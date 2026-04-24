@@ -1,0 +1,39 @@
+{
+  "plan_id": "scenario2",
+  "concept_description": "A 4-player elimination room: once everyone is ready, the north door opens and players who don't move from room1 to room2 are eliminated. Survivors learn how many of them made it.",
+  "scenario_sketch": "Three rooms south→north: room1, room2, room3. Players enter room1 via the hub connection at room1's south wall. north_door (plug between room1/room2) starts visible (closed). room2_north_wall (between room2/room3) starts visible. room3 starts hidden.\n\nTiming/triggers:\n- timeoutMs: 90000.\n- First entry into room1 starts a 5s countdown that fills room1 with filler bots until there are 4 total players.\n- onPlayerReady: once there are 4 players AND all are ready, the scenario closes to new joins, hides north_door (doorway opens), and broadcasts the rule \"Players that do not continue will be eliminated.\"\n- 2s later, the rule is re-sent as an instruction `rule_move` to every player still in room1.\n- 4s after `rule_move`, any player still in room1 is eliminated.\n- When a player enters room2, north_door re-closes for them individually (cannot return).\n- Once all living players are in room2, wait 1s, then send instruction `fact_{N}` to each survivor (N = survivor count, 1..4), drop room2_north_wall, make room3 visible, and terminate.\n- If 0 players survive, no fact is sent; the scenario terminates on timeoutMs.",
+  "possible_outcomes_description": "Survivor count ranges from 0 to 4, determined by how many of the 4 ready players move from room1 to room2 within 4s of receiving `rule_move`. Each player independently either moves (survives) or stays (eliminated). The fact_{N} instruction is announced only when N≥1; N=0 ends via timeout with no announcement.",
+  "outcomes_test_plan": "The single behavioral axis is \"moves on rule_move\" vs \"stays\". Two personas (mover, stayer) cover both behaviors. The two extreme outcomes — 4 stayers (0 survivors, exercises the timeout/no-fact path) and 4 movers (4 survivors, exercises the fact_4 + room3 reveal path) — together demonstrate every distinct mechanism in the scenario: door open, individual door re-close on entry, elimination of room1 occupants, survivor-count fact announcement, north wall drop, and the no-survivor timeout branch. A mixed outcome would only be a linear combination of these behaviors and is omitted per guidelines.",
+  "min_player_count": 4,
+  "max_player_count": 4,
+  "bot_personas": [
+    {
+      "name": "mover",
+      "description": "Marks ready on join. On receiving the rule_move instruction, walks north through the open door into room2 and stays there."
+    },
+    {
+      "name": "stayer",
+      "description": "Marks ready on join. Ignores the rule_move instruction and remains in room1 until eliminated."
+    }
+  ],
+  "outcomes": [
+    {
+      "expected_survivors": 0,
+      "personas": [
+        {
+          "name": "stayer",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "expected_survivors": 4,
+      "personas": [
+        {
+          "name": "mover",
+          "count": 4
+        }
+      ]
+    }
+  ]
+}

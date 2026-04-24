@@ -765,10 +765,12 @@ export class MultiplayerRoom {
     this.readyPlayerIds.delete(playerId)
     this.worldResetAckWaiters.delete(playerId)
     // No `player_left` broadcast — the WS is being handed off to another
-    // MR, not closed. The recording manager should also stop tracking this
-    // player on this MR; downstream calls on the target MR will re-register
-    // under the new id.
-    this.recordingManager?.onPlayerDisconnected(playerId)
+    // MR, not closed. Do NOT finalize the recording here: the target MR's
+    // `connectPlayerShared` will call `onPlayerConnected` with the new id
+    // and the recording manager rebinds the in-flight buffer onto it.
+    // Finalizing here would save the solo-hallway segment as the whole
+    // recording and `resolveIndex` would then reject the target MR's
+    // fresh attempt because the persisted recording already exists.
   }
 
   // Tear down this room deterministically. Used for short-lived solo
@@ -782,6 +784,10 @@ export class MultiplayerRoom {
       clearTimeout(this.tickTimer)
       this.tickTimer = null
     }
+  }
+
+  getLivingPlayerIds(): string[] {
+    return [...this.players.keys()]
   }
 
   removePlayer(playerId: string, eliminated = false): void {

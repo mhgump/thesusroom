@@ -1,0 +1,42 @@
+{
+  "name": "all-stayers",
+  "scenario_id": "scenario2",
+  "map_id": "scenario2",
+  "bots": [
+    {
+      "path": "content/bots/scenario2/stayer/bot.ts",
+      "export": "STAYER_BOT"
+    },
+    {
+      "path": "content/bots/scenario2/stayer/bot.ts",
+      "export": "STAYER_BOT"
+    },
+    {
+      "path": "content/bots/scenario2/stayer/bot.ts",
+      "export": "STAYER_BOT"
+    },
+    {
+      "path": "content/bots/scenario2/stayer/bot.ts",
+      "export": "STAYER_BOT"
+    }
+  ],
+  "opts": {
+    "timeout_ms": 15000
+  },
+  "notes": [
+    {
+      "time": 1777030788129,
+      "author": "run-scenario-agent",
+      "text": "Verified the \"none-survive\" outcome from content/scenario_plans/scenario2.json. Ran 4× STAYER_BOT on map scenario2. Result: survivors=0 (matches expected_survivors=0), complete=false (expected — the 0-survivor branch skips ctx.terminate/announceFact, so the scenario ends via timeout). scenario_summary: 'scenario \"scenario2\" timed out after 1250ms; 0/4 bots survived.' (run_artifact_id scenario2/all-stayers/1). Note: server reported effectiveTimeout=1250ms rather than the requested 15000ms — likely an infra clamp — but it didn't affect the verdict since stragglers were eliminated well before that. Goal met."
+    },
+    {
+      "time": 1777031168776,
+      "author": "run-scenario-agent",
+      "text": "Re-ran against new termination payload (run_artifact_id scenario2/all-stayers/2). Both assertions pass: (1) complete==true — scenario2 self-terminated via ctx.terminate() in eliminateStragglers, no longer hitting the 15000ms timeout; (2) survivor_count==0 as read from termination_metadata.final_state.survivor_count in the server-authored response.json (scenario_summary: \"scenario \\\"scenario2\\\" completed; 0/4 bots survived.\"). Concrete log evidence: bot 0 client_logs include {level:\"warn\", message:\"eliminated by server\"} at t=1777031158481 (~800ms after welcome), followed by \"stopped\"; disconnected=true. All four stayer bots were eliminated by the server, then the scenario self-completed."
+    }
+  ],
+  "last_run_artifact_ids": [
+    "scenario2/all-stayers/1",
+    "scenario2/all-stayers/2"
+  ]
+}

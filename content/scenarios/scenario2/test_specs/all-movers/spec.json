@@ -1,0 +1,40 @@
+{
+  "name": "all-movers",
+  "scenario_id": "scenario2",
+  "map_id": "scenario2",
+  "bots": [
+    {
+      "path": "content/bots/scenario2/mover/bot.ts",
+      "export": "MOVER_BOT"
+    },
+    {
+      "path": "content/bots/scenario2/mover/bot.ts",
+      "export": "MOVER_BOT"
+    },
+    {
+      "path": "content/bots/scenario2/mover/bot.ts",
+      "export": "MOVER_BOT"
+    },
+    {
+      "path": "content/bots/scenario2/mover/bot.ts",
+      "export": "MOVER_BOT"
+    }
+  ],
+  "opts": {},
+  "notes": [
+    {
+      "time": 1777030753138,
+      "author": "run-scenario-agent",
+      "text": "Verified all-movers → 4 survivors. Evidence: scenario_summary \"scenario \\\"scenario2\\\" completed; 4/4 bots survived.\" with complete=true, matching plan's expected_survivors=4."
+    },
+    {
+      "time": 1777031140474,
+      "author": "run-scenario-agent",
+      "text": "Re-run to validate the new termination_metadata.final_state path. runScenarioWithBots now reads final_state.survivor_count directly from response.json instead of log-grepping. Result: complete=true, survivors=4 (scenario_summary: \"scenario \\\"scenario2\\\" completed; 4/4 bots survived.\"). All 4 movers reached room2, scenario terminated with 4 living players, and the count came through the new payload cleanly. Scenario-script log evidence of all 4 bots joining and the room being driven to completion: \"[MultiplayerRoom:scenario2] +player ae2b6c9c-6cf9-41fa-a187-7e0fac80eefe (total:4)\" — followed by clean termination (no scenario_script_errors, no websocket_errors). The new survivor_count reading agrees with the expected outcome (4)."
+    }
+  ],
+  "last_run_artifact_ids": [
+    "scenario2/all-movers/0",
+    "scenario2/all-movers/1"
+  ]
+}

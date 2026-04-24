@@ -1,7 +1,6 @@
 import type { Tool } from '../framework.js'
 import { RUN_SCENARIO_TOOL } from '../runScenario/index.js'
-import type { RunScenarioInput, ScenarioRunResult } from '../runScenario/index.js'
-import { parseLogs } from '../_shared/logFormat.js'
+import type { RunScenarioInput } from '../runScenario/index.js'
 import {
   RUN_SCENARIO_WITH_BOTS_SPEC,
   type RunScenarioWithBotsInput,
@@ -26,21 +25,6 @@ function validateInput(input: unknown): RunScenarioWithBotsInput {
   return i as RunScenarioWithBotsInput
 }
 
-// A bot is considered eliminated if its own log stream contains an "eliminated
-// by server" warning (BotClient emits this on player_left for its own id).
-function countSurvivors(out: ScenarioRunResult): number {
-  // `dateMs` anchors the date for the time-of-day prefix; Date.now() is fine
-  // here since we only use parsed entries for source/message filtering.
-  const entries = parseLogs(out.logs, Date.now())
-  const eliminated = new Set<number>()
-  for (const log of entries) {
-    if (log.source !== 'cli-bot') continue
-    if (log.bot_index === null) continue
-    if (log.message.includes('eliminated by server')) eliminated.add(log.bot_index)
-  }
-  return Math.max(0, out.config.bot_count - eliminated.size)
-}
-
 async function run(rawInput: unknown): Promise<RunScenarioWithBotsOutput> {
   const input = validateInput(rawInput)
 
@@ -55,7 +39,7 @@ async function run(rawInput: unknown): Promise<RunScenarioWithBotsOutput> {
   const raw = await RUN_SCENARIO_TOOL.run(runInput)
 
   const complete = raw.termination_metadata.terminated_by === 'scenario'
-  const survivors = countSurvivors(raw)
+  const survivors = raw.termination_metadata.final_state.survivor_count
 
   const summary =
     `scenario "${raw.config.scenario_id}" ` +

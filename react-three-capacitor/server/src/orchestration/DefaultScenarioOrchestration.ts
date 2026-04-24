@@ -1,8 +1,13 @@
+import type WebSocket from 'ws'
+import type { IncomingMessage } from 'http'
 import type { GameMap } from '../../../src/game/GameMap.js'
 import type { ScenarioSpec } from '../ContentRegistry.js'
 import type { BotSpec } from '../bot/BotTypes.js'
-import { MultiplayerRoom } from '../Room.js'
-import type { OrchestrationContext, RoomOrchestration } from './RoomOrchestration.js'
+import type { MultiplayerRoom } from '../Room.js'
+import type { RoomCreationContext, RoomOrchestration } from './RoomOrchestration.js'
+import type { ConnectionContext } from '../connections/types.js'
+import { createScenarioRoom } from './scenarioRoom.js'
+import { parseRoutingKey, parseSrUid } from '../connections/urls.js'
 
 // Ships the original "one world, one map, one scenario" policy: at most one
 // open room per routing key, close via `ctx.closeScenario`, destroy on last
@@ -29,38 +34,28 @@ export class DefaultScenarioOrchestration implements RoomOrchestration {
     private readonly options?: DefaultScenarioOrchestrationOptions,
   ) {}
 
-  createRoom(ctx: OrchestrationContext): MultiplayerRoom {
-    const { map, scenario } = this
-    const autoStart = this.options?.autoStartScenario ?? true
+  async handle(ws: WebSocket, request: IncomingMessage, ctx: ConnectionContext): Promise<void> {
+    const routingKey = parseRoutingKey(request.url)
+    if (!routingKey) {
+      ws.close(4004, 'Invalid routing key')
+      return
+    }
+    const browserUuid = parseSrUid(request)
+    const room = ctx.roomRegistry.getOrCreateOpenRoom(routingKey, this)
+    const playerId = room.connectPlayer(ws, browserUuid, routingKey)
+    ctx.wireWs(ws, room, playerId)
+  }
 
-    const room = new MultiplayerRoom({
-      roomId: scenario.id,
-      instanceIndex: ctx.instanceIndex,
+  createRoom(ctx: RoomCreationContext): MultiplayerRoom {
+    return createScenarioRoom({
+      ctx,
+      map: this.map,
+      scenario: this.scenario,
+      spawnBotFn: this.spawnBotFn,
+      autoStart: this.options?.autoStartScenario ?? true,
       tickRateHz: this.options?.tickRateHz,
-      onCloseScenario: ctx.onClose,
-      onRoomDone: ctx.onDestroy,
-      spawnBotFn: (spec) => this.spawnBotFn(ctx.routingKey, spec),
-      spawnPosition: scenario.spawn,
       onScenarioTerminate: this.options?.onScenarioTerminate,
-      recordingManager: ctx.recordingManager,
-      hubConnection: scenario.hubConnection,
     })
-
-    const attachedRoomIds = room.addMap(map)
-    const scenarioInstance = room.buildScenario(attachedRoomIds, {
-      id: scenario.id,
-      script: scenario.script,
-      instructionSpecs: map.instructionSpecs,
-      voteRegions: map.voteRegions,
-      buttons: map.buttons,
-      initialVisibility: scenario.initialVisibility ?? {},
-      initialRoomVisibility: scenario.initialRoomVisibility ?? {},
-      requiredRoomIds: scenario.requiredRoomIds,
-    })
-    room.scenarios.add(scenarioInstance, { default: true })
-    if (autoStart) room.startScenario(scenario.id)
-
-    return room
   }
 
   isOpen(room: MultiplayerRoom): boolean {

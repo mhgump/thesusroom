@@ -1,11 +1,12 @@
 import type { MultiplayerRoom } from '../Room.js'
 import type { PlayerRecordingManager } from '../PlayerRecordingManager.js'
+import type { ConnectionHandler } from '../connections/types.js'
 
-// Handed to an orchestration when the framework asks it to create a new room.
-// The orchestration is expected to wire the room's lifecycle callbacks back
-// through `onClose` / `onDestroy` so the framework can maintain its open and
-// all-rooms lists.
-export interface OrchestrationContext {
+// Handed to an orchestration by the MultiplayerRoomRegistry when it asks the
+// orchestration to create a new room. The orchestration is expected to wire
+// the room's lifecycle callbacks back through `onClose` / `onDestroy` so the
+// registry can maintain its open and all-rooms lists.
+export interface RoomCreationContext {
   // The routing key this room belongs to (e.g. `r_demo`). Used to pre-bind
   // bot spawns to the same key so scenario-spawned bots reconnect into the
   // same orchestration.
@@ -28,21 +29,34 @@ export interface OrchestrationContext {
 
 // A pluggable policy for how a multiplayer room is assembled, populated, and
 // retired. Implementations decide the world/map/scenario shape and the
-// "still open?" predicate.
-export interface RoomOrchestration {
-  // Build fresh mutable state for one room. The framework calls this when it
+// "still open?" predicate. Room-creating orchestrations are also
+// ConnectionHandlers (see ./connections/types.ts) — the registry consumes the
+// RoomOrchestration slice, the dispatcher consumes the ConnectionHandler slice.
+export interface RoomOrchestration extends ConnectionHandler {
+  // Build fresh mutable state for one room. The registry calls this when it
   // needs a new open room for this routing key. The returned room is ready
   // to accept player connections via `connectPlayer(ws)`.
-  createRoom(ctx: OrchestrationContext): MultiplayerRoom
-  // Whether the given room still accepts new connections. The router reads
+  createRoom(ctx: RoomCreationContext): MultiplayerRoom
+  // Whether the given room still accepts new connections. The registry reads
   // this only when a room is already in its open list — a `false` result
-  // prompts the router to remove it. State transitions out of the open list
-  // are normally driven by the `onClose` callback, not by polling `isOpen`.
+  // prompts the registry to remove it. State transitions out of the open
+  // list are normally driven by the `onClose` callback, not by polling
+  // `isOpen`.
   isOpen(room: MultiplayerRoom): boolean
 }
 
-// Resolves a routing key to the orchestration that should govern its rooms.
+// Type guard that narrows a ConnectionHandler to a RoomOrchestration — i.e.
+// one that can create rooms in the shared registry. Used by the dispatcher
+// to expose a `resolveRoomOrchestration(key)` view for handlers like
+// `DefaultGameOrchestration` that need to locate the target key's
+// registry-backed orchestration.
+export function isRoomOrchestration(handler: ConnectionHandler): handler is RoomOrchestration {
+  const h = handler as Partial<RoomOrchestration>
+  return typeof h.createRoom === 'function' && typeof h.isOpen === 'function'
+}
+
+// Resolves a routing key to the handler that should own its connections.
 // Async because content is loaded lazily from the data backend on first use.
-// Returns `null` for unknown/invalid keys (the router rejects such
+// Returns `null` for unknown/invalid keys (the dispatcher rejects such
 // connections with close code 4004).
-export type RoutingResolver = (routingKey: string) => Promise<RoomOrchestration | null>
+export type RoutingResolver = (routingKey: string) => Promise<ConnectionHandler | null>

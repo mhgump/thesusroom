@@ -45,6 +45,10 @@ export interface ScenarioRunResult {
     screenshot_path: string | null
     screenshot_has_content: boolean | null
     observer_ready_fired: boolean
+    final_state: {
+      survivor_count: number
+      survivor_player_ids: string[]
+    }
   }
   // Text block, one LogEntry per line — see _shared/logFormat.ts.
   server_logs: string

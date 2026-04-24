@@ -1,0 +1,32 @@
+{
+  "run_id": "scenario2/all-movers/1",
+  "output_dir": "/Users/michaelgump/thesusrooms/content/scenario_runs/scenario2/all-movers/1",
+  "config": {
+    "scenario_id": "scenario2",
+    "test_spec_name": "all-movers",
+    "index": 1,
+    "bot_count": 4,
+    "record_bot_index": null,
+    "log_bot_indices": null,
+    "effective_timeout_ms": 7500
+  },
+  "logs": "[11:45:28.281] [cli-bot#0] INFO starting — server: ws://localhost:8080/sr_79657a71c67f\n[11:45:28.285] [cli-bot#0] INFO connected\n[11:45:28.297] [cli-bot#0] INFO welcome as c5fba90e-854c-4fc0-9518-5535540464f1 at (0.00, 0.00)\n[11:45:28.382] [cli-bot#1] INFO starting — server: ws://localhost:8080/sr_79657a71c67f\n[11:45:28.384] [cli-bot#1] INFO connected\n[11:45:28.384] [cli-bot#1] INFO welcome as a1f0a0c4-4063-4a1b-b871-be9a07c9d228 at (0.00, 0.00)\n[11:45:28.482] [cli-bot#2] INFO starting — server: ws://localhost:8080/sr_79657a71c67f\n[11:45:28.484] [cli-bot#2] INFO connected\n[11:45:28.484] [cli-bot#2] INFO welcome as 153c2373-5946-4478-b8f3-0c29db7ebf0c at (0.00, 0.00)\n[11:45:28.582] [cli-bot#3] INFO starting — server: ws://localhost:8080/sr_79657a71c67f\n[11:45:28.584] [cli-bot#3] INFO connected\n[11:45:28.584] [cli-bot#3] INFO welcome as ae2b6c9c-6cf9-41fa-a187-7e0fac80eefe at (0.00, 0.00)",
+  "termination_metadata": {
+    "terminated_by": "scenario",
+    "exit_code": 0,
+    "video_path": null,
+    "screenshot_path": null,
+    "screenshot_has_content": null,
+    "observer_ready_fired": false,
+    "final_state": {
+      "survivor_count": 4,
+      "survivor_player_ids": [
+        "c5fba90e-854c-4fc0-9518-5535540464f1",
+        "a1f0a0c4-4063-4a1b-b871-be9a07c9d228",
+        "153c2373-5946-4478-b8f3-0c29db7ebf0c",
+        "ae2b6c9c-6cf9-41fa-a187-7e0fac80eefe"
+      ]
+    }
+  },
+  "server_logs": "[11:45:28.297] [server] INFO [MultiplayerRoom:scenario2] +player c5fba90e-854c-4fc0-9518-5535540464f1 (total:1)\n[11:45:28.385] [server] INFO [MultiplayerRoom:scenario2] +player a1f0a0c4-4063-4a1b-b871-be9a07c9d228 (total:2)\n[11:45:28.485] [server] INFO [MultiplayerRoom:scenario2] +player 153c2373-5946-4478-b8f3-0c29db7ebf0c (total:3)\n[11:45:28.585] [server] INFO [MultiplayerRoom:scenario2] +player ae2b6c9c-6cf9-41fa-a187-7e0fac80eefe (total:4)"
+}
