@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import { useGameStore } from '../store/gameStore'
+import { CURRENT_MAP } from '../../../content/maps'
 import { Textures } from '../game/textures'
 
 function makeWallMaterials(): THREE.Material[] {
@@ -14,34 +15,47 @@ export function GeometryLayer() {
   const geometryObjects = useGameStore((s) => s.geometryObjects)
   const geometryVisibility = useGameStore((s) => s.geometryVisibility)
   const localGeometryOverride = useGameStore((s) => s.localGeometryOverride)
+  const currentRoomId = useGameStore((s) => s.currentRoomId)
+  const roomVisibility = useGameStore((s) => s.roomVisibility)
+  const playerRoomVisibilityOverride = useGameStore((s) => s.playerRoomVisibilityOverride)
   const wallMats = useMemo(makeWallMaterials, [])
+  const colorMaterialCache = useMemo(() => new Map<string, THREE.Material>(), [])
+
+  const isRoomVisible = (scopedId: string) => {
+    const override = playerRoomVisibilityOverride[scopedId]
+    if (override !== undefined) return override
+    if (CURRENT_MAP.isRoomOverlapping(scopedId) && scopedId !== currentRoomId) return false
+    return roomVisibility[scopedId] !== false
+  }
+  const visibleRoomIds = new Set(
+    [currentRoomId, ...CURRENT_MAP.getAdjacentRoomIds(currentRoomId)].filter(isRoomVisible),
+  )
+
+  const getColorMaterial = (color: string): THREE.Material => {
+    let m = colorMaterialCache.get(color)
+    if (!m) {
+      m = new THREE.MeshLambertMaterial({ color })
+      colorMaterialCache.set(color, m)
+    }
+    return m
+  }
 
   return (
     <>
       {geometryObjects.map((obj) => {
         const effectiveVisible = localGeometryOverride[obj.id] ?? geometryVisibility[obj.id]
         if (effectiveVisible === false) return null
-        if (obj.height != null && obj.height > 0) {
-          return (
-            <mesh
-              key={obj.id}
-              material={wallMats}
-              position={[obj.x, obj.height / 2, obj.z]}
-              castShadow
-              receiveShadow
-            >
-              <boxGeometry args={[obj.width, obj.height, obj.depth]} />
-            </mesh>
-          )
-        }
+        if (!visibleRoomIds.has(obj.roomId)) return null
+        const material = obj.color ? getColorMaterial(obj.color) : wallMats
         return (
           <mesh
             key={obj.id}
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[obj.x, 0.004, obj.z]}
+            material={material}
+            position={[obj.cx, obj.cy, obj.cz]}
+            castShadow
+            receiveShadow
           >
-            <planeGeometry args={[obj.width, obj.depth]} />
-            <meshBasicMaterial color={obj.color} transparent opacity={0.45} />
+            <boxGeometry args={[obj.width, obj.height, obj.depth]} />
           </mesh>
         )
       })}

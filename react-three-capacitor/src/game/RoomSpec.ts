@@ -1,12 +1,19 @@
 // North = -Z, South = +Z, East = +X, West = -X (Three.js floor-plane convention).
 export type Wall = 'north' | 'south' | 'east' | 'west'
 
-// A single barrier wall segment in room-local coordinates (origin at room centre).
-export interface BarrierSegment {
-  cx: number    // centre X
-  cz: number    // centre Z
-  width: number // X extent
-  depth: number // Z extent
+// A 3D axis-aligned rectangular prism, authored in room-local coordinates
+// (origin at room centre, +Y = up, floor at y=0). All geometry in the world —
+// walls, obstacles, toggleable doors, floor decorations — is represented as
+// GeometrySpec. Rapier treats every piece as a solid collider projected onto
+// the XZ plane (centre `(cx, cz)`, half-extents `(width/2, depth/2)`); `cy`
+// and `height` are for the 3D renderer only. Scenarios may toggle individual
+// pieces on/off per-id (globally or per-player).
+export interface GeometrySpec {
+  id: string
+  cx: number; cy: number; cz: number
+  width: number; height: number; depth: number
+  color?: string
+  imageUrl?: string
 }
 
 // Grid-aligned floor texture.
@@ -43,17 +50,17 @@ export interface OutsideTextureSpec {
 export interface RoomSpec {
   id: string
   name?: string
-  floorWidth: number        // inner floor X extent (world units)
-  floorDepth: number        // inner floor Z extent (world units)
-  barrierHeight: number     // barrier Y extent
-  barrierThickness: number  // barrier XZ thickness
+  // Inner floor extents and room Y-extent (world units). The room's bounding
+  // cube is `floorWidth × height × floorDepth` centred at `(0, height/2, 0)`
+  // in room-local coordinates. All geometry entries must fit inside this cube.
+  floorWidth: number
+  floorDepth: number
+  height: number
   // Designer-specified camera rect in room-local coordinates (origin at room centre).
   // The camera is constrained to this rect while the player is in this room.
   // If absent, defaults to a point at the room centre (camera stays fixed).
   cameraRect?: { xMin: number; xMax: number; zMin: number; zMax: number }
-  // Explicit barrier wall segments in room-local coordinates.
-  barrierSegments?: BarrierSegment[]
+  geometry?: GeometrySpec[]
   floorTextures?: FloorTextureSpec[]
   outsideTextures?: OutsideTextureSpec[]
-  geometry?: unknown[]      // future in-room objects
 }

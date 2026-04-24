@@ -67,7 +67,7 @@ export const RUN_SCENARIO_SPEC: ToolSpec = {
         type: 'string',
         description:
           'Scenario to load from content/scenarios/. One of: demo, scenario1, ' +
-          'scenario2, scenario3, scenario4.',
+          'scenario2, scenario3, scenario4, scenario5.',
       },
       test_spec_name: {
         type: 'string',

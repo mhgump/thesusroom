@@ -1,9 +1,6 @@
 import type RAPIER_TYPE from '@dimforge/rapier2d-compat'
-import type { WalkableArea, WalkableRect } from './WorldSpec.js'
 import { buildMapInstanceArtifacts } from './MapInstance.js'
 import type { GameMap } from './GameMap.js'
-
-export type { WalkableArea, WalkableRect } from './WorldSpec.js'
 
 export type AnimationState = 'IDLE' | 'WALKING'
 export type WorldEventType = 'update_animation_state' | 'touched' | 'damage'
@@ -34,14 +31,9 @@ export interface WorldPlayerState {
   z: number
   animState: AnimationState
   hp: 0 | 1 | 2
-  vx: number  // last frame movement delta, used to disambiguate push-out direction
+  vx: number  // last frame movement delta
   vz: number
 }
-
-// Rapier physics geometry — when provided, replaces AABB collision.
-export interface PhysicsWall { cx: number; cz: number; hw: number; hd: number }
-export interface PhysicsGeometry { id: string; cx: number; cz: number; hw: number; hd: number }
-export interface PhysicsSpec { walls: PhysicsWall[]; geometry: PhysicsGeometry[] }
 
 export const TICK_RATE_HZ = 20
 
@@ -62,95 +54,185 @@ export async function initPhysics(): Promise<void> {
   rapierModule = mod.default
 }
 
-// ── World class ──────────────────────────────────────────────────────────────
+// ── Internal types ───────────────────────────────────────────────────────────
 
 interface CharBody {
   body: RAPIER_TYPE.RigidBody
   collider: RAPIER_TYPE.Collider
 }
 
+// Global-coord AABB of a room's floor (for the stay-in-rooms constraint).
+export interface RoomBounds { cx: number; cz: number; hw: number; hd: number }
+
+// Global-coord 2D AABB of a single piece of geometry (the XZ projection Rapier
+// uses for collision). Kept alongside the Rapier collider so `resolveOverlap`
+// can compute push-out directions without re-querying Rapier.
+interface GeometryCollider {
+  cx: number; cz: number; hw: number; hd: number
+  collider: RAPIER_TYPE.Collider
+}
+
 export interface MoveInput { jx: number; jz: number; dt: number }
 
-// Per-map-instance record held inside a World. One World may host multiple
-// map instances under distinct `mapInstanceId`s; each contributes its rooms
-// and default room adjacency to the world.
+// Per-map-instance record stored on the World. `addMap` populates this from a
+// GameMap's WorldSpec; the default connections list supplies the initial
+// adjacency (which may later be mutated by scenarios via setConnectionEnabled).
 export interface WorldMapInstance {
   mapInstanceId: string
-  // Scoped room ids contributed by this instance (`{mapInstanceId}_{localId}`).
   scopedRoomIds: string[]
-  // Scoped adjacency map: scoped room id → array of reachable scoped room ids
-  // derived from the map's default connections.
-  defaultAdjacency: Map<string, string[]>
 }
+
+// ── World class ──────────────────────────────────────────────────────────────
 
 export class World {
   readonly players: Map<string, WorldPlayerState> = new Map()
   private readonly playerRules: Map<string, string[]> = new Map()
   private readonly disabledEvents: Set<WorldEventType>
   private readonly touchingPairs: Set<string> = new Set()
-  private walkable: WalkableArea
   private moveQueue: Map<string, MoveInput[]> = new Map()
-  // Registered map instances in insertion order; keyed by mapInstanceId.
+
+  // Registered map instances, keyed by mapInstanceId.
   private readonly mapInstances: Map<string, WorldMapInstance> = new Map()
-  // Per-player scoped room id of the room the player last entered, or null if
-  // the player is between rooms (corridor) or has never entered a room.
+
+  // Per-room world-space floor AABB, keyed by scoped room id. Populated by addMap.
+  private readonly roomBounds: Map<string, RoomBounds> = new Map()
+
+  // Current world-level adjacency (symmetric). Seeded from map connections;
+  // scenarios mutate via setConnectionEnabled.
+  private readonly connections: Map<string, Set<string>> = new Map()
+
+  // Per-player scoped room id of the room the player is in, or null if
+  // unresolved (not yet moved since spawn).
   private readonly playerRoom: Map<string, string | null> = new Map()
-  // Per-player override of accessible rooms (scoped ids). When undefined the
-  // player falls back to the default adjacency of their current room.
+
+  // Per-player override of accessible rooms (scoped ids). When set, replaces
+  // the default `{currentRoom} ∪ connections(currentRoom)` derivation.
   private readonly playerAccessibleRoomsOverride: Map<string, Set<string>> = new Map()
 
-  // Rapier state (null = AABB mode)
-  private rapier: RapierModule | null = null
-  private rapierWorld: RAPIER_TYPE.World | null = null
-  private controller: RAPIER_TYPE.KinematicCharacterController | null = null
-  private charBodies: Map<string, CharBody> = new Map()
-  private toggleColliders: Map<string, RAPIER_TYPE.Collider> = new Map()
-  private physicsGeomSpecs: Map<string, PhysicsGeometry> = new Map()
-  private geometryState: Map<string, boolean> = new Map() // true=on/solid (default), false=off/passable
-  private playerGeomOverride: Map<string, Map<string, boolean>> = new Map()
-  private playerRoomLock: Map<string, WalkableRect[]> = new Map()
+  // Rapier state. Required — initPhysics() must be awaited before `new World()`.
+  private readonly rapier: RapierModule
+  private readonly rapierWorld: RAPIER_TYPE.World
+  private readonly controller: RAPIER_TYPE.KinematicCharacterController
+  private readonly charBodies: Map<string, CharBody> = new Map()
 
-  constructor(walkable: WalkableArea, disabledEvents: WorldEventType[] = []) {
-    this.walkable = walkable
+  // Every geometry piece is a solid Rapier collider by default. Scenarios
+  // toggle individual pieces off (passable) globally or per-player.
+  private readonly geometries: Map<string, GeometryCollider> = new Map()
+  private readonly geometryState: Map<string, boolean> = new Map()  // true=solid (default)
+  private readonly playerGeomOverride: Map<string, Map<string, boolean>> = new Map()
+
+  constructor(disabledEvents: WorldEventType[] = []) {
+    if (!rapierModule) throw new Error('initPhysics() must be awaited before `new World()`')
+    this.rapier = rapierModule
+    this.rapierWorld = new this.rapier.World({ x: 0.0, y: 0.0 })
+    this.controller = this.rapierWorld.createCharacterController(0.0)
     this.disabledEvents = new Set(disabledEvents)
   }
 
-  // Factory: construct a World backed by Rapier physics.
-  // initPhysics() must have been awaited before calling this.
-  static withPhysics(walkable: WalkableArea, physics: PhysicsSpec, disabledEvents: WorldEventType[] = []): World {
-    if (!rapierModule) throw new Error('initPhysics() must be awaited before World.withPhysics()')
-    const w = new World(walkable, disabledEvents)
-    w.rapier = rapierModule
-    w.buildRapierWorld(physics)
-    return w
-  }
+  // ── Map registration ───────────────────────────────────────────────────────
 
-  private buildRapierWorld(physics: PhysicsSpec): void {
-    const R = this.rapier!
-    this.rapierWorld = new R.World({ x: 0.0, y: 0.0 })
+  // Register a map with this world: place rooms in world space from
+  // connections, load the default adjacency, instantiate every geometry piece
+  // as a Rapier collider in global coords.
+  addMap(map: GameMap): WorldMapInstance {
+    const { scopedRoomIds, roomBounds, geometry, adjacency } =
+      buildMapInstanceArtifacts(map.worldSpec, map.mapInstanceId)
 
-    for (const wall of physics.walls) {
-      const body = this.rapierWorld.createRigidBody(R.RigidBodyDesc.fixed())
-      const desc = R.ColliderDesc.cuboid(wall.hw, wall.hd).setTranslation(wall.cx, wall.cz)
-      this.rapierWorld.createCollider(desc, body)
+    for (const [scopedId, bounds] of roomBounds) {
+      this.roomBounds.set(scopedId, bounds)
     }
 
-    for (const geom of physics.geometry) {
-      const body = this.rapierWorld.createRigidBody(R.RigidBodyDesc.fixed())
-      const desc = R.ColliderDesc.cuboid(geom.hw, geom.hd).setTranslation(geom.cx, geom.cz)
+    for (const [scopedId, neighbours] of adjacency) {
+      const existing = this.connections.get(scopedId) ?? new Set<string>()
+      for (const n of neighbours) existing.add(n)
+      this.connections.set(scopedId, existing)
+    }
+
+    for (const g of geometry) {
+      const body = this.rapierWorld.createRigidBody(this.rapier.RigidBodyDesc.fixed())
+      const desc = this.rapier.ColliderDesc.cuboid(g.hw, g.hd).setTranslation(g.cx, g.cz)
       const collider = this.rapierWorld.createCollider(desc, body)
-      this.toggleColliders.set(geom.id, collider)
-      this.physicsGeomSpecs.set(geom.id, geom)
+      this.geometries.set(g.id, { cx: g.cx, cz: g.cz, hw: g.hw, hd: g.hd, collider })
+      this.geometryState.set(g.id, true)
     }
 
-    this.controller = this.rapierWorld.createCharacterController(0.0)
     this.rapierWorld.step()
+
+    const instance: WorldMapInstance = { mapInstanceId: map.mapInstanceId, scopedRoomIds }
+    this.mapInstances.set(map.mapInstanceId, instance)
+    return instance
   }
+
+  getMapInstance(mapInstanceId: string): WorldMapInstance | undefined {
+    return this.mapInstances.get(mapInstanceId)
+  }
+
+  getRoomsInMapInstance(mapInstanceId: string): string[] {
+    const instance = this.mapInstances.get(mapInstanceId)
+    return instance ? [...instance.scopedRoomIds] : []
+  }
+
+  // ── Rooms & accessibility ──────────────────────────────────────────────────
+
+  getPlayerRoom(playerId: string): string | null {
+    return this.playerRoom.get(playerId) ?? null
+  }
+
+  setPlayerRoom(playerId: string, scopedRoomId: string | null): void {
+    this.playerRoom.set(playerId, scopedRoomId)
+  }
+
+  // Enable or disable an adjacency link between two rooms. Symmetric.
+  // Scenarios call this to open/close room-to-room traversal independently of
+  // any physical barrier geometry (callers typically pair it with a matching
+  // geometry toggle, but the two concerns are kept orthogonal on purpose).
+  setConnectionEnabled(scopedRoomIdA: string, scopedRoomIdB: string, enabled: boolean): void {
+    const getOrCreate = (id: string) => {
+      let s = this.connections.get(id)
+      if (!s) { s = new Set(); this.connections.set(id, s) }
+      return s
+    }
+    if (enabled) {
+      getOrCreate(scopedRoomIdA).add(scopedRoomIdB)
+      getOrCreate(scopedRoomIdB).add(scopedRoomIdA)
+    } else {
+      this.connections.get(scopedRoomIdA)?.delete(scopedRoomIdB)
+      this.connections.get(scopedRoomIdB)?.delete(scopedRoomIdA)
+    }
+  }
+
+  isConnectionEnabled(scopedRoomIdA: string, scopedRoomIdB: string): boolean {
+    return this.connections.get(scopedRoomIdA)?.has(scopedRoomIdB) ?? false
+  }
+
+  // The set of rooms a player may currently be in. Resolution order:
+  //   1. per-player override, if set — used as-is
+  //   2. else {currentRoom} ∪ enabled-connections(currentRoom)
+  // If the player has no currentRoom yet, it is resolved from the player's
+  // present position by looking up containing room AABBs.
+  getAccessibleRooms(playerId: string): Set<string> {
+    const override = this.playerAccessibleRoomsOverride.get(playerId)
+    if (override) return new Set(override)
+
+    const current = this.resolveCurrentRoom(playerId)
+    if (!current) return new Set()
+    const out = new Set<string>([current])
+    for (const n of this.connections.get(current) ?? []) out.add(n)
+    return out
+  }
+
+  setAccessibleRoomsOverride(playerId: string, scopedRoomIds: string[] | null): void {
+    if (scopedRoomIds === null) this.playerAccessibleRoomsOverride.delete(playerId)
+    else this.playerAccessibleRoomsOverride.set(playerId, new Set(scopedRoomIds))
+  }
+
+  // ── Geometry toggles ───────────────────────────────────────────────────────
 
   toggleGeometryOn(id: string, playerId?: string): void {
     if (playerId !== undefined) {
-      if (!this.playerGeomOverride.has(playerId)) this.playerGeomOverride.set(playerId, new Map())
-      this.playerGeomOverride.get(playerId)!.set(id, true)
+      let m = this.playerGeomOverride.get(playerId)
+      if (!m) { m = new Map(); this.playerGeomOverride.set(playerId, m) }
+      m.set(id, true)
       this.resolveOverlap(playerId, id)
     } else {
       this.geometryState.set(id, true)
@@ -160,187 +242,75 @@ export class World {
 
   toggleGeometryOff(id: string, playerId?: string): void {
     if (playerId !== undefined) {
-      if (!this.playerGeomOverride.has(playerId)) this.playerGeomOverride.set(playerId, new Map())
-      this.playerGeomOverride.get(playerId)!.set(id, false)
+      let m = this.playerGeomOverride.get(playerId)
+      if (!m) { m = new Map(); this.playerGeomOverride.set(playerId, m) }
+      m.set(id, false)
     } else {
       this.geometryState.set(id, false)
     }
   }
 
-  // When geometry turns solid, eject any player overlapping it.
-  // Direction: velocity-based on the minimum-penetration axis (reverse as fallback).
-  // If the player has a room lock (set via lockCurrentRoom before the toggle), the pushed
-  // position must be within the locked rect — this prevents ejection into the wrong room.
+  // When a collider turns solid on top of a player, eject the player. Choose
+  // the push direction by (a) the axis of minimum penetration and (b) the
+  // player's recent velocity (fall back: reverse). The eject target must lie
+  // inside one of the player's accessible rooms — otherwise the player is
+  // pushed through the far face (or left in place if neither is valid).
   private resolveOverlap(playerId: string, geomId: string): void {
     const player = this.players.get(playerId)
-    const spec = this.physicsGeomSpecs.get(geomId)
-    if (!player || !spec) return
+    const geom = this.geometries.get(geomId)
+    if (!player || !geom) return
 
-    const ox = (spec.hw + CAPSULE_RADIUS) - Math.abs(player.x - spec.cx)
-    const oz = (spec.hd + CAPSULE_RADIUS) - Math.abs(player.z - spec.cz)
+    const ox = (geom.hw + CAPSULE_RADIUS) - Math.abs(player.x - geom.cx)
+    const oz = (geom.hd + CAPSULE_RADIUS) - Math.abs(player.z - geom.cz)
     if (ox <= 0 || oz <= 0) return  // no overlap
 
-    // Clear positions: player center just outside each face of the collider.
-    const clearNegX = spec.cx - spec.hw - CAPSULE_RADIUS
-    const clearPosX = spec.cx + spec.hw + CAPSULE_RADIUS
-    const clearNegZ = spec.cz - spec.hd - CAPSULE_RADIUS
-    const clearPosZ = spec.cz + spec.hd + CAPSULE_RADIUS
+    const clearNegX = geom.cx - geom.hw - CAPSULE_RADIUS
+    const clearPosX = geom.cx + geom.hw + CAPSULE_RADIUS
+    const clearNegZ = geom.cz - geom.hd - CAPSULE_RADIUS
+    const clearPosZ = geom.cz + geom.hd + CAPSULE_RADIUS
 
     let primaryX = 0, primaryZ = 0, reverseX = 0, reverseZ = 0
     if (ox <= oz) {
-      const goNeg = player.vx < 0 || (player.vx === 0 && player.x <= spec.cx)
+      const goNeg = player.vx < 0 || (player.vx === 0 && player.x <= geom.cx)
       primaryX = (goNeg ? clearNegX : clearPosX) - player.x
       reverseX = (goNeg ? clearPosX : clearNegX) - player.x
     } else {
-      const goNeg = player.vz < 0 || (player.vz === 0 && player.z <= spec.cz)
+      const goNeg = player.vz < 0 || (player.vz === 0 && player.z <= geom.cz)
       primaryZ = (goNeg ? clearNegZ : clearPosZ) - player.z
       reverseZ = (goNeg ? clearPosZ : clearNegZ) - player.z
     }
 
-    const lock = this.playerRoomLock.get(playerId)
-    const isValid = (nx: number, nz: number): boolean => {
-      const remOx = (spec.hw + CAPSULE_RADIUS) - Math.abs(nx - spec.cx)
-      const remOz = (spec.hd + CAPSULE_RADIUS) - Math.abs(nz - spec.cz)
-      if (remOx > 0 && remOz > 0) return false  // still inside geometry
-      if (lock) return lock.some(r => Math.abs(nx - r.cx) <= r.hw && Math.abs(nz - r.cz) <= r.hd)
-      return true  // no lock: any position outside geometry is fine; Rapier enforces walls
-    }
+    const allowed = this.getAccessibleRooms(playerId)
+    const inAccessible = (nx: number, nz: number) => this.isInRoomSet(nx, nz, allowed)
 
     const candidates: Array<[number, number]> = [
       [player.x + primaryX, player.z + primaryZ],
       [player.x + reverseX, player.z + reverseZ],
     ]
-
     for (const [nx, nz] of candidates) {
-      if (isValid(nx, nz)) {
-        this.setPlayerPosition(playerId, nx, nz)
-        return
-      }
+      const remOx = (geom.hw + CAPSULE_RADIUS) - Math.abs(nx - geom.cx)
+      const remOz = (geom.hd + CAPSULE_RADIUS) - Math.abs(nz - geom.cz)
+      if (remOx > 0 && remOz > 0) continue  // still inside geometry
+      if (!inAccessible(nx, nz)) continue
+      this.setPlayerPosition(playerId, nx, nz)
+      return
     }
-    // All candidates failed — leave player in place.
+    // No valid candidate — leave the player in place.
   }
 
-  setWalkable(area: WalkableArea): void { this.walkable = area }
-
-  // Register a map instance in this world. The same map can be added multiple
-  // times under different `mapInstanceId`s; each instance contributes rooms
-  // and the map's default adjacency to the world.
-  addMapInstance(instance: WorldMapInstance): void {
-    this.mapInstances.set(instance.mapInstanceId, instance)
-  }
-
-  // Register a map by its GameMap spec. This is the preferred entry point:
-  // builds the scoped room ids + default adjacency from the map's WorldSpec
-  // and stores the resulting WorldMapInstance on the world.
-  addMap(map: GameMap): WorldMapInstance {
-    const artifacts = buildMapInstanceArtifacts(map.worldSpec, map.mapInstanceId)
-    const defaultAdjacency = new Map<string, string[]>()
-    for (const scopedId of artifacts.scopedRoomIds) {
-      defaultAdjacency.set(scopedId, artifacts.getAdjacentRoomIds(scopedId))
-    }
-    const instance: WorldMapInstance = {
-      mapInstanceId: map.mapInstanceId,
-      scopedRoomIds: artifacts.scopedRoomIds,
-      defaultAdjacency,
-    }
-    this.addMapInstance(instance)
-    return instance
-  }
-
-  getMapInstance(mapInstanceId: string): WorldMapInstance | undefined {
-    return this.mapInstances.get(mapInstanceId)
-  }
-
-  // Returns the scoped room ids contributed by the named map instance, or an
-  // empty array if no such instance is registered.
-  getRoomsInMapInstance(mapInstanceId: string): string[] {
-    const instance = this.mapInstances.get(mapInstanceId)
-    return instance ? [...instance.scopedRoomIds] : []
-  }
-
-  // Returns the scoped room id of the room the player last entered (or null).
-  getPlayerRoom(playerId: string): string | null {
-    return this.playerRoom.get(playerId) ?? null
-  }
-
-  setPlayerRoom(playerId: string, scopedRoomId: string | null): void {
-    this.playerRoom.set(playerId, scopedRoomId)
-  }
-
-  // Returns the accessible-rooms set for the player: the override if set, else
-  // the default adjacency of the player's current room (current room itself
-  // plus every room reachable through a map connection from that room). When
-  // the player has no current room or the adjacency is unknown, returns the
-  // empty set.
-  getAccessibleRooms(playerId: string): Set<string> {
-    const override = this.playerAccessibleRoomsOverride.get(playerId)
-    if (override) return new Set(override)
-    const roomId = this.playerRoom.get(playerId)
-    if (!roomId) return new Set()
-    for (const inst of this.mapInstances.values()) {
-      const adj = inst.defaultAdjacency.get(roomId)
-      if (adj) return new Set([roomId, ...adj])
-    }
-    return new Set([roomId])
-  }
-
-  setAccessibleRoomsOverride(playerId: string, scopedRoomIds: string[] | null): void {
-    if (scopedRoomIds === null) {
-      this.playerAccessibleRoomsOverride.delete(playerId)
-    } else {
-      this.playerAccessibleRoomsOverride.set(playerId, new Set(scopedRoomIds))
-    }
-  }
-
-  // Lock a player to whichever walkable rect they're currently deepest inside.
-  // resolveOverlap will only accept push targets within that rect, preventing
-  // a closing geometry from ejecting the player into the wrong room.
-  lockCurrentRoom(playerId: string): void {
-    const p = this.players.get(playerId)
-    if (!p) return
-    let homeRect: WalkableRect | null = null
-    let homeDepth = -Infinity
-    for (const r of this.walkable.rects) {
-      const dx = r.hw - Math.abs(p.x - r.cx)
-      const dz = r.hd - Math.abs(p.z - r.cz)
-      if (dx < 0 || dz < 0) continue
-      const depth = Math.min(dx, dz)
-      if (depth > homeDepth) { homeDepth = depth; homeRect = r }
-    }
-    if (homeRect) this.playerRoomLock.set(playerId, [homeRect])
-  }
-
-  unlockPlayerFromRoom(playerId: string): void {
-    this.playerRoomLock.delete(playerId)
-  }
-
-  snapAllPlayers(): void {
-    if (this.rapierWorld) return // Rapier enforces bounds continuously.
-    for (const p of this.players.values()) {
-      if (this.inWalkable(p.x, p.z)) continue
-      let bestX = p.x, bestZ = p.z, bestDist = Infinity
-      for (const r of this.walkable.rects) {
-        const cx = Math.max(r.cx - r.hw, Math.min(r.cx + r.hw, p.x))
-        const cz = Math.max(r.cz - r.hd, Math.min(r.cz + r.hd, p.z))
-        const dist = Math.hypot(p.x - cx, p.z - cz)
-        if (dist < bestDist) { bestDist = dist; bestX = cx; bestZ = cz }
-      }
-      p.x = bestX; p.z = bestZ
-    }
-  }
+  // ── Players ────────────────────────────────────────────────────────────────
 
   addPlayer(id: string, x = 0, z = 0): void {
     this.players.set(id, { id, x, z, animState: 'IDLE', hp: 2, vx: 0, vz: 0 })
     this.playerGeomOverride.set(id, new Map())
-    if (this.rapierWorld && this.rapier) {
-      const R = this.rapier
-      const body = this.rapierWorld.createRigidBody(
-        R.RigidBodyDesc.kinematicPositionBased().setTranslation(x, z)
-      )
-      const collider = this.rapierWorld.createCollider(R.ColliderDesc.ball(CAPSULE_RADIUS), body)
-      this.charBodies.set(id, { body, collider })
-      this.rapierWorld.step()
-    }
+    const body = this.rapierWorld.createRigidBody(
+      this.rapier.RigidBodyDesc.kinematicPositionBased().setTranslation(x, z),
+    )
+    const collider = this.rapierWorld.createCollider(
+      this.rapier.ColliderDesc.ball(CAPSULE_RADIUS), body,
+    )
+    this.charBodies.set(id, { body, collider })
+    this.rapierWorld.step()
   }
 
   removePlayer(id: string): void {
@@ -353,12 +323,10 @@ export class World {
       const [a, b] = key.split(':')
       if (a === id || b === id) this.touchingPairs.delete(key)
     }
-    if (this.rapierWorld) {
-      const charData = this.charBodies.get(id)
-      if (charData) {
-        this.rapierWorld.removeRigidBody(charData.body)
-        this.charBodies.delete(id)
-      }
+    const charData = this.charBodies.get(id)
+    if (charData) {
+      this.rapierWorld.removeRigidBody(charData.body)
+      this.charBodies.delete(id)
     }
   }
 
@@ -380,14 +348,14 @@ export class World {
       const [a, b] = key.split(':')
       if (a === id || b === id) this.touchingPairs.delete(key)
     }
-    if (this.rapierWorld) {
-      const charData = this.charBodies.get(id)
-      if (charData) {
-        charData.body.setNextKinematicTranslation({ x, y: z })
-        this.rapierWorld.step()
-      }
+    const charData = this.charBodies.get(id)
+    if (charData) {
+      charData.body.setNextKinematicTranslation({ x, y: z })
+      this.rapierWorld.step()
     }
   }
+
+  // ── Movement ───────────────────────────────────────────────────────────────
 
   processMove(playerId: string, jx: number, jz: number, dt: number): WorldEvent[] {
     const player = this.players.get(playerId)
@@ -395,56 +363,53 @@ export class World {
 
     const events: WorldEvent[] = []
     const safeDt = Math.min(dt, 0.1)
+    const charData = this.charBodies.get(playerId)!
 
-    if (this.rapierWorld && this.controller) {
-      const charData = this.charBodies.get(playerId)!
-      const desired = { x: jx * MOVE_SPEED * safeDt, y: jz * MOVE_SPEED * safeDt }
-
-      const playerOverride = this.playerGeomOverride.get(playerId)
-      const passableHandles = new Set<number>()
-      for (const [id, collider] of this.toggleColliders) {
-        const globalOn = this.geometryState.get(id) ?? true
-        const effectiveOn = playerOverride?.has(id) ? playerOverride.get(id)! : globalOn
-        if (!effectiveOn) passableHandles.add(collider.handle)
-      }
-      for (const [id, charBody] of this.charBodies) {
-        if (id !== playerId) passableHandles.add(charBody.collider.handle)
-      }
-
-      this.controller.computeColliderMovement(
-        charData.collider,
-        desired,
-        undefined,
-        undefined,
-        (collider: RAPIER_TYPE.Collider) => {
-          if (collider.handle === charData.collider.handle) return false
-          if (passableHandles.has(collider.handle)) return false
-          return true
-        },
-      )
-
-      const movement = this.controller.computedMovement()
-      player.x += movement.x
-      player.z += movement.y
-      player.vx = movement.x
-      player.vz = movement.y
-      charData.body.setNextKinematicTranslation({ x: player.x, y: player.z })
-      this.rapierWorld.step()
-    } else {
-      const prevX = player.x
-      const prevZ = player.z
-      const nx = player.x + jx * MOVE_SPEED * safeDt
-      const nz = player.z + jz * MOVE_SPEED * safeDt
-      if (this.inWalkable(nx, nz)) {
-        player.x = nx; player.z = nz
-      } else if (this.inWalkable(nx, player.z)) {
-        player.x = nx
-      } else if (this.inWalkable(player.x, nz)) {
-        player.z = nz
-      }
-      player.vx = player.x - prevX
-      player.vz = player.z - prevZ
+    const desired = { x: jx * MOVE_SPEED * safeDt, y: jz * MOVE_SPEED * safeDt }
+    const playerOverride = this.playerGeomOverride.get(playerId)
+    const passableHandles = new Set<number>()
+    for (const [id, geom] of this.geometries) {
+      const globalOn = this.geometryState.get(id) ?? true
+      const effectiveOn = playerOverride?.has(id) ? playerOverride.get(id)! : globalOn
+      if (!effectiveOn) passableHandles.add(geom.collider.handle)
     }
+    for (const [id, other] of this.charBodies) {
+      if (id !== playerId) passableHandles.add(other.collider.handle)
+    }
+
+    this.controller.computeColliderMovement(
+      charData.collider,
+      desired,
+      undefined,
+      undefined,
+      (collider: RAPIER_TYPE.Collider) => {
+        if (collider.handle === charData.collider.handle) return false
+        if (passableHandles.has(collider.handle)) return false
+        return true
+      },
+    )
+
+    const movement = this.controller.computedMovement()
+    const prevX = player.x
+    const prevZ = player.z
+    let nx = player.x + movement.x
+    let nz = player.z + movement.y
+
+    // Stay-in-rooms constraint: the post-move position must lie inside the
+    // AABB union of the player's currently accessible rooms. If not, try
+    // keeping only one axis, then fall back to full revert.
+    const accessible = this.getAccessibleRooms(playerId)
+    if (accessible.size > 0 && !this.isInRoomSet(nx, nz, accessible)) {
+      if (this.isInRoomSet(nx, prevZ, accessible)) { nz = prevZ }
+      else if (this.isInRoomSet(prevX, nz, accessible)) { nx = prevX }
+      else { nx = prevX; nz = prevZ }
+    }
+
+    player.x = nx; player.z = nz
+    player.vx = nx - prevX
+    player.vz = nz - prevZ
+    charData.body.setNextKinematicTranslation({ x: player.x, y: player.z })
+    this.rapierWorld.step()
 
     const newAnimState: AnimationState = Math.hypot(jx, jz) > ANIM_THRESHOLD ? 'WALKING' : 'IDLE'
     if (newAnimState !== player.animState) {
@@ -501,9 +466,24 @@ export class World {
     return { type: 'damage', targetId, newHp }
   }
 
-  private inWalkable(x: number, z: number): boolean {
-    for (const r of this.walkable.rects) {
-      if (Math.abs(x - r.cx) <= r.hw && Math.abs(z - r.cz) <= r.hd) return true
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  private resolveCurrentRoom(playerId: string): string | null {
+    const stored = this.playerRoom.get(playerId)
+    if (stored) return stored
+    const p = this.players.get(playerId)
+    if (!p) return null
+    for (const [scopedId, b] of this.roomBounds) {
+      if (Math.abs(p.x - b.cx) <= b.hw && Math.abs(p.z - b.cz) <= b.hd) return scopedId
+    }
+    return null
+  }
+
+  private isInRoomSet(x: number, z: number, rooms: Set<string>): boolean {
+    for (const id of rooms) {
+      const b = this.roomBounds.get(id)
+      if (!b) continue
+      if (Math.abs(x - b.cx) <= b.hw && Math.abs(z - b.cz) <= b.hd) return true
     }
     return false
   }

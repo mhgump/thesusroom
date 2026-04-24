@@ -1,5 +1,6 @@
 import type { GameMap } from '../../src/game/GameMap.js'
 import type { GameScript } from './GameScript.js'
+import { getBackends } from '../../../tools/src/_shared/backends/index.js'
 
 export type { GameMap }
 
@@ -24,20 +25,32 @@ export interface ScenarioSpec {
   onTerminate(cb: () => void): void
 }
 
-// Static catalogue of shipped scenarios keyed by id. Pure lookup — owns no
-// runtime state.
+export type ContentEntry = { map: GameMap; scenario: ScenarioSpec }
+
+// Lazy, cached view over scenario + map content in the data backend. `get(id)`
+// returns the cached entry on a hit; on a miss it loads via the backend and
+// memoizes the in-flight promise so concurrent cold requests share one load.
+// Entries that fail to load (null or thrown) are evicted so a retry can pick
+// up a later fix without restarting the server.
 export class ContentRegistry {
-  private readonly entries: Map<string, { map: GameMap; scenario: ScenarioSpec }>
+  private readonly cache: Map<string, Promise<ContentEntry | undefined>> = new Map()
 
-  constructor(entries: { map: GameMap; scenario: ScenarioSpec }[]) {
-    this.entries = new Map(entries.map(e => [e.scenario.id, e]))
+  async get(scenarioId: string): Promise<ContentEntry | undefined> {
+    const cached = this.cache.get(scenarioId)
+    if (cached) return cached
+    const p = this.loadEntry(scenarioId)
+    this.cache.set(scenarioId, p)
+    p.then(
+      v => { if (v === undefined) this.cache.delete(scenarioId) },
+      () => { this.cache.delete(scenarioId) },
+    )
+    return p
   }
 
-  get(scenarioId: string): { map: GameMap; scenario: ScenarioSpec } | undefined {
-    return this.entries.get(scenarioId)
-  }
-
-  has(scenarioId: string): boolean {
-    return this.entries.has(scenarioId)
+  private async loadEntry(scenarioId: string): Promise<ContentEntry | undefined> {
+    const { scenario, map } = getBackends()
+    const [s, m] = await Promise.all([scenario.load(scenarioId), map.load(scenarioId)])
+    if (!s || !m) return undefined
+    return { map: m, scenario: s }
   }
 }

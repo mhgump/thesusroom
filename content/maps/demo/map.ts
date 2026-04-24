@@ -1,7 +1,6 @@
-import type { WorldSpec, WalkableArea } from '../../../react-three-capacitor/src/game/WorldSpec.js'
+import type { WorldSpec } from '../../../react-three-capacitor/src/game/WorldSpec.js'
 import type { GameSpec } from '../../../react-three-capacitor/src/game/GameSpec.js'
 import type { GameMap } from '../../../react-three-capacitor/src/game/GameMap.js'
-import type { PhysicsSpec } from '../../../react-three-capacitor/src/game/World.js'
 import {
   computeRoomPositions,
   validateWorldSpec,
@@ -11,68 +10,73 @@ import { buildCameraConstraintShapes } from '../../../react-three-capacitor/src/
 
 const DEMO_MAP_INSTANCE_ID = 'demo'
 
-const R           = 0.0282  // CAPSULE_RADIUS
-const BT          = 0.025   // barrierThickness
+const BT          = 0.025    // wall thickness & height
+const BY          = BT / 2   // wall centre y (sitting on floor)
+const ROOM_H      = 0.5
 const DOOR_WIDTH  = 0.25
 
 const R1W = 0.75, R1D = 0.75
 const R2W = 0.75, R2D = 0.75
 const R3W = 0.75, R3D = 0.75
 
-const R1Z =  0
-const R2Z = -0.75
-const R3Z = -1.5
-
-// ── Barrier segment constants ──────────────────────────────────────────────────
-const HW        = R1W / 2                      // 0.375  half floor width (same for all rooms)
-const HD        = R1D / 2                      // 0.375  half floor depth
-const WALL_C    = HD - BT / 2                 // 0.3625 N/S wall centre z; also E/W wall centre x
-const EW_FULL   = 2 * (HD - BT)              // 0.700  E/W depth when both N/S walls present
-const EW_EXT    = HD + (HD - BT)             // 0.725  E/W depth when one N/S wall is absent
-const EW_CZ     = BT / 2                     // 0.0125 E/W centre z offset when one N/S wall absent
-const D_HALF    = (DOOR_WIDTH - 2 * BT) / 2  // 0.100  half the inset door gap
-const D_SEG_CX  = (HW + D_HALF) / 2          // 0.2375 door-flanking segment centre x
-const D_SEG_W   = HW - D_HALF                // 0.275  door-flanking segment width
-
-// ── WorldSpec ─────────────────────────────────────────────────────────────────
+const HW        = R1W / 2
+const HD        = R1D / 2
+const WALL_C    = HD - BT / 2
+const EW_FULL   = 2 * (HD - BT)
+const EW_EXT    = HD + (HD - BT)
+const EW_CZ     = BT / 2
+const D_HALF    = (DOOR_WIDTH - 2 * BT) / 2   // 0.1  half-width of the open gap between flanking walls
+const D_SEG_CX  = (HW + D_HALF) / 2           // 0.2375
+const D_SEG_W   = HW - D_HALF                 // 0.275
+const DOOR_GAP_W = 2 * D_HALF                 // 0.2  width of the gap (and therefore of the door plug)
 
 export const DEMO_WORLD_SPEC: WorldSpec = {
   rooms: [
     {
       id: 'room1', name: 'Room 1',
       floorWidth: R1W, floorDepth: R1D,
-      barrierHeight: BT, barrierThickness: BT,
+      height: ROOM_H,
       cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
-      // south + east/west (north boundary owned by room2's south wall)
-      barrierSegments: [
-        { cx:  0,        cz:  WALL_C,  width: R1W,     depth: BT     },  // south
-        { cx:  WALL_C,   cz: -EW_CZ,  width: BT,      depth: EW_EXT },  // east (extends to north edge)
-        { cx: -WALL_C,   cz: -EW_CZ,  width: BT,      depth: EW_EXT },  // west
+      // south + E/W (E/W extend north so the north-east/west corners are sealed).
+      // North boundary is owned by room2's south wall (authored on room2 below).
+      geometry: [
+        { id: 'r1_s', cx: 0,        cy: BY, cz:  WALL_C, width: R1W, height: BT, depth: BT },
+        { id: 'r1_e', cx:  WALL_C,  cy: BY, cz: -EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
+        { id: 'r1_w', cx: -WALL_C,  cy: BY, cz: -EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
       ],
     },
     {
       id: 'room2', name: 'Room 2',
       floorWidth: R2W, floorDepth: R2D,
-      barrierHeight: BT, barrierThickness: BT,
+      height: ROOM_H,
       cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
-      // south (with door gap) + east/west (north boundary owned by room2_north_wall geometry)
-      barrierSegments: [
-        { cx: -D_SEG_CX, cz:  WALL_C,  width: D_SEG_W, depth: BT     },  // south-left of door gap
-        { cx:  D_SEG_CX, cz:  WALL_C,  width: D_SEG_W, depth: BT     },  // south-right of door gap
-        { cx:  WALL_C,   cz: -EW_CZ,  width: BT,      depth: EW_EXT },  // east (extends to north edge)
-        { cx: -WALL_C,   cz: -EW_CZ,  width: BT,      depth: EW_EXT },  // west
+      // South (split at door gap for room1) + E/W (extend to north edge so
+      // the corners are sealed even when room2_north_wall is absent).
+      // room2_north_wall is the toggleable centre span of the north wall —
+      // when dropped, the corners remain walled by r2_e/r2_w and only the
+      // middle opens up so room3 appears to extend out of room2.
+      // north_door is the toggleable plug in the south gap.
+      geometry: [
+        { id: 'r2_sl',             cx: -D_SEG_CX, cy: BY, cz:  WALL_C, width: D_SEG_W, height: BT, depth: BT },
+        { id: 'r2_sr',             cx:  D_SEG_CX, cy: BY, cz:  WALL_C, width: D_SEG_W, height: BT, depth: BT },
+        { id: 'r2_e',              cx:  WALL_C,   cy: BY, cz: -EW_CZ,  width: BT,      height: BT, depth: EW_EXT },
+        { id: 'r2_w',              cx: -WALL_C,   cy: BY, cz: -EW_CZ,  width: BT,      height: BT, depth: EW_EXT },
+        { id: 'north_door',        cx: 0,         cy: BY, cz:  WALL_C, width: DOOR_GAP_W, height: BT, depth: BT, color: '#555555' },
+        { id: 'room2_north_wall',  cx: 0,         cy: BY, cz: -WALL_C, width: R2W - 2 * BT, height: BT, depth: BT },
       ],
     },
     {
       id: 'room3', name: 'Room 3',
       floorWidth: R3W, floorDepth: R3D,
-      barrierHeight: BT, barrierThickness: BT,
+      height: ROOM_H,
       cameraRect: { xMin: -0.375, xMax: 0.375, zMin: 0.125, zMax: 0.375 },
-      // north + east/west (south boundary owned by room2_north_wall geometry)
-      barrierSegments: [
-        { cx:  0,        cz: -WALL_C,  width: R3W,     depth: BT     },  // north
-        { cx:  WALL_C,   cz:  EW_CZ,  width: BT,      depth: EW_EXT },  // east (extends to south edge)
-        { cx: -WALL_C,   cz:  EW_CZ,  width: BT,      depth: EW_EXT },  // west
+      // North + E/W. South boundary is owned by room2's north wall
+      // (room2_north_wall) — room3 has no south wall of its own so it reads
+      // as open-to-room2 once that toggleable wall drops.
+      geometry: [
+        { id: 'r3_n', cx: 0,       cy: BY, cz: -WALL_C, width: R3W, height: BT, depth: BT },
+        { id: 'r3_e', cx:  WALL_C, cy: BY, cz:  EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
+        { id: 'r3_w', cx: -WALL_C, cy: BY, cz:  EW_CZ,  width: BT,  height: BT, depth: EW_EXT },
       ],
     },
   ],
@@ -102,11 +106,6 @@ export const DEMO_WORLD_SPEC: WorldSpec = {
       },
     },
   ],
-  visibility: {
-    room1: ['room2'],
-    room2: ['room3'],
-    room3: ['room2'],
-  },
 }
 
 const DEMO_LOCAL_POSITIONS = computeRoomPositions(DEMO_WORLD_SPEC)
@@ -114,71 +113,6 @@ validateWorldSpec(DEMO_WORLD_SPEC, DEMO_LOCAL_POSITIONS)
 const DEMO_ARTIFACTS = buildMapInstanceArtifacts(DEMO_WORLD_SPEC, DEMO_MAP_INSTANCE_ID)
 export const DEMO_ROOM_POSITIONS = DEMO_ARTIFACTS.roomPositions
 export const DEMO_CAMERA_SHAPES = buildCameraConstraintShapes(DEMO_WORLD_SPEC, DEMO_LOCAL_POSITIONS)
-
-// ── Walkable areas ─────────────────────────────────────────────────────────────
-
-const R1_RECT    = { cx: 0, cz: R1Z, hw: R1W / 2 - R, hd: R1D / 2 - R }  // { cx:0, cz:0,    hw:0.3468, hd:0.3468 }
-const CONN_12    = { cx: 0, cz: R1Z - R1D / 2, hw: DOOR_WIDTH / 2 - R, hd: R }  // corridor room1→room2
-const R2_RECT    = { cx: 0, cz: R2Z, hw: R2W / 2 - R, hd: R2D / 2 - R }  // { cx:0, cz:-0.75, hw:0.3468, hd:0.3468 }
-const CONN_23    = { cx: 0, cz: R2Z - R2D / 2, hw: R2W / 2 - R, hd: R }          // corridor room2→room3 (full width)
-const R3_RECT    = { cx: 0, cz: R3Z, hw: R3W / 2 - R, hd: R3D / 2 - R }  // { cx:0, cz:-1.5,  hw:0.3468, hd:0.3468 }
-
-const ROOM1_ONLY:    WalkableArea = { rects: [R1_RECT] }
-const BOTH_ROOMS:    WalkableArea = { rects: [R1_RECT, CONN_12, R2_RECT] }
-const ALL_THREE:     WalkableArea = { rects: [R1_RECT, CONN_12, R2_RECT, CONN_23, R3_RECT] }
-
-// ── Rapier physics ─────────────────────────────────────────────────────────────
-//
-// Room 1: x ∈ [-0.375, 0.375], z ∈ [-0.375, 0.375]
-// Room 2: x ∈ [-0.375, 0.375], z ∈ [-1.125, -0.375]
-// Room 3: x ∈ [-0.375, 0.375], z ∈ [-1.875, -1.125]
-// Door gap (all three boundaries): x ∈ [-0.05, 0.05]
-
-const ROOM_HW = R1W / 2          // 0.375
-const WT       = 0.03             // collider half-thickness
-
-const SOUTH_WALL_CZ   =  R1D / 2 + WT         //  0.405  — room1 south outer
-const NORTH_WALL_R3_CZ = R3Z - R3D / 2 - WT   // -1.905  — room3 north outer
-
-// East/west walls span all three rooms
-const COMB_CZ  = (SOUTH_WALL_CZ + NORTH_WALL_R3_CZ) / 2  // -0.75
-const COMB_HD  = (SOUTH_WALL_CZ - NORTH_WALL_R3_CZ) / 2  //  1.155
-
-// Room1→Room2 boundary (z = -0.375)
-const DOOR12_CZ = -(R1D / 2 + WT)    // -0.405
-// Room2→Room3 boundary (z = -1.125)
-const DOOR23_CZ = R2Z - R2D / 2 - WT // -1.155
-
-const DOOR_HW = DOOR_WIDTH / 2        // 0.05
-const DW_CX   = (ROOM_HW + DOOR_HW) / 2  // 0.2125
-const DW_HW   = (ROOM_HW - DOOR_HW) / 2  // 0.1625
-
-export const DEMO_PHYSICS: PhysicsSpec = {
-  walls: [
-    // Room 1 south
-    { cx: 0,           cz:  SOUTH_WALL_CZ,   hw: ROOM_HW + WT, hd: WT      },
-    // East / west (full height, all three rooms)
-    { cx:  ROOM_HW + WT, cz: COMB_CZ,        hw: WT,           hd: COMB_HD },
-    { cx: -(ROOM_HW + WT), cz: COMB_CZ,      hw: WT,           hd: COMB_HD },
-    // Room1→Room2 door wall segments
-    { cx: -DW_CX, cz: DOOR12_CZ, hw: DW_HW, hd: WT },
-    { cx:  DW_CX, cz: DOOR12_CZ, hw: DW_HW, hd: WT },
-    // Room 3 north
-    { cx: 0, cz: NORTH_WALL_R3_CZ, hw: ROOM_HW + WT, hd: WT },
-  ],
-  geometry: [
-    // Toggleable door between room1 and room2
-    { id: 'north_door',       cx: 0, cz: DOOR12_CZ, hw: DOOR_HW, hd: WT },
-    // Toggleable wall between room2 and room3 (full width)
-    { id: 'room2_north_wall', cx: 0, cz: DOOR23_CZ, hw: ROOM_HW + WT, hd: WT },
-  ],
-}
-
-// ── GameSpec (rendering geometry + instructions) ───────────────────────────────
-
-// Visual z offsets for the door/wall geometry objects (centre of box, flush with boundary)
-const NORTH_DOOR_VISUAL_Z      = -(R1D / 2 + BT / 2)       // -0.3871
-const ROOM2_NORTH_WALL_VISUAL_Z = R2Z - R2D / 2 - BT / 2   // -1.1371
 
 export const DEMO_GAME_SPEC: GameSpec = {
   instructionSpecs: [
@@ -189,18 +123,7 @@ export const DEMO_GAME_SPEC: GameSpec = {
     { id: 'fact_4',   text: '4 players survived', label: 'FACT' },
   ],
   voteRegions: [],
-  geometry: [
-    // Room1→Room2 door
-    { id: 'north_door',       x: 0, z: NORTH_DOOR_VISUAL_Z,       width: DOOR_WIDTH, depth: BT, height: BT, color: '#555555' },
-    { id: 'door_open',        x: 0, z: -(R1D / 2),                width: 0.001,      depth: 0.001, height: 0.001, color: '#111111' },
-    // Room2→Room3 wall
-    { id: 'room2_north_wall', x: 0, z: ROOM2_NORTH_WALL_VISUAL_Z, width: R2W, depth: BT, height: BT, color: '#555555' },
-    // Invisible marker that activates the room3 walkable variant when shown
-    { id: 'room3_accessible', x: 0, z: R3Z,                       width: 0.001,      depth: 0.001, height: 0.001, color: '#111111' },
-  ],
 }
-
-// ── Unified map ────────────────────────────────────────────────────────────────
 
 export const MAP: GameMap = {
   id: 'demo',
@@ -208,15 +131,9 @@ export const MAP: GameMap = {
   worldSpec: DEMO_WORLD_SPEC,
   roomPositions: DEMO_ROOM_POSITIONS,
   cameraShapes: DEMO_CAMERA_SHAPES,
-  walkable: ROOM1_ONLY,
-  physics: DEMO_PHYSICS,
   gameSpec: DEMO_GAME_SPEC,
   npcs: [],
   getRoomAtPosition: DEMO_ARTIFACTS.getRoomAtPosition,
   getAdjacentRoomIds: DEMO_ARTIFACTS.getAdjacentRoomIds,
   isRoomOverlapping: DEMO_ARTIFACTS.isRoomOverlapping,
-  walkableVariants: [
-    { triggerIds: ['door_open'],                           walkable: BOTH_ROOMS },
-    { triggerIds: ['door_open', 'room3_accessible'],       walkable: ALL_THREE  },
-  ],
 }

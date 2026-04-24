@@ -1,7 +1,8 @@
 import WebSocket from 'ws'
 import type { ServerMessage, MoveInput } from './types.js'
 import { World, TICK_RATE_HZ } from './World.js'
-import type { WalkableArea, PhysicsSpec, TouchedEvent, DamageEvent } from './World.js'
+import type { TouchedEvent, DamageEvent } from './World.js'
+import type { WireGeometry } from './GameSpec.js'
 import { NpcManager } from './npc/NpcManager.js'
 import { ScenarioManager } from './ScenarioManager.js'
 import { Scenario } from './Scenario.js'
@@ -45,8 +46,6 @@ interface PendingMove { clientTick: number; inputs: MoveInput[] }
 export interface MultiplayerRoomOptions {
   roomId: string
   instanceIndex: number
-  walkable: WalkableArea
-  physics?: PhysicsSpec
   tickRateHz?: number
   // Fires once when the last default-open scenario in this room closes. The
   // router uses this to remove the room from its open list for this routing
@@ -74,8 +73,6 @@ export class MultiplayerRoom {
   private players: Map<string, PlayerState> = new Map()
   private nextPlayerIndex = 0
   private readonly observers: Map<string, Set<WebSocket>> = new Map()
-  // All moves received from a client since the last server tick. Appended to
-  // unconditionally (never dropped, never displaced); drained in runTick().
   private pendingMoves: Map<string, PendingMove[]> = new Map()
   private serverTick = 0
   private tickTimer: ReturnType<typeof setTimeout> | null = null
@@ -88,24 +85,25 @@ export class MultiplayerRoom {
   private readonly onCloseScenario?: () => void
   private readonly onRoomDone?: () => void
   private readonly spawnBotFn: (spec: BotSpec) => void
+  // Every map attached via `addMap()`, in attach order. Kept for flattening
+  // per-room geometry to the wire on connect/observer snapshot.
+  private readonly attachedMaps: GameMap[] = []
   // Composed map-level room lookup: returns the scoped room id containing
   // (x, z), or null. Accumulated across `addMap()` calls so a scenario can
   // resolve positions regardless of which map instance the rooms live in.
   private getRoomAtPositionFn: (x: number, z: number) => string | null = () => null
   private scheduledCbs: Array<{ targetTick: number; cb: () => void; cancelled: boolean }> = []
-  // Insertion-ordered room-level ready set. Used for bookkeeping and
-  // observability; per-scenario ready replay uses each scenario's own set.
   private readonly readyPlayerIds: Set<string> = new Set()
 
   constructor(opts: MultiplayerRoomOptions) {
-    const { roomId, instanceIndex, walkable, physics, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn } = opts
+    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnBotFn } = opts
     this.roomId = roomId
     this.instanceIndex = instanceIndex
     this.onCloseScenario = onCloseScenario
     this.onRoomDone = onRoomDone
     this.spawnBotFn = spawnBotFn ?? (() => {})
     this.tickRateHz = tickRateHz ?? TICK_RATE_HZ
-    this.world = physics ? World.withPhysics(walkable, physics) : new World(walkable)
+    this.world = new World()
     this.npcManager = new NpcManager(
       this.world,
       (npcId, x, z, events) => {
@@ -125,11 +123,12 @@ export class MultiplayerRoom {
     this.tickTimer = setTimeout(loop, this.tickIntervalMs)
   }
 
-  // Register a map with this room's world (builds the scoped room ids and
-  // default adjacency) and spawn the map's NPCs. Returns the scoped room ids
-  // contributed by the map, for use when attaching scenarios.
+  // Register a map with this room's world (builds the scoped room ids,
+  // default adjacency, and Rapier colliders) and spawn the map's NPCs.
+  // Returns the scoped room ids contributed by the map.
   addMap(map: GameMap): string[] {
     const instance = this.world.addMap(map)
+    this.attachedMaps.push(map)
     this.npcManager.spawnAll(map.npcs)
     const prev = this.getRoomAtPositionFn
     const mapLookup = map.getRoomAtPosition
@@ -138,8 +137,6 @@ export class MultiplayerRoom {
   }
 
   // Construct a Scenario that will attach to this room, without adding it.
-  // The orchestration can then call `scenarios.add(scenario, { default: true })`
-  // and optionally `startScenario(id)` to begin.
   buildScenario(attachedRoomIds: string[], config: ScenarioConfig, overrides?: Partial<ScenarioDeps>): Scenario {
     const deps: ScenarioDeps = {
       world: this.world,
@@ -150,7 +147,6 @@ export class MultiplayerRoom {
       spawnBot: (spec) => this.spawnBotFn(spec),
       scheduleSimMs: (ms, cb) => this.scheduleSimMs(ms, cb),
       getServerTick: () => this.serverTick,
-      onWalkableUpdate: (area) => { this.world.setWalkable(area); this.world.snapAllPlayers() },
       getRoomAtPosition: (x, z) => this.getRoomAtPositionFn(x, z),
       ...overrides,
     }
@@ -165,17 +161,12 @@ export class MultiplayerRoom {
     this.scenarios.delete(scenarioId)
   }
 
-  // True while the room still accepts new connections. Transitions to false
-  // when the (last) default-open scenario invokes `ctx.closeScenario()`.
   isOpen(): boolean {
     return !this.closed
   }
 
   handleMove(playerId: string, clientTick: number, inputs: MoveInput[]): void {
     if (!this.players.has(playerId)) return
-    // The server never drops client moves. Everything received between the last
-    // runTick and the next is buffered and applied on the next tick, sorted by
-    // clientTick so that the server processes them in the client's intended order.
     let arr = this.pendingMoves.get(playerId)
     if (!arr) { arr = []; this.pendingMoves.set(playerId, arr) }
     arr.push({ clientTick, inputs })
@@ -197,10 +188,6 @@ export class MultiplayerRoom {
 
     this.serverTick++
 
-    // Sort each player's pending moves by clientTick, flatten inputs in order,
-    // then enqueue onto the world. `world.processTick()` iterates per player
-    // (see src/game/World.ts), which gives us the "process each client one at a
-    // time, in the tick order the client marked" semantics this design requires.
     for (const [playerId, moves] of this.pendingMoves) {
       moves.sort((a, b) => a.clientTick - b.clientTick)
       const flat: MoveInput[] = []
@@ -216,9 +203,6 @@ export class MultiplayerRoom {
       const allEvents = npcEvents.length > 0 ? [...playerEvents, ...npcEvents] : playerEvents
       const wp = this.world.getPlayer(playerId)!
 
-      // One move_ack per received client move. All acks for this player share
-      // the same final (x, z) — the world position after server tick X.
-      // Events attach only to the final ack so the client applies them once.
       const lastIdx = moves.length - 1
       for (let i = 0; i < moves.length; i++) {
         this.sendToPlayer(playerId, {
@@ -231,8 +215,6 @@ export class MultiplayerRoom {
         })
       }
 
-      // One player_update per moving player per server tick. Touch events are
-      // routed only to participants; other events go to everyone else.
       const touchEvents = allEvents.filter((e): e is TouchedEvent => e.type === 'touched')
       const nonTouchEvents = touchEvents.length > 0 ? allEvents.filter(e => e.type !== 'touched') : allEvents
       for (const [id] of this.players) {
@@ -286,9 +268,6 @@ export class MultiplayerRoom {
     this.scheduledCbs = remaining
   }
 
-  // Accept a new WebSocket connection: allocate a playerId, register on the
-  // world, send welcome + initial state, and auto-attach to the default open
-  // scenario (if any). This is the orchestration/router entry point.
   connectPlayer(ws: WebSocket): string {
     const playerId = crypto.randomUUID()
     const color = this.pickColor()
@@ -308,14 +287,11 @@ export class MultiplayerRoom {
       tickRateHz: this.tickRateHz,
     })
 
-    // Send map geometry definitions (union across all attached scenarios). In
-    // the one-scenario-per-room default there's exactly one.
-    const geometry = this.collectGeometrySpecs()
+    const geometry = this.collectWireGeometry()
     if (geometry.length > 0) {
       this.sendToPlayer(playerId, { type: 'map_init', geometry })
     }
 
-    // Inform the new player of existing human players, and vice-versa.
     for (const [id, p] of this.players) {
       if (id === playerId) continue
       const ep = this.world.getPlayer(id)!
@@ -341,7 +317,6 @@ export class MultiplayerRoom {
       })
     }
 
-    // Inform the new player of all NPC entities.
     for (const { id, spec } of this.npcManager.getNpcEntries()) {
       const np = this.world.getPlayer(id)!
       this.sendToPlayer(playerId, {
@@ -358,8 +333,6 @@ export class MultiplayerRoom {
       })
     }
 
-    // Attach to the default-open scenario. Its onPlayerAttach sends geometry,
-    // room-visibility, and button-init state for the new player.
     this.scenarios.attachPlayerToDefault(playerId)
 
     console.log(`[MultiplayerRoom:${this.roomId}] +player ${playerId} color:${color} (total:${this.players.size})`)
@@ -389,9 +362,6 @@ export class MultiplayerRoom {
     this.maybeTriggerRoomDone()
   }
 
-  // Invoked via a scenario's ctx.closeScenario() binding. Removes the scenario
-  // from the default-open slot and, if no default-open remains, closes the
-  // whole room so the router stops routing new players to it.
   private handleScenarioClose(scenarioId: string): void {
     this.scenarios.closeDefaultOpen(scenarioId)
     if (this.scenarios.hasDefaultOpen()) return
@@ -408,14 +378,30 @@ export class MultiplayerRoom {
     this.onRoomDone?.()
   }
 
-  private collectGeometrySpecs() {
-    const out: import('./GameSpec.js').FloorGeometrySpec[] = []
-    const seen = new Set<string>()
-    for (const scenario of this.scenarios.all()) {
-      for (const g of scenario.getGeometrySpecs()) {
-        if (seen.has(g.id)) continue
-        seen.add(g.id)
-        out.push(g)
+  // Flattens every attached map's per-room geometry to global coords with the
+  // owning scoped room id. The client uses the room id to gate rendering by
+  // room visibility.
+  private collectWireGeometry(): WireGeometry[] {
+    const out: WireGeometry[] = []
+    for (const map of this.attachedMaps) {
+      for (const room of map.worldSpec.rooms) {
+        const scopedId = `${map.mapInstanceId}_${room.id}`
+        const pos = map.roomPositions.get(scopedId)
+        if (!pos) continue
+        for (const g of room.geometry ?? []) {
+          out.push({
+            id: g.id,
+            roomId: scopedId,
+            cx: pos.x + g.cx,
+            cy: g.cy,
+            cz: pos.z + g.cz,
+            width: g.width,
+            height: g.height,
+            depth: g.depth,
+            color: g.color,
+            imageUrl: g.imageUrl,
+          })
+        }
       }
     }
     return out
@@ -466,8 +452,6 @@ export class MultiplayerRoom {
     return null
   }
 
-  // Generates the ordered sequence of messages an observer needs to
-  // reconstruct the current game state from player `playerId`'s perspective.
   getObserverSnapshot(playerId: string): ServerMessage[] {
     const msgs: ServerMessage[] = []
     const p = this.players.get(playerId)
@@ -485,7 +469,7 @@ export class MultiplayerRoom {
       tickRateHz: this.tickRateHz,
     })
 
-    const geometry = this.collectGeometrySpecs()
+    const geometry = this.collectWireGeometry()
     if (geometry.length > 0) {
       msgs.push({ type: 'map_init', geometry })
     }

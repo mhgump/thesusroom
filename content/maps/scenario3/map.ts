@@ -3,7 +3,6 @@ import type { GameSpec } from '../../../react-three-capacitor/src/game/GameSpec.
 import type { GameMap } from '../../../react-three-capacitor/src/game/GameMap.js'
 import {
   computeRoomPositions,
-  computeWalkableArea,
   validateWorldSpec,
 } from '../../../react-three-capacitor/src/game/WorldSpec.js'
 import { buildMapInstanceArtifacts } from '../../../react-three-capacitor/src/game/MapInstance.js'
@@ -11,13 +10,15 @@ import { buildCameraConstraintShapes } from '../../../react-three-capacitor/src/
 
 const MAP_INSTANCE_ID = 'scenario3'
 
-const CAPSULE_RADIUS = 0.0282
 const ROOM_SIZE = 0.9672
+const ROOM_H = 0.5
 const bt = 0.025
+const bh = 0.025
+const BY = bh / 2
 
-const HD        = ROOM_SIZE / 2   // 0.4836
-const WALL_C    = HD - bt / 2     // 0.4711
-const EW_DEPTH  = 2 * (HD - bt)   // 0.9172
+const HD        = ROOM_SIZE / 2
+const WALL_C    = HD - bt / 2
+const EW_DEPTH  = 2 * (HD - bt)
 
 const BTN_Z = 0
 const BTN_LEFT_X = -0.2014
@@ -30,33 +31,29 @@ const WORLD_SPEC: WorldSpec = {
       id: 'main', name: 'Scenario 3',
       floorWidth: ROOM_SIZE,
       floorDepth: ROOM_SIZE,
-      barrierHeight: bt, barrierThickness: bt,
+      height: ROOM_H,
       cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
-      barrierSegments: [
-        { cx:  0,      cz: -WALL_C, width: ROOM_SIZE, depth: bt       }, // north
-        { cx:  0,      cz:  WALL_C, width: ROOM_SIZE, depth: bt       }, // south
-        { cx:  WALL_C, cz:  0,      width: bt,         depth: EW_DEPTH }, // east
-        { cx: -WALL_C, cz:  0,      width: bt,         depth: EW_DEPTH }, // west
+      geometry: [
+        { id: 's3_wn', cx: 0,       cy: BY, cz: -WALL_C, width: ROOM_SIZE, height: bh, depth: bt },
+        { id: 's3_ws', cx: 0,       cy: BY, cz:  WALL_C, width: ROOM_SIZE, height: bh, depth: bt },
+        { id: 's3_we', cx:  WALL_C, cy: BY, cz: 0,       width: bt,        height: bh, depth: EW_DEPTH },
+        { id: 's3_ww', cx: -WALL_C, cy: BY, cz: 0,       width: bt,        height: bh, depth: EW_DEPTH },
       ],
     },
   ],
   connections: [],
-  visibility: { main: [] },
 }
 
 const LOCAL_POSITIONS = computeRoomPositions(WORLD_SPEC)
 validateWorldSpec(WORLD_SPEC, LOCAL_POSITIONS)
 const ARTIFACTS = buildMapInstanceArtifacts(WORLD_SPEC, MAP_INSTANCE_ID)
-const ROOM_POSITIONS = ARTIFACTS.roomPositions
 const CAMERA_SHAPES = buildCameraConstraintShapes(WORLD_SPEC, LOCAL_POSITIONS)
-const WALKABLE = computeWalkableArea(WORLD_SPEC, LOCAL_POSITIONS, CAPSULE_RADIUS)
 
 const GAME_SPEC: GameSpec = {
   instructionSpecs: [],
   voteRegions: [
     { id: 's3_rzone', label: '', color: 'transparent', x: BTN_RIGHT_X, z: BTN_Z, radius: BTN_TRIGGER_R },
   ],
-  geometry: [],
   buttons: [
     {
       id: 'btn_left',
@@ -87,9 +84,8 @@ export const MAP: GameMap = {
   id: 'scenario3',
   mapInstanceId: MAP_INSTANCE_ID,
   worldSpec: WORLD_SPEC,
-  roomPositions: ROOM_POSITIONS,
+  roomPositions: ARTIFACTS.roomPositions,
   cameraShapes: CAMERA_SHAPES,
-  walkable: WALKABLE,
   gameSpec: GAME_SPEC,
   npcs: [],
   getRoomAtPosition: ARTIFACTS.getRoomAtPosition,

@@ -13,7 +13,6 @@ import {
   getServerTickRateHz,
 } from './positionBuffer'
 import type { ServerMessage } from './types'
-import { CURRENT_MAP } from '../../../content/maps'
 import { localWorld } from '../game/localWorld'
 
 function getWsPath(): string {
@@ -144,9 +143,6 @@ export function useWebSocket(): void {
           const world = localWorld.current
           const localId = useGameStore.getState().playerId
           if (msg.perPlayer && localId) {
-            // Lock the local player to their current room before any turn-on toggle so
-            // resolveOverlap ejects them toward their room, not the wrong side of a wall.
-            if (world && msg.updates.some(u => u.visible)) world.lockCurrentRoom(localId)
             store.applyLocalGeometryOverride(msg.updates)
             if (world) {
               for (const { id, visible } of msg.updates) {
@@ -154,29 +150,13 @@ export function useWebSocket(): void {
                 else world.toggleGeometryOff(id, localId)
               }
             }
-            if (world) world.unlockPlayerFromRoom(localId)
           } else {
-            // For global toggles, lock every known player to their current room first.
-            if (world && msg.updates.some(u => u.visible)) {
-              for (const pid of world.players.keys()) world.lockCurrentRoom(pid)
-            }
             store.applyGeometryUpdates(msg.updates)
             if (world) {
               for (const { id, visible } of msg.updates) {
                 if (visible) world.toggleGeometryOn(id)
                 else world.toggleGeometryOff(id)
               }
-            }
-            if (world && msg.updates.some(u => u.visible)) {
-              for (const pid of world.players.keys()) world.unlockPlayerFromRoom(pid)
-            }
-            if (CURRENT_MAP.walkableVariants?.length) {
-              const vis = useGameStore.getState().geometryVisibility
-              let matched: import('../game/WorldSpec').WalkableArea | null = null
-              for (const v of CURRENT_MAP.walkableVariants) {
-                if (v.triggerIds.every(id => vis[id] === true)) { matched = v.walkable; break }
-              }
-              store.setActiveWalkable(matched)
             }
           }
           break

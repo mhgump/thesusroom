@@ -47,21 +47,28 @@ export interface VoteRegionSpec {
   radius: number
 }
 
-export interface FloorGeometrySpec {
-  id: string
-  x: number
-  z: number
-  width: number
-  depth: number
-  color: string
-  height?: number
-}
-
+// Per-scenario gameplay content. Geometry itself is authored per-room on the
+// map (see RoomSpec.geometry); scenarios only reference geometry ids to toggle
+// them on/off, and add their own gameplay overlays (buttons, vote regions,
+// instruction strings).
 export interface GameSpec {
   instructionSpecs: InstructionEventSpec[]
   voteRegions: VoteRegionSpec[]
-  geometry: FloorGeometrySpec[]
   buttons?: ButtonSpec[]
+}
+
+// A single geometry piece after the server has flattened the owning map's
+// per-room geometry to global coordinates. Sent to the client via `map_init`
+// so the renderer can place each box without re-deriving room positions.
+// `roomId` carries the owning scoped room id so the client can gate
+// rendering by room visibility.
+export interface WireGeometry {
+  id: string
+  roomId: string
+  cx: number; cy: number; cz: number
+  width: number; height: number; depth: number
+  color?: string
+  imageUrl?: string
 }
 
 interface RoomBounds { x: number; z: number; width: number; depth: number }

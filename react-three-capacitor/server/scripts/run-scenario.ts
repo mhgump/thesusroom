@@ -31,7 +31,8 @@ import fs from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import express from 'express'
 import { initPhysics } from '../src/World.js'
-import { GameServer, loadContentRegistry } from '../src/GameServer.js'
+import { GameServer } from '../src/GameServer.js'
+import { ContentRegistry } from '../src/ContentRegistry.js'
 import { BotClient } from '../src/bot/BotClient.js'
 import { formatLogs, type LogEntry } from './logFormat.js'
 import type { BotSpec } from '../src/bot/BotTypes.js'
@@ -123,8 +124,8 @@ const LOG_BOT_INDICES: number[] | null = values['log-bot-indices'] === undefined
 
 // ── Load content registry (maps + scenarios) via data backend ────────────────
 
-const contentRegistry = await loadContentRegistry()
-const entry = contentRegistry.get(SCENARIO_ID)
+const contentRegistry = new ContentRegistry()
+const entry = await contentRegistry.get(SCENARIO_ID)
 if (!entry) {
   console.error(`Unknown scenario: ${SCENARIO_ID}. Add it to content/scenario_map.json.`)
   process.exit(1)

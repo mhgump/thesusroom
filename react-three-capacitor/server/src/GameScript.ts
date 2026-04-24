@@ -58,12 +58,14 @@ export interface GameScriptContext {
   onPlayerEnterRoom(callback: (playerId: string, roomId: string) => void): void
   // Spawn a bot that connects to this scenario as a player, driven by the given spec.
   spawnBot(spec: BotSpec): void
-  // Lock a player to their current room so that a subsequent toggleGeometryOn ejects them
-  // toward that room rather than guessing from velocity.  Call before the toggle (with a
-  // delay between lock and toggle if you want the player to clear the doorway first), then
-  // call unlockPlayerFromRoom after the toggle completes.
-  lockPlayerToRoom(playerId: string): void
-  unlockPlayerFromRoom(playerId: string): void
+  // Enable or disable a physical adjacency link between two rooms. Symmetric.
+  // Controls only the "stay in rooms" topology constraint, not rendering or
+  // geometry — scenarios typically pair a connection toggle with a matching
+  // geometry toggle (door open/close), but the two concerns stay orthogonal.
+  setConnectionEnabled(scopedRoomIdA: string, scopedRoomIdB: string, enabled: boolean): void
+  // Set (or clear, with null) the per-player override of which rooms a player
+  // is allowed to be in. When set, replaces the connection-derived default.
+  setPlayerAllowedRooms(playerId: string, scopedRoomIds: string[] | null): void
   // Show or hide an entire room for the specified players (all players if playerIds is omitted).
   setRoomVisible(roomIds: string[], visible: boolean, playerIds?: string[]): void
   // Add a persistent cosmetic rule for a player. Rules accumulate and are shown in the rules panel.

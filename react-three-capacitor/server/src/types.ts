@@ -1,7 +1,7 @@
 export type { AnimationState, WorldEvent, UpdateAnimationStateEvent, TouchedEvent, DamageEvent, MoveInput } from './World.js'
 
 import type { AnimationState, WorldEvent, MoveInput } from './World.js'
-import type { FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState, RuleLabel } from './GameSpec.js'
+import type { WireGeometry, ButtonSpec, ButtonConfig, ButtonState, RuleLabel } from './GameSpec.js'
 
 export type ServerMessage =
   | { type: 'welcome'; playerId: string; color: string; x: number; z: number; hp: 0 | 1 | 2; serverTick: number; tickRateHz: number }
@@ -11,7 +11,7 @@ export type ServerMessage =
   | { type: 'player_update'; playerId: string; x: number; z: number; events: WorldEvent[]; serverTick: number }
   | { type: 'instruction'; lines: Array<{ text: string; label: RuleLabel; specId: string }> }
   | { type: 'vote_assignment_change'; assignments: Record<string, string[]> }
-  | { type: 'map_init'; geometry: FloorGeometrySpec[] }
+  | { type: 'map_init'; geometry: WireGeometry[] }
   | { type: 'geometry_state'; updates: Array<{ id: string; visible: boolean }>; perPlayer?: boolean }
   | { type: 'room_visibility_state'; updates: Array<{ roomId: string; visible: boolean }>; perPlayer?: boolean }
   | { type: 'button_init'; buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }> }

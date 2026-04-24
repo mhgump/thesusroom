@@ -1,11 +1,10 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type http from 'http'
 import type { IncomingMessage } from 'http'
-import { ContentRegistry, type ScenarioSpec, type GameMap } from './ContentRegistry.js'
+import { ContentRegistry } from './ContentRegistry.js'
 import { RoomRouter } from './RoomRouter.js'
 import { createDefaultScenarioResolver } from './orchestration/index.js'
 import { BotManager } from './bot/BotManager.js'
-import { getBackends } from '../../../tools/src/_shared/backends/index.js'
 import type { MultiplayerRoom } from './Room.js'
 import type { ClientMessage } from './types.js'
 
@@ -29,22 +28,6 @@ function parseRoutingKey(url: string | undefined): string | null {
   const first = path.replace(/^\/+/, '').split('/')[0]
   if (first.length === 0) return 'r_demo'
   return first
-}
-
-// Iterates scenario_map.json via the data backend and dynamic-imports each
-// scenario / map module (via their shared `id`). The caller owns when to run
-// this — GameServer's constructor is synchronous so it can't await inside.
-export async function loadContentRegistry(): Promise<ContentRegistry> {
-  const { scenario, map } = getBackends()
-  const ids = await scenario.listIndex()
-  const entries: { map: GameMap; scenario: ScenarioSpec }[] = []
-  for (const id of ids) {
-    const [s, m] = await Promise.all([scenario.load(id), map.load(id)])
-    if (!s) throw new Error(`scenario "${id}" listed in scenario_map.json but load() returned null`)
-    if (!m) throw new Error(`map "${id}" referenced by scenario "${id}" but load() returned null`)
-    entries.push({ map: m, scenario: s })
-  }
-  return new ContentRegistry(entries)
 }
 
 export class GameServer {
@@ -78,7 +61,6 @@ export class GameServer {
       this.botManager.spawnBot(routingKey, spec)
     }, options)
     this.router = new RoomRouter(resolver)
-    this.router.prewarm('r_demo')
     this.wss.on('connection', this.handleConnection.bind(this))
   }
 
@@ -90,16 +72,12 @@ export class GameServer {
     return this.botManager
   }
 
-  getContent(): ContentRegistry {
-    return this.content
-  }
-
   onObserverReady(cb: () => void): () => void {
     this.observerReadyListeners.add(cb)
     return () => { this.observerReadyListeners.delete(cb) }
   }
 
-  private handleConnection(ws: WebSocket, request: IncomingMessage): void {
+  private async handleConnection(ws: WebSocket, request: IncomingMessage): Promise<void> {
     const observerParams = parseObserverParams(request.url)
     if (observerParams) {
       this.handleObserverConnection(ws, observerParams)
@@ -112,7 +90,14 @@ export class GameServer {
       return
     }
 
-    const routed = this.router.routePlayer(routingKey, ws)
+    let routed: { room: MultiplayerRoom; playerId: string } | null
+    try {
+      routed = await this.router.routePlayer(routingKey, ws)
+    } catch (err) {
+      console.error(`[GameServer] routePlayer failed for key=${routingKey}:`, err)
+      ws.close(4004, 'Routing failure')
+      return
+    }
     if (!routed) {
       ws.close(4004, 'Unknown routing key')
       return

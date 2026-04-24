@@ -2,12 +2,13 @@ import http from 'http'
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { GameServer, loadContentRegistry } from './GameServer.js'
+import { GameServer } from './GameServer.js'
+import { ContentRegistry } from './ContentRegistry.js'
 import { initPhysics } from './World.js'
 
 const PORT = parseInt(process.env.PORT ?? '8080', 10)
 await initPhysics()
-const content = await loadContentRegistry()
+const content = new ContentRegistry()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Running via tsx: __dirname = .../react-three-capacitor/server/src

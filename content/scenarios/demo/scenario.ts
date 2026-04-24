@@ -43,16 +43,15 @@ class DemoScript implements GameScript {
       ctx.addRule(pid, 'Players that do not continue will be eliminated.')
     }
     ctx.setGeometryVisible(['north_door'], false)
-    ctx.setGeometryVisible(['door_open'], true)
 
     ctx.onPlayerEnterRoom((pid, roomId) => {
       if (roomId !== 'demo_room2') return
       this.inRoom2.add(pid)
-      // Lock the player to room2, wait for them to clear the doorway, then re-close it.
-      ctx.lockPlayerToRoom(pid)
+      // Wait 250ms for the player to clear the doorway, then re-close the door
+      // for them. resolveOverlap uses their current room's AABB to pick the
+      // push direction, so no explicit room-lock is needed.
       ctx.after(250, () => {
         ctx.setGeometryVisible(['north_door'], true, [pid])
-        ctx.unlockPlayerFromRoom(pid)
       })
       this.checkAllInRoom2(ctx)
     })
@@ -83,7 +82,6 @@ class DemoScript implements GameScript {
       for (const pid of ctx.getPlayerIds()) ctx.sendInstruction(pid, specId)
       // Reveal room 3: remove the room2 north wall and show room3 to all survivors.
       ctx.setGeometryVisible(['room2_north_wall'], false)
-      ctx.setGeometryVisible(['room3_accessible'], true)
       ctx.setRoomVisible(['demo_room3'], true)
       _terminateCb?.()
     })
@@ -96,9 +94,7 @@ export const SCENARIO: ScenarioSpec = {
   onTerminate(cb) { _terminateCb = cb },
   scriptFactory: () => new DemoScript(),
   initialVisibility: {
-    'door_open':        false,
     'room2_north_wall': true,
-    'room3_accessible': false,
   },
   initialRoomVisibility: {
     'demo_room3': false,

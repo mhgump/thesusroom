@@ -3,13 +3,12 @@ import type {
   GameSpec,
   VoteRegionSpec,
   InstructionEventSpec,
-  FloorGeometrySpec,
   ButtonSpec,
   ButtonConfig,
   ButtonState,
   RuleLabel,
 } from './GameSpec.js'
-import type { World, WalkableArea } from './World.js'
+import type { World } from './World.js'
 import type { ServerMessage } from './types.js'
 import type { BotSpec } from './bot/BotTypes.js'
 import { ButtonManager } from './ButtonManager.js'
@@ -31,8 +30,6 @@ export interface ScenarioDeps {
   // Resolves a world position to a scoped room id (from the attached map).
   getRoomAtPosition?: (x: number, z: number) => string | null
   getServerTick: () => number
-  // Apply a global walkable swap in response to a walkable-variant trigger.
-  onWalkableUpdate: (area: WalkableArea) => void
 }
 
 // The per-instance configuration a Scenario is constructed with. Most of it
@@ -43,10 +40,11 @@ export interface ScenarioConfig {
   id: string
   script: GameScript | null
   gameSpec: GameSpec | null
+  // Initial globally-visible state for each geometry id the scenario cares
+  // about. Unknown keys are allowed — any id not listed here is treated as
+  // "on" (solid) by default until the scenario toggles it.
   initialVisibility: Record<string, boolean>
   initialRoomVisibility: Record<string, boolean>
-  walkableVariants: Array<{ triggerIds: string[]; walkable: WalkableArea }>
-  toggleVariants: Array<{ triggerIds: string[]; toggleIds: string[] }>
   requiredRoomIds?: string[]
 }
 
@@ -55,10 +53,7 @@ export class Scenario {
   private readonly script: GameScript | null
   private readonly voteRegionSpecs: Map<string, VoteRegionSpec>
   private readonly instructionSpecs: Map<string, InstructionEventSpec>
-  private readonly geometrySpecs: FloorGeometrySpec[]
   private readonly activeRegions: Set<string> = new Set()
-  private readonly walkableVariants: Array<{ triggerIds: Set<string>; walkable: WalkableArea }>
-  private readonly toggleVariants: Array<{ triggerIds: Set<string>; toggleIds: string[] }>
   private readonly globalGeomVisible: Map<string, boolean>
   private readonly globalRoomVisible: Map<string, boolean>
   private readonly attachedRoomIds: Set<string>
@@ -69,7 +64,9 @@ export class Scenario {
   private readonly readyPlayerIds: Set<string> = new Set()
 
   private readonly playerRegions: Map<string, string | null> = new Map()
-  private readonly playerGeometry: Map<string, Record<string, boolean>> = new Map()
+  // Per-player override of geometry visibility. Keys are geometry ids the
+  // scenario has explicitly set for that player.
+  private readonly playerGeometry: Map<string, Map<string, boolean>> = new Map()
   private readonly playerCurrentRoom: Map<string, string | null> = new Map()
   private readonly playerRoomVisible: Map<string, Map<string, boolean>> = new Map()
 
@@ -106,18 +103,7 @@ export class Scenario {
     const gameSpec = config.gameSpec
     this.voteRegionSpecs = new Map((gameSpec?.voteRegions ?? []).map(r => [r.id, r]))
     this.instructionSpecs = new Map((gameSpec?.instructionSpecs ?? []).map(s => [s.id, s]))
-    this.geometrySpecs = gameSpec?.geometry ?? []
-    this.walkableVariants = config.walkableVariants.map(v => ({
-      triggerIds: new Set(v.triggerIds),
-      walkable: v.walkable,
-    }))
-    this.toggleVariants = config.toggleVariants.map(v => ({
-      triggerIds: new Set(v.triggerIds),
-      toggleIds: v.toggleIds,
-    }))
-    this.globalGeomVisible = new Map(
-      this.geometrySpecs.map(g => [g.id, config.initialVisibility[g.id] ?? true]),
-    )
+    this.globalGeomVisible = new Map(Object.entries(config.initialVisibility))
     this.globalRoomVisible = new Map(Object.entries(config.initialRoomVisibility))
     for (const [id, visible] of this.globalGeomVisible) {
       if (!visible) this.deps.world.toggleGeometryOff(id)
@@ -133,7 +119,6 @@ export class Scenario {
 
   isStarted(): boolean { return this.started }
   isAlive(): boolean { return this.alive }
-  getGeometrySpecs(): FloorGeometrySpec[] { return this.geometrySpecs }
 
   // One-way transition. Replays onPlayerConnect for every attached player in
   // attach order, then onPlayerReady for every ready player in ready order.
@@ -165,16 +150,12 @@ export class Scenario {
     this.attachedPlayerIds.add(playerId)
     this.playerRegions.set(playerId, null)
     this.playerCurrentRoom.set(playerId, null)
+    this.playerGeometry.set(playerId, new Map())
 
-    const geomState: Record<string, boolean> = {}
-    for (const g of this.geometrySpecs) {
-      geomState[g.id] = this.globalGeomVisible.get(g.id) ?? true
-    }
-    this.playerGeometry.set(playerId, geomState)
-    if (this.geometrySpecs.length > 0) {
+    if (this.globalGeomVisible.size > 0) {
       this.deps.sendToPlayer(playerId, {
         type: 'geometry_state',
-        updates: this.geometrySpecs.map(g => ({ id: g.id, visible: geomState[g.id] })),
+        updates: [...this.globalGeomVisible].map(([id, visible]) => ({ id, visible })),
       })
     }
 
@@ -262,12 +243,11 @@ export class Scenario {
     voteAssignments: Record<string, string[]> | null
   } {
     let geometryUpdates: Array<{ id: string; visible: boolean }> | null = null
-    if (this.geometrySpecs.length > 0) {
-      const geomState = this.playerGeometry.get(observedPlayerId)
-      geometryUpdates = this.geometrySpecs.map(g => ({
-        id: g.id,
-        visible: geomState ? (geomState[g.id] ?? true) : (this.globalGeomVisible.get(g.id) ?? true),
-      }))
+    const playerState = this.playerGeometry.get(observedPlayerId)
+    if (this.globalGeomVisible.size > 0 || (playerState && playerState.size > 0)) {
+      const merged = new Map(this.globalGeomVisible)
+      if (playerState) for (const [id, v] of playerState) merged.set(id, v)
+      geometryUpdates = [...merged].map(([id, visible]) => ({ id, visible }))
     }
 
     let roomVisibilityUpdates: Array<{ roomId: string; visible: boolean }> | null = null
@@ -308,23 +288,6 @@ export class Scenario {
       if (rid && rid in assignments) assignments[rid].push(pid)
     }
     this.deps.broadcast({ type: 'vote_assignment_change', assignments })
-  }
-
-  private checkWalkableVariants(): void {
-    for (const v of this.walkableVariants) {
-      if ([...v.triggerIds].every(id => this.globalGeomVisible.get(id) === true)) {
-        this.deps.onWalkableUpdate(v.walkable)
-        return
-      }
-    }
-  }
-
-  private checkToggleVariants(): void {
-    for (const v of this.toggleVariants) {
-      if ([...v.triggerIds].every(id => this.globalGeomVisible.get(id) === true)) {
-        for (const id of v.toggleIds) this.deps.world.toggleGeometryOff(id)
-      }
-    }
   }
 
   private evaluateButton(buttonId: string): void {
@@ -430,28 +393,27 @@ export class Scenario {
       },
       setGeometryVisible(geometryIds, visible, playerIds) {
         const perPlayer = !!(playerIds && playerIds.length > 0)
-        const targets = perPlayer ? playerIds! : [...self.playerGeometry.keys()]
-        const updates = geometryIds.map(id => ({ id, visible }))
-        for (const pid of targets) {
-          const geom = self.playerGeometry.get(pid)
-          if (!geom) continue
-          for (const id of geometryIds) geom[id] = visible
-          self.deps.sendToPlayer(pid, { type: 'geometry_state', updates, perPlayer })
-        }
-        if (!playerIds || playerIds.length === 0) {
-          for (const id of geometryIds) {
-            self.globalGeomVisible.set(id, visible)
-            if (visible) world.toggleGeometryOn(id)
-            else world.toggleGeometryOff(id)
-          }
-          self.checkWalkableVariants()
-          self.checkToggleVariants()
-        } else {
-          for (const pid of targets) {
+        if (perPlayer) {
+          const updates = geometryIds.map(id => ({ id, visible }))
+          for (const pid of playerIds!) {
+            let m = self.playerGeometry.get(pid)
+            if (!m) { m = new Map(); self.playerGeometry.set(pid, m) }
+            for (const id of geometryIds) m.set(id, visible)
+            self.deps.sendToPlayer(pid, { type: 'geometry_state', updates, perPlayer: true })
             for (const id of geometryIds) {
               if (visible) world.toggleGeometryOn(id, pid)
               else world.toggleGeometryOff(id, pid)
             }
+          }
+        } else {
+          const updates = geometryIds.map(id => ({ id, visible }))
+          for (const pid of self.playerGeometry.keys()) {
+            self.deps.sendToPlayer(pid, { type: 'geometry_state', updates })
+          }
+          for (const id of geometryIds) {
+            self.globalGeomVisible.set(id, visible)
+            if (visible) world.toggleGeometryOn(id)
+            else world.toggleGeometryOff(id)
           }
         }
       },
@@ -522,11 +484,11 @@ export class Scenario {
         }
         self.deps.spawnBot(spec)
       },
-      lockPlayerToRoom(playerId) {
-        world.lockCurrentRoom(playerId)
+      setConnectionEnabled(scopedRoomIdA, scopedRoomIdB, enabled) {
+        world.setConnectionEnabled(scopedRoomIdA, scopedRoomIdB, enabled)
       },
-      unlockPlayerFromRoom(playerId) {
-        world.unlockPlayerFromRoom(playerId)
+      setPlayerAllowedRooms(playerId, scopedRoomIds) {
+        world.setAccessibleRoomsOverride(playerId, scopedRoomIds)
       },
       setRoomVisible(roomIds, visible, playerIds) {
         const perPlayer = !!(playerIds && playerIds.length > 0)

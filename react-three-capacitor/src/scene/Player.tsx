@@ -24,7 +24,6 @@ export function Player() {
   const worldRef = useRef<World | null>(null)
   const initializedForRef = useRef<string | null>(null)
   const animStateRef = useRef<AnimationState>('IDLE')
-  const appliedWalkableRef = useRef<import('../game/WorldSpec').WalkableArea | null>(null)
 
   // ── Tick state ─────────────────────────────────────────────────────────────
   // client_predictive_tick — advances every TICK_MS when we send a `move`.
@@ -87,15 +86,14 @@ export function Player() {
     }
 
     if (initializedForRef.current !== playerId) {
-      const w = CURRENT_MAP.physics
-        ? World.withPhysics(CURRENT_MAP.walkable, CURRENT_MAP.physics, ['touched'])
-        : new World(CURRENT_MAP.walkable, ['touched'])
+      const w = new World(['touched'])
+      w.addMap(CURRENT_MAP)
       w.addPlayer(playerId, store.initialPosition.x, store.initialPosition.z)
       // Apply any geometry state already received before World was ready.
-      if (CURRENT_MAP.physics) {
-        const vis = useGameStore.getState().geometryVisibility
-        const localOverride = useGameStore.getState().localGeometryOverride
-        for (const geom of CURRENT_MAP.physics.geometry) {
+      const vis = useGameStore.getState().geometryVisibility
+      const localOverride = useGameStore.getState().localGeometryOverride
+      for (const room of CURRENT_MAP.worldSpec.rooms) {
+        for (const geom of room.geometry ?? []) {
           if (vis[geom.id] === false) w.toggleGeometryOff(geom.id)
           const ov = localOverride[geom.id]
           if (ov !== undefined) {
@@ -118,17 +116,8 @@ export function Player() {
       tickInputsRef.current.clear()
       predictedPosPerTickRef.current.clear()
       animStateRef.current = 'IDLE'
-      appliedWalkableRef.current = null
     }
     const world = worldRef.current!
-
-    // ── Sync walkable area when it changes (AABB mode) ───────────────────────
-    const currentWalkable = store.activeWalkable ?? CURRENT_MAP.walkable
-    if (currentWalkable !== appliedWalkableRef.current) {
-      world.setWalkable(currentWalkable)
-      world.snapAllPlayers()
-      appliedWalkableRef.current = currentWalkable
-    }
 
     // ── 1. Apply server acks ─────────────────────────────────────────────────
     // The server buffers every client move between its ticks and processes them

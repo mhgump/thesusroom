@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import type { AnimationState } from '../game/World'
 import type { ShowChoiceEvent, ShowRuleEvent } from '../network/types'
-import type { FloorGeometrySpec, ButtonSpec, ButtonConfig, ButtonState } from '../game/GameSpec'
-import type { WalkableArea } from '../game/WorldSpec'
+import type { WireGeometry, ButtonSpec, ButtonConfig, ButtonState } from '../game/GameSpec'
 import { getInputMode, setInputMode as persistInputMode, type InputMode } from '../settings'
 
 interface JoystickInput { x: number; y: number }
@@ -42,12 +41,11 @@ interface GameState {
   activeRuleEvent: ShowRuleEvent | null
   activeRules: string[]
   rulesOpen: boolean
-  geometryObjects: FloorGeometrySpec[]
+  geometryObjects: WireGeometry[]
   geometryVisibility: Record<string, boolean>
   localGeometryOverride: Record<string, boolean>
   roomVisibility: Record<string, boolean>
   playerRoomVisibilityOverride: Record<string, boolean>
-  activeWalkable: WalkableArea | null
   buttonSpecs: Record<string, ButtonSpec>
   buttonStates: Record<string, { state: ButtonState; occupancy: number }>
   localButtonPressing: Record<string, boolean>
@@ -76,12 +74,11 @@ interface GameState {
   dismissRule: () => void
   addRule: (text: string) => void
   setRulesOpen: (v: boolean) => void
-  setGeometryObjects: (objects: FloorGeometrySpec[]) => void
+  setGeometryObjects: (objects: WireGeometry[]) => void
   applyGeometryUpdates: (updates: Array<{ id: string; visible: boolean }>) => void
   applyLocalGeometryOverride: (updates: Array<{ id: string; visible: boolean }>) => void
   applyRoomVisibilityUpdates: (updates: Array<{ roomId: string; visible: boolean }>) => void
   applyPlayerRoomVisibilityOverride: (updates: Array<{ roomId: string; visible: boolean }>) => void
-  setActiveWalkable: (area: WalkableArea | null) => void
   initButtons: (buttons: Array<ButtonSpec & { state: ButtonState; occupancy: number }>) => void
   applyButtonStateUpdate: (id: string, state: ButtonState, occupancy: number) => void
   applyButtonConfigUpdate: (id: string, changes: Partial<ButtonConfig>) => void
@@ -114,7 +111,6 @@ export const useGameStore = create<GameState>((set) => ({
   localGeometryOverride: {},
   roomVisibility: {},
   playerRoomVisibilityOverride: {},
-  activeWalkable: null,
   buttonSpecs: {},
   buttonStates: {},
   localButtonPressing: {},
@@ -179,8 +175,6 @@ export const useGameStore = create<GameState>((set) => ({
   setRulesOpen: (v) => set({ rulesOpen: v }),
 
   setGeometryObjects: (objects) => set({ geometryObjects: objects }),
-
-  setActiveWalkable: (area) => set({ activeWalkable: area }),
 
   applyGeometryUpdates: (updates) =>
     set((s) => {
@@ -258,7 +252,6 @@ export const useGameStore = create<GameState>((set) => ({
     localGeometryOverride: {},
     roomVisibility: {},
     playerRoomVisibilityOverride: {},
-    activeWalkable: null,
     buttonSpecs: {},
     buttonStates: {},
     localButtonPressing: {},

@@ -2,7 +2,6 @@ import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Ground } from './Ground';
-import { Barrier } from './Walls';
 import { BgPlane, RoomOutsideTextures } from './Boundary';
 import { Player } from './Player';
 import { RemotePlayers } from './RemotePlayers';
@@ -112,7 +111,6 @@ export function GameScene() {
         return (
           <group key={scopedId} position={[pos.x, 0, pos.z]}>
             <Ground room={room} />
-            <Barrier room={room} />
             <RoomOutsideTextures room={room} />
           </group>
         );

@@ -28,8 +28,6 @@ export class DefaultScenarioOrchestration implements RoomOrchestration {
     const room = new MultiplayerRoom({
       roomId: scenario.id,
       instanceIndex: ctx.instanceIndex,
-      walkable: map.walkable,
-      physics: map.physics,
       tickRateHz: this.options?.tickRateHz,
       onCloseScenario: ctx.onClose,
       onRoomDone: ctx.onDestroy,
@@ -43,8 +41,6 @@ export class DefaultScenarioOrchestration implements RoomOrchestration {
       gameSpec: map.gameSpec,
       initialVisibility: scenario.initialVisibility ?? {},
       initialRoomVisibility: scenario.initialRoomVisibility ?? {},
-      walkableVariants: map.walkableVariants ?? [],
-      toggleVariants: map.toggleVariants ?? [],
       requiredRoomIds: scenario.requiredRoomIds,
     })
     room.scenarios.add(scenarioInstance, { default: true })

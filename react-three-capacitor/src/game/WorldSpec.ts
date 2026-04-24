@@ -1,8 +1,4 @@
-import type { RoomSpec, Wall } from './RoomSpec.js'
-
-// Walkable area for physics — precomputed rects, already inset by capsule radius.
-export interface WalkableRect { cx: number; cz: number; hw: number; hd: number }
-export interface WalkableArea { rects: WalkableRect[] }
+import type { GeometrySpec, RoomSpec, Wall } from './RoomSpec.js'
 
 // A doorway between two rooms.
 // positionA/B: 0..1 along the wall (N/S = fraction of floorWidth; E/W = fraction of floorDepth)
@@ -10,6 +6,11 @@ export interface WalkableArea { rects: WalkableRect[] }
 // cameraTransition: designer-specified convex polygon (3–4 corners) bridging the two rooms'
 //   camera rects. Corners are in room A's local coordinate frame (add room A's world position
 //   to convert to world space). Omit only when the two camera rects share a boundary with no gap.
+//
+// Connections are the *sole* source of both physical adjacency (which rooms a
+// player may walk between) and the world-space placement of rooms: a BFS over
+// `connections` starting at `rooms[0]` (placed at origin) assigns each room a
+// world-space centre.
 export interface RoomConnection {
   roomIdA: string
   wallA: Wall
@@ -23,16 +24,16 @@ export interface RoomConnection {
   }
 }
 
-// visibility: roomId → adjacent room IDs rendered when player is in that room
 export interface WorldSpec {
   rooms: RoomSpec[]
   connections: RoomConnection[]
-  visibility: Record<string, string[]>
 }
 
 export interface RoomWorldPos { x: number; z: number }
 
-// BFS from rooms[0] (placed at origin) to derive world-space centers for all rooms.
+// BFS from rooms[0] (placed at origin) to derive world-space centres for all
+// rooms by walking `connections`. Every room reachable from rooms[0] gets a
+// position; unreachable rooms are omitted (validateWorldSpec rejects this).
 export function computeRoomPositions(spec: WorldSpec): Map<string, RoomWorldPos> {
   const pos = new Map<string, RoomWorldPos>()
   if (!spec.rooms.length) return pos
@@ -65,7 +66,7 @@ export function computeRoomPositions(spec: WorldSpec): Map<string, RoomWorldPos>
       const knownRoom = byId.get(knownId)!
       const unknownRoom = byId.get(unknownId)!
 
-      // Door center in world space on the known room's wall edge
+      // Door centre in world space on the known room's wall edge
       let doorX: number, doorZ: number
       if (knownWall === 'north' || knownWall === 'south') {
         doorX = curPos.x + (knownFrac - 0.5) * knownRoom.floorWidth
@@ -79,7 +80,7 @@ export function computeRoomPositions(spec: WorldSpec): Map<string, RoomWorldPos>
           : curPos.x - knownRoom.floorWidth / 2
       }
 
-      // Unknown room center derived from where its wall meets the door
+      // Unknown room centre derived from where its wall meets the door
       let ux: number, uz: number
       if (unknownWall === 'north' || unknownWall === 'south') {
         ux = doorX - (unknownFrac - 0.5) * unknownRoom.floorWidth
@@ -102,54 +103,9 @@ export function computeRoomPositions(spec: WorldSpec): Map<string, RoomWorldPos>
   return pos
 }
 
-// Precompute walkable area from spec. capsuleRadius is inset from all edges.
-export function computeWalkableArea(
-  spec: WorldSpec,
-  positions: Map<string, RoomWorldPos>,
-  capsuleRadius: number,
-): WalkableArea {
-  const rects: WalkableRect[] = []
-  const byId = new Map(spec.rooms.map(r => [r.id, r]))
-
-  for (const room of spec.rooms) {
-    const p = positions.get(room.id)!
-    rects.push({
-      cx: p.x, cz: p.z,
-      hw: room.floorWidth / 2 - capsuleRadius,
-      hd: room.floorDepth / 2 - capsuleRadius,
-    })
-  }
-
-  // Thin corridor at each shared floor edge so the capsule can cross between rooms
-  for (const conn of spec.connections) {
-    const halfDoor = conn.width / 2 - capsuleRadius
-    if (halfDoor <= 0) continue
-
-    const posA = positions.get(conn.roomIdA)!
-    const roomA = byId.get(conn.roomIdA)!
-
-    let cx: number, cz: number, hw: number, hd: number
-    if (conn.wallA === 'north' || conn.wallA === 'south') {
-      cx = posA.x + (conn.positionA - 0.5) * roomA.floorWidth
-      cz = conn.wallA === 'north'
-        ? posA.z - roomA.floorDepth / 2
-        : posA.z + roomA.floorDepth / 2
-      hw = halfDoor; hd = capsuleRadius
-    } else {
-      cz = posA.z + (conn.positionA - 0.5) * roomA.floorDepth
-      cx = conn.wallA === 'east'
-        ? posA.x + roomA.floorWidth / 2
-        : posA.x - roomA.floorWidth / 2
-      hw = capsuleRadius; hd = halfDoor
-    }
-
-    rects.push({ cx, cz, hw, hd })
-  }
-
-  return { rects }
-}
-
-// Returns the local id of the room whose floor contains (x, z), or null.
+// Returns the local id of the room whose floor AABB contains (x, z), or null.
+// Room AABBs touch along shared walls — a position exactly on a boundary is
+// considered inside both rooms; the first match wins.
 export function getRoomAtPosition(
   spec: WorldSpec,
   positions: Map<string, RoomWorldPos>,
@@ -177,8 +133,8 @@ export function unscopeRoomId(scopedId: string, mapInstanceId: string): string |
 }
 
 // AABB-overlap check between two rooms given their positions and sizes. Used
-// at map build time to determine which rooms overlap in world-space coordinates
-// (overlapping rooms are hidden by default on the client).
+// at map build time to determine which rooms overlap in world-space
+// coordinates (overlapping rooms are hidden by default on the client).
 export function roomsOverlap(
   aPos: RoomWorldPos, aRoom: RoomSpec,
   bPos: RoomWorldPos, bRoom: RoomSpec,
@@ -189,6 +145,12 @@ export function roomsOverlap(
 }
 
 // Validates a WorldSpec after positions are computed. Throws on any violation.
+// Enforces:
+//   - every connection joins opposing walls (N↔S or E↔W)
+//   - door opening fits within the wall span
+//   - no two rooms overlap in world space
+//   - every room is reachable from rooms[0] via connections
+//   - every geometry entry fits inside its room's bounding cube
 export function validateWorldSpec(spec: WorldSpec, positions: Map<string, RoomWorldPos>): void {
   const byId = new Map(spec.rooms.map(r => [r.id, r]))
 
@@ -210,18 +172,18 @@ export function validateWorldSpec(spec: WorldSpec, positions: Map<string, RoomWo
     ] as [string, Wall, number][]) {
       const room = byId.get(roomId)!
       const wallLen = (wall === 'north' || wall === 'south') ? room.floorWidth : room.floorDepth
-      const center = (frac - 0.5) * wallLen
-      if (center - conn.width / 2 < -wallLen / 2 || center + conn.width / 2 > wallLen / 2) {
+      const centre = (frac - 0.5) * wallLen
+      if (centre - conn.width / 2 < -wallLen / 2 || centre + conn.width / 2 > wallLen / 2) {
         throw new Error(`Door on ${roomId}:${wall} extends past wall bounds`)
       }
     }
   }
 
-  const rooms = spec.rooms
-  for (let i = 0; i < rooms.length; i++) {
-    for (let j = i + 1; j < rooms.length; j++) {
-      const a = rooms[i], b = rooms[j]
-      const pa = positions.get(a.id)!, pb = positions.get(b.id)!
+  for (let i = 0; i < spec.rooms.length; i++) {
+    for (let j = i + 1; j < spec.rooms.length; j++) {
+      const a = spec.rooms[i], b = spec.rooms[j]
+      const pa = positions.get(a.id), pb = positions.get(b.id)
+      if (!pa || !pb) continue
       const gapX = Math.abs(pa.x - pb.x) - (a.floorWidth  + b.floorWidth)  / 2
       const gapZ = Math.abs(pa.z - pb.z) - (a.floorDepth + b.floorDepth) / 2
       if (gapX < 0 && gapZ < 0) {
@@ -231,4 +193,50 @@ export function validateWorldSpec(spec: WorldSpec, positions: Map<string, RoomWo
       }
     }
   }
+
+  for (const room of spec.rooms) {
+    if (!positions.has(room.id)) {
+      throw new Error(`Room '${room.id}' is not reachable from rooms[0] via connections`)
+    }
+  }
+
+  for (const room of spec.rooms) {
+    const items = room.geometry ?? []
+    for (const g of items) validateGeometryInRoom(room, g)
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const a = items[i], b = items[j]
+        if (geometryBoxesOverlap(a, b)) {
+          throw new Error(
+            `Geometry '${a.id}' and '${b.id}' in room '${room.id}' overlap`
+          )
+        }
+      }
+    }
+  }
+}
+
+function validateGeometryInRoom(room: RoomSpec, g: GeometrySpec): void {
+  const hx = g.width  / 2
+  const hy = g.height / 2
+  const hz = g.depth  / 2
+  const outX = Math.abs(g.cx) + hx > room.floorWidth  / 2 + 1e-9
+  const outZ = Math.abs(g.cz) + hz > room.floorDepth / 2 + 1e-9
+  const outYLow  = g.cy - hy < -1e-9
+  const outYHigh = g.cy + hy > room.height + 1e-9
+  if (outX || outZ || outYLow || outYHigh) {
+    throw new Error(
+      `Geometry '${g.id}' in room '${room.id}' extends outside room cube`
+      + ` (floor ${room.floorWidth}×${room.floorDepth}, height ${room.height})`
+    )
+  }
+}
+
+// Strict 3D-AABB overlap: boxes that merely touch on a face (`gap === 0`) do
+// not overlap — only positive interpenetration counts.
+function geometryBoxesOverlap(a: GeometrySpec, b: GeometrySpec): boolean {
+  const gapX = Math.abs(a.cx - b.cx) - (a.width  + b.width)  / 2
+  const gapY = Math.abs(a.cy - b.cy) - (a.height + b.height) / 2
+  const gapZ = Math.abs(a.cz - b.cz) - (a.depth  + b.depth)  / 2
+  return gapX < -1e-9 && gapY < -1e-9 && gapZ < -1e-9
 }

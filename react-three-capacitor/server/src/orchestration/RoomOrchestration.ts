@@ -36,6 +36,7 @@ export interface RoomOrchestration {
 }
 
 // Resolves a routing key to the orchestration that should govern its rooms.
+// Async because content is loaded lazily from the data backend on first use.
 // Returns `null` for unknown/invalid keys (the router rejects such
 // connections with close code 4004).
-export type RoutingResolver = (routingKey: string) => RoomOrchestration | null
+export type RoutingResolver = (routingKey: string) => Promise<RoomOrchestration | null>
