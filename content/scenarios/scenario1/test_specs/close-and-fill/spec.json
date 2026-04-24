@@ -1,0 +1,19 @@
+{
+  "name": "close-and-fill",
+  "scenario_id": "scenario1",
+  "map_id": "scenario1",
+  "bots": [
+    {
+      "path": "content/bots/scenario1/idle/bot.ts",
+      "export": "IDLE_BOT"
+    }
+  ],
+  "opts": {
+    "timeout_ms": 30000
+  },
+  "notes": [],
+  "hero_index": 0,
+  "last_run_artifact_ids": [
+    "scenario1/close-and-fill/1"
+  ]
+}

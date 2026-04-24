@@ -1,0 +1,22 @@
+{
+  "name": "close-and-fill",
+  "scenario_id": "scenario2",
+  "map_id": "scenario2",
+  "bots": [
+    {
+      "path": "content/bots/scenario2/mover/bot.ts",
+      "export": "MOVER_BOT"
+    }
+  ],
+  "opts": {
+    "timeout_ms": 30000
+  },
+  "notes": [],
+  "hero_index": 0,
+  "last_run_artifact_ids": [
+    "scenario2/close-and-fill/0",
+    "scenario2/close-and-fill/1",
+    "scenario2/close-and-fill/2",
+    "scenario2/close-and-fill/3"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "run_id": "scenario4/close-and-fill/1",
+  "output_dir": "/Users/michaelgump/thesusrooms/content/scenario_runs/scenario4/close-and-fill/1",
+  "config": {
+    "scenario_id": "scenario4",
+    "test_spec_name": "close-and-fill",
+    "index": 1,
+    "bot_count": 1,
+    "record_bot_index": null,
+    "log_bot_indices": null,
+    "effective_timeout_ms": 2500
+  },
+  "logs": "[19:22:55.722] [cli-bot#0] INFO starting — server: ws://localhost:8080/scenariorun/b023e8d439ee\n[19:22:55.730] [cli-bot#0] INFO connected\n[19:22:55.780] [cli-bot#0] INFO welcome as 108fa543-b5d4-4e3e-b4c4-36cfaa6b70e8 at (0.00, 0.00)\n[19:22:56.598] [scenario-bot#0] INFO starting — server: ws://localhost:8080/scenariorun/b023e8d439ee\n[19:22:56.614] [scenario-bot#1] INFO starting — server: ws://localhost:8080/scenariorun/b023e8d439ee\n[19:22:56.615] [scenario-bot#2] INFO starting — server: ws://localhost:8080/scenariorun/b023e8d439ee\n[19:22:56.622] [scenario-bot#0] INFO connected\n[19:22:56.622] [scenario-bot#0] INFO welcome as 5d51d558-fe07-4c47-9bdd-f616082e7252 at (0.00, 0.00)\n[19:22:56.625] [scenario-bot#1] INFO connected\n[19:22:56.625] [scenario-bot#1] INFO welcome as c77f653c-0fa5-48c0-b538-a25b4bc34269 at (0.00, 0.00)\n[19:22:56.627] [scenario-bot#2] INFO connected\n[19:22:56.628] [scenario-bot#2] INFO welcome as f7bc1878-4bc7-4ba9-b8b1-c73612cfbc28 at (0.00, 0.00)",
+  "termination_metadata": {
+    "terminated_by": "scenario",
+    "exit_code": 0,
+    "video_path": null,
+    "screenshot_path": null,
+    "screenshot_has_content": null,
+    "observer_ready_fired": false,
+    "final_state": {
+      "survivor_count": 4,
+      "survivor_player_ids": [
+        "108fa543-b5d4-4e3e-b4c4-36cfaa6b70e8",
+        "5d51d558-fe07-4c47-9bdd-f616082e7252",
+        "c77f653c-0fa5-48c0-b538-a25b4bc34269",
+        "f7bc1878-4bc7-4ba9-b8b1-c73612cfbc28"
+      ]
+    }
+  },
+  "server_logs": "[19:22:55.779] [server] INFO [MultiplayerRoom:scenario4] +player 108fa543-b5d4-4e3e-b4c4-36cfaa6b70e8 (total:1)\n[19:22:56.614] [server] INFO [BotManager] spawned bot for key:scenariorun/b023e8d439ee\n[19:22:56.615] [server] INFO [BotManager] spawned bot for key:scenariorun/b023e8d439ee\n[19:22:56.615] [server] INFO [BotManager] spawned bot for key:scenariorun/b023e8d439ee\n[19:22:56.621] [server] INFO [MultiplayerRoom:scenario4] +player 5d51d558-fe07-4c47-9bdd-f616082e7252 (total:2)\n[19:22:56.624] [server] INFO [MultiplayerRoom:scenario4] +player c77f653c-0fa5-48c0-b538-a25b4bc34269 (total:3)\n[19:22:56.626] [server] INFO [MultiplayerRoom:scenario4] +player f7bc1878-4bc7-4ba9-b8b1-c73612cfbc28 (total:4)"
+}

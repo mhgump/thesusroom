@@ -1,0 +1,29 @@
+{
+  "run_id": "scenario2/close-and-fill/2",
+  "output_dir": "/Users/michaelgump/thesusrooms/content/scenario_runs/scenario2/close-and-fill/2",
+  "config": {
+    "scenario_id": "scenario2",
+    "test_spec_name": "close-and-fill",
+    "index": 2,
+    "bot_count": 1,
+    "record_bot_index": null,
+    "log_bot_indices": null,
+    "effective_timeout_ms": 2500
+  },
+  "logs": "[19:29:52.949] [cli-bot#0] INFO starting — server: ws://localhost:8080/scenariorun/3466888e56c7\n[19:29:52.953] [cli-bot#0] INFO connected\n[19:29:52.962] [cli-bot#0] INFO welcome as 0dfefb61-feae-41bb-ba79-e022d6bdd8e5 at (0.00, 0.00)\n[19:29:53.788] [scenario-bot#0] INFO starting — server: ws://localhost:8080/scenariorun/3466888e56c7\n[19:29:53.803] [scenario-bot#1] INFO starting — server: ws://localhost:8080/scenariorun/3466888e56c7\n[19:29:53.803] [scenario-bot#2] INFO starting — server: ws://localhost:8080/scenariorun/3466888e56c7\n[19:29:53.809] [scenario-bot#0] INFO connected\n[19:29:53.809] [scenario-bot#0] INFO welcome as 37b4743f-5976-4e3c-b121-12616f7e67aa at (0.00, 0.00)\n[19:29:53.812] [scenario-bot#1] INFO connected\n[19:29:53.812] [scenario-bot#1] INFO welcome as ce42c0ca-996d-4ba1-8673-dd878069b313 at (0.00, 0.00)\n[19:29:53.814] [scenario-bot#2] INFO connected\n[19:29:53.814] [scenario-bot#2] INFO welcome as ccb18141-ac2e-49ec-b9fe-1441e6ecba97 at (0.00, 0.00)\n[19:29:54.646] [scenario-bot#0] WARN eliminated by server\n[19:29:54.646] [scenario-bot#0] INFO stopped\n[19:29:54.646] [scenario-bot#1] WARN eliminated by server\n[19:29:54.646] [scenario-bot#1] INFO stopped\n[19:29:54.646] [scenario-bot#2] WARN eliminated by server\n[19:29:54.646] [scenario-bot#2] INFO stopped\n[19:29:54.651] [scenario-bot#0] INFO disconnected (code=1005 reason=—)\n[19:29:54.651] [scenario-bot#1] INFO disconnected (code=1005 reason=—)\n[19:29:54.651] [scenario-bot#2] INFO disconnected (code=1005 reason=—)",
+  "termination_metadata": {
+    "terminated_by": "scenario",
+    "exit_code": 0,
+    "video_path": null,
+    "screenshot_path": null,
+    "screenshot_has_content": null,
+    "observer_ready_fired": false,
+    "final_state": {
+      "survivor_count": 1,
+      "survivor_player_ids": [
+        "0dfefb61-feae-41bb-ba79-e022d6bdd8e5"
+      ]
+    }
+  },
+  "server_logs": "[19:29:52.962] [server] INFO [MultiplayerRoom:scenario2] +player 0dfefb61-feae-41bb-ba79-e022d6bdd8e5 (total:1)\n[19:29:53.802] [server] INFO [BotManager] spawned bot for key:scenariorun/3466888e56c7\n[19:29:53.803] [server] INFO [BotManager] spawned bot for key:scenariorun/3466888e56c7\n[19:29:53.804] [server] INFO [BotManager] spawned bot for key:scenariorun/3466888e56c7\n[19:29:53.808] [server] INFO [MultiplayerRoom:scenario2] +player 37b4743f-5976-4e3c-b121-12616f7e67aa (total:2)\n[19:29:53.811] [server] INFO [MultiplayerRoom:scenario2] +player ce42c0ca-996d-4ba1-8673-dd878069b313 (total:3)\n[19:29:53.813] [server] INFO [MultiplayerRoom:scenario2] +player ccb18141-ac2e-49ec-b9fe-1441e6ecba97 (total:4)\n[19:29:54.645] [server] INFO [MultiplayerRoom:scenario2] -player 37b4743f-5976-4e3c-b121-12616f7e67aa (total:3)\n[19:29:54.645] [server] INFO [MultiplayerRoom:scenario2] -player ce42c0ca-996d-4ba1-8673-dd878069b313 (total:2)\n[19:29:54.645] [server] INFO [MultiplayerRoom:scenario2] -player ccb18141-ac2e-49ec-b9fe-1441e6ecba97 (total:1)\n[19:29:54.650] [server] INFO [MultiplayerRoom:scenario2] -player ccb18141-ac2e-49ec-b9fe-1441e6ecba97 (total:1)\n[19:29:54.651] [server] INFO [MultiplayerRoom:scenario2] -player ce42c0ca-996d-4ba1-8673-dd878069b313 (total:1)\n[19:29:54.651] [server] INFO [MultiplayerRoom:scenario2] -player 37b4743f-5976-4e3c-b121-12616f7e67aa (total:1)"
+}

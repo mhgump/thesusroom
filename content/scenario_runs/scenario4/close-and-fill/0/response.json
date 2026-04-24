@@ -1,0 +1,29 @@
+{
+  "run_id": "scenario4/close-and-fill/0",
+  "output_dir": "/Users/michaelgump/thesusrooms/content/scenario_runs/scenario4/close-and-fill/0",
+  "config": {
+    "scenario_id": "scenario4",
+    "test_spec_name": "close-and-fill",
+    "index": 0,
+    "bot_count": 1,
+    "record_bot_index": null,
+    "log_bot_indices": null,
+    "effective_timeout_ms": 2500
+  },
+  "logs": "[19:13:54.452] [cli-bot#0] INFO starting — server: ws://localhost:8080/scenariorun/174a88d37273\n[19:13:54.456] [cli-bot#0] INFO connected\n[19:13:54.472] [cli-bot#0] INFO welcome as 90fa4ae1-9725-45e5-a548-add66df1bb3e at (0.00, 0.00)\n[19:13:55.292] [scenario-bot#0] INFO starting — server: ws://localhost:8080/scenariorun/174a88d37273\n[19:13:55.304] [scenario-bot#1] INFO starting — server: ws://localhost:8080/scenariorun/174a88d37273\n[19:13:55.305] [scenario-bot#2] INFO starting — server: ws://localhost:8080/scenariorun/174a88d37273\n[19:13:55.312] [scenario-bot#0] INFO connected\n[19:13:55.314] [scenario-bot#1] INFO connected\n[19:13:55.316] [scenario-bot#2] INFO connected\n[19:13:55.317] [scenario-bot#0] INFO disconnected (code=4004 reason=Handler failure)\n[19:13:55.317] [scenario-bot#1] INFO disconnected (code=4004 reason=Handler failure)\n[19:13:55.318] [scenario-bot#2] INFO disconnected (code=4004 reason=Handler failure)",
+  "termination_metadata": {
+    "terminated_by": "scenario",
+    "exit_code": 0,
+    "video_path": null,
+    "screenshot_path": null,
+    "screenshot_has_content": null,
+    "observer_ready_fired": false,
+    "final_state": {
+      "survivor_count": 1,
+      "survivor_player_ids": [
+        "90fa4ae1-9725-45e5-a548-add66df1bb3e"
+      ]
+    }
+  },
+  "server_logs": "[19:13:54.472] [server] INFO [MultiplayerRoom:scenario4] +player 90fa4ae1-9725-45e5-a548-add66df1bb3e (total:1)\n[19:13:55.304] [server] INFO [BotManager] spawned bot for key:scenariorun/174a88d37273\n[19:13:55.304] [server] INFO [BotManager] spawned bot for key:scenariorun/174a88d37273\n[19:13:55.305] [server] INFO [BotManager] spawned bot for key:scenariorun/174a88d37273\n[19:13:55.308] [server] ERROR [ConnectionDispatcher] handler threw: {}\n[19:13:55.313] [server] ERROR [ConnectionDispatcher] handler threw: {}\n[19:13:55.314] [server] ERROR [ConnectionDispatcher] handler threw: {}"
+}
