@@ -86,8 +86,9 @@ export function RulePopup() {
                 padding: 'clamp(8px, 3.5cqmin, 32px) clamp(10px, 4.5cqmin, 40px)',
                 color: '#fff',
                 display: 'flex',
-                alignItems: 'center',
-                gap: 'clamp(8px, 3.5cqmin, 28px)',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                gap: 'clamp(3px, 1.4cqmin, 14px)',
                 minWidth: 0,
                 minHeight: 0,
                 containerType: 'size',
@@ -95,31 +96,29 @@ export function RulePopup() {
             >
               <div
                 style={{
-                  flex: 1,
-                  minWidth: 0,
-                  fontSize: 'clamp(0.85rem, 7.5cqmin, 3rem)',
-                  lineHeight: 1.3,
-                  textAlign: 'left',
-                  overflowWrap: 'break-word',
-                }}
-              >
-                {rule.text}
-              </div>
-              <div
-                style={{
-                  flexShrink: 0,
-                  fontSize: 'clamp(0.5rem, 2.4cqmin, 1rem)',
+                  alignSelf: 'flex-start',
+                  fontSize: 'clamp(0.7rem, 1.3vmin, 0.9rem)',
                   fontWeight: 700,
-                  letterSpacing: '0.1em',
+                  letterSpacing: '0.18em',
                   textTransform: 'uppercase',
-                  padding: 'clamp(2px, 0.8cqmin, 8px) clamp(4px, 1.8cqmin, 14px)',
-                  border: '1px solid rgba(255,255,255,0.4)',
-                  borderRadius: 'clamp(2px, 0.6cqmin, 6px)',
-                  opacity: 0.8,
+                  opacity: 0.55,
+                  lineHeight: 1,
                   whiteSpace: 'nowrap',
                 }}
               >
                 {rule.label}
+              </div>
+              <div
+                style={{
+                  minWidth: 0,
+                  fontSize: 'clamp(1.1rem, 11cqmin, 5.5rem)',
+                  lineHeight: 1.2,
+                  textAlign: 'left',
+                  overflowWrap: 'break-word',
+                  fontWeight: 500,
+                }}
+              >
+                {rule.text}
               </div>
             </div>
           ))}
