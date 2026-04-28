@@ -12,7 +12,7 @@ The export MUST be named `MAP` — the runtime loader looks up exactly
 `insert_map` accepted it.
 
 Required fields (checked by the validator in
-`tools/src/_shared/validate.ts`):
+`shared/validate.ts`):
 
 - `id` — matches the map_id slug.
 - `mapInstanceId` — string id used by `buildMapInstanceArtifacts`; usually

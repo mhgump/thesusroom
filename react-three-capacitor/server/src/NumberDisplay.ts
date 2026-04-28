@@ -8,7 +8,7 @@ import {
   TestSpecList,
   getDataBackend,
   type AgentConversation,
-} from '../../../tools/src/_shared/backends/index.js'
+} from '../../../shared/backends/index.js'
 
 // A route that renders a single integer full-screen. `path` supports Express
 // `:param` syntax — the captured params are passed to `provider` which

@@ -75,8 +75,9 @@ const VICT_EW_DEPTH = 2 * (VICT_HD - bt)
 const ROOMS: RoomSpec[] = [
   {
     id: 'spawn', name: 'Spawn',
-    floorWidth: SPAWN_W, floorDepth: SPAWN_D, height: ROOM_H,
-    cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+    floorWidthX: SPAWN_W, floorDepthY: SPAWN_D, height: ROOM_H,
+    cameraExtentX: 0, cameraExtentY: 0,
+    transitionType: 'default',
     // South wall is the hub dock (full 0.25 span, matches hallway width).
     // North edge is open — owned by corridor's south wall.
     geometry: [
@@ -87,9 +88,11 @@ const ROOMS: RoomSpec[] = [
   },
   {
     id: 'corridor', name: 'Production Gates',
-    floorWidth: CORR_W, floorDepth: CORR_D, height: ROOM_H,
+    floorWidthX: CORR_W, floorDepthY: CORR_D, height: ROOM_H,
     // Camera follows along z; keep it centred on x so the tall room reads vertically.
-    cameraRect: { xMin: 0, xMax: 0, zMin: -CORR_HD + 0.25, zMax: CORR_HD - 0.25 },
+    // Original cameraRect z spanned -0.375..+0.375 (centered) → cameraExtentY = 0.375.
+    cameraExtentX: 0, cameraExtentY: CORR_HD - 0.25,
+    transitionType: 'default',
     // South / north walls are split around a centred 0.25 gap (spawn / victory
     // connections). E/W walls are continuous. Three internal gates (full inner
     // span each) start CLOSED; the scenario drops them one at a time.
@@ -109,8 +112,9 @@ const ROOMS: RoomSpec[] = [
   },
   {
     id: 'victory', name: 'Victory',
-    floorWidth: VICT_W, floorDepth: VICT_D, height: ROOM_H,
-    cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+    floorWidthX: VICT_W, floorDepthY: VICT_D, height: ROOM_H,
+    cameraExtentX: 0, cameraExtentY: 0,
+    transitionType: 'default',
     // South edge is open — owned by corridor's north wall.
     geometry: [
       { id: 'pg_vict_n', cx: 0,              cy: BY, cz: -VICT_WALL_C, width: VICT_W, height: bh, depth: bt },
@@ -122,14 +126,16 @@ const ROOMS: RoomSpec[] = [
 
 const CONNECTIONS: RoomConnection[] = [
   {
-    roomIdA: 'spawn',    wallA: 'north', positionA: 0.5,
-    roomIdB: 'corridor', wallB: 'south', positionB: 0.5,
-    width: DOOR_GAP_W,
+    roomIdA: 'spawn',
+    roomIdB: 'corridor',
+    room1: { wall: 'north', length: DOOR_GAP_W, position: 0.5, transitionRegion: 'none' },
+    room2: { wall: 'south', length: DOOR_GAP_W, position: 0.5, transitionRegion: 'none' },
   },
   {
-    roomIdA: 'corridor', wallA: 'north', positionA: 0.5,
-    roomIdB: 'victory',  wallB: 'south', positionB: 0.5,
-    width: DOOR_GAP_W,
+    roomIdA: 'corridor',
+    roomIdB: 'victory',
+    room1: { wall: 'north', length: DOOR_GAP_W, position: 0.5, transitionRegion: 'none' },
+    room2: { wall: 'south', length: DOOR_GAP_W, position: 0.5, transitionRegion: 'none' },
   },
 ]
 

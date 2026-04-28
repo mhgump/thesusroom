@@ -25,7 +25,7 @@ export function BgPlane() {
 
 // Renders outside textures for a single room (placed in the room's local group).
 function OutsidePlane({ room, spec }: { room: RoomSpec; spec: OutsideTextureSpec }) {
-  const { floorWidth: fw, floorDepth: fd } = room
+  const { floorWidthX: fw, floorDepthY: fd } = room
   const hw = fw / 2, hd = fd / 2
 
   const texture = useMemo(() => {

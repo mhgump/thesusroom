@@ -7,7 +7,7 @@
 // Messages containing newlines are escaped to "\\n" on write and restored on
 // read so the block remains line-addressable.
 //
-// Duplicated at tools/src/_shared/logFormat.ts — the format is the contract.
+// Duplicated at shared/logFormat.ts — the format is the contract.
 
 export type LogLevel = 'info' | 'warn' | 'error'
 export type LogSource = 'cli-bot' | 'scenario-bot' | 'server'

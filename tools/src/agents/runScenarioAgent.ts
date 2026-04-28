@@ -1,6 +1,6 @@
 import type { Tool } from '../framework.js'
-import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
-import { withRunLog } from '../_shared/logContext.js'
+import { runAgent, type AgentRunResult, type ResponseSpec } from '../../../shared/agentLoop.js'
+import { withRunLog } from '../../../shared/logContext.js'
 import { INSERT_RUN_SCENARIO_SPEC_TOOL } from '../insertRunScenarioSpec/index.js'
 import { RUN_SCENARIO_FROM_SPEC_TOOL } from '../runScenarioFromSpec/index.js'
 import { ADD_NOTES_TO_TEST_SPEC_TOOL } from '../addNotesToTestSpec/index.js'

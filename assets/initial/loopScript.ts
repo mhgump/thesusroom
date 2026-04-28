@@ -5,7 +5,7 @@ import type {
 } from '../../react-three-capacitor/server/src/GameScript.js'
 import type { ScenarioConfig } from '../../react-three-capacitor/server/src/Scenario.js'
 import type { ScenarioSpec } from '../../react-three-capacitor/server/src/ContentRegistry.js'
-import type { ExitAttachment } from '../../react-three-capacitor/server/src/orchestration/hubAttachment.js'
+import type { ExitMergeArgs } from '../../react-three-capacitor/server/src/orchestration/hubAttachment.js'
 
 // Grace period between "player is inside the current hallway" and the
 // `exitScenario()` that swaps in the next MR. Short enough that the loop
@@ -94,7 +94,7 @@ interface TransferredState {
 }
 
 export interface BuildLoopScriptArgs {
-  attachment: ExitAttachment
+  mergeArgs: ExitMergeArgs
   sourceMapInstanceId: string
   sourceScopedRoomIds: string[]
   hallwayScopedRoomId: string
@@ -105,7 +105,7 @@ export function buildLoopTransferredScript(args: BuildLoopScriptArgs): {
   script: GameScript<TransferredState>
   config: Omit<ScenarioConfig, 'id' | 'script'>
 } {
-  const { attachment, sourceMapInstanceId, sourceScopedRoomIds, hallwayScopedRoomId } = args
+  const { mergeArgs, sourceMapInstanceId, sourceScopedRoomIds, hallwayScopedRoomId } = args
 
   const maybeAdvance = (state: TransferredState, ctx: GameScriptContext): void => {
     if (state.advanceScheduled || state.advanceFired) return
@@ -141,7 +141,7 @@ export function buildLoopTransferredScript(args: BuildLoopScriptArgs): {
       // see the current corridor.
       const pos = ctx.getPlayerPosition(playerId)
       if (pos && !state.removedSourceMap && !state.playersInHallway[playerId]) {
-        const hallwaySouthFaceZ = attachment.hallwayOrigin.z + HALL_ROOM_HALF_DEPTH
+        const hallwaySouthFaceZ = mergeArgs.hallwayOrigin.z + HALL_ROOM_HALF_DEPTH
         if (pos.z < hallwaySouthFaceZ) {
           state.playersInHallway[playerId] = true
           if (sourceScopedRoomIds.length > 0) {
@@ -165,7 +165,7 @@ export function buildLoopTransferredScript(args: BuildLoopScriptArgs): {
         // dropped per-player during reveal. Raising both per-player
         // restores the enclosed-corridor feel for this player.
         ctx.setGeometryVisible(
-          [attachment.sourceWallIdToDrop, attachment.initialWallIdToDrop],
+          [mergeArgs.sourceWallId, mergeArgs.targetWallId],
           true,
           [playerId],
         )

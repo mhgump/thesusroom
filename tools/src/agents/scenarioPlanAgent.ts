@@ -1,6 +1,6 @@
 import type { Tool } from '../framework.js'
-import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
-import { withRunLog } from '../_shared/logContext.js'
+import { runAgent, type AgentRunResult, type ResponseSpec } from '../../../shared/agentLoop.js'
+import { withRunLog } from '../../../shared/logContext.js'
 import { INSERT_SCENARIO_PLAN_TOOL } from '../insertScenarioPlan/index.js'
 import { loadSkill } from './_loadPrompt.js'
 

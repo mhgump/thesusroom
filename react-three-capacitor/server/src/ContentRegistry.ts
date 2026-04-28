@@ -1,6 +1,6 @@
 import type { GameMap } from '../../src/game/GameMap.js'
 import type { GameScript } from './GameScript.js'
-import { getBackends } from '../../../tools/src/_shared/backends/index.js'
+import { getBackends } from '../../../shared/backends/index.js'
 import { validateHubConnection, validateExitConnection } from './orchestration/hubAttachment.js'
 import { MAP as INITIAL_MAP } from '../../../assets/initial/map.js'
 
@@ -45,7 +45,7 @@ export interface ScenarioSpec {
   // an incoming hub player through the initial hallway. The docking wall,
   // position, and hallway placement are all derived from the named dock
   // geometry — it must exist on `mainRoomId`, sit on that room's south edge,
-  // match the hallway's floorWidth, and lie fully within the south wall span.
+  // match the hallway's floorWidthX, and lie fully within the south wall span.
   // `validateHubConnection` asserts these at content-load time.
   //   `mainRoomId`       — local room id of the scenario's entry room.
   //   `dockGeometryId`   — the toggleable wall segment that opens on reveal.
@@ -56,7 +56,7 @@ export interface ScenarioSpec {
   // Optional exit-attach declaration. When present, the scenario can hand its
   // active player population off into a fresh initial-hallway MR via
   // `ctx.exitScenario()`. The dock segment must exist on `roomId`, sit on
-  // that room's NORTH edge, match the hallway's floorWidth, and lie within
+  // that room's NORTH edge, match the hallway's floorWidthX, and lie within
   // the north wall span. Asserted at content-load time.
   exitConnection?: {
     roomId: string

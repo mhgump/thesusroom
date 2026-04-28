@@ -30,10 +30,12 @@ const NS_WALL_W = HALL_W - 2 * bt
 const ROOMS: RoomSpec[] = [
   {
     id: 'hall', name: 'Initial',
-    floorWidth: HALL_W,
-    floorDepth: HALL_D,
+    floorWidthX: HALL_W,
+    floorDepthY: HALL_D,
     height: ROOM_H,
-    cameraRect: { xMin: -HD_X, xMax: HD_X, zMin: -HD_Z, zMax: HD_Z },
+    cameraExtentX: HD_X,
+    cameraExtentY: HD_Z,
+    transitionType: 'default',
     geometry: [
       { id: 'initial_wn', cx: 0,        cy: BY, cz: -WALL_CZ, width: NS_WALL_W, height: bh, depth: bt },
       { id: 'initial_ws', cx: 0,        cy: BY, cz:  WALL_CZ, width: NS_WALL_W, height: bh, depth: bt },

@@ -1,6 +1,6 @@
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
-import { validateWrittenFile } from '../_shared/validate.js'
+import { getBackends } from '../../../shared/backends/index.js'
+import { validateWrittenFile } from '../../../shared/validate.js'
 import { INSERT_BOT_SPEC, type InsertBotInput, type InsertBotOutput } from './spec.js'
 
 function validateInput(input: unknown): InsertBotInput {

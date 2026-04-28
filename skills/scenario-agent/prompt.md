@@ -13,7 +13,7 @@ any other export name will fail at run-scenario time even if
 `insert_scenario` accepted it.
 
 Required fields (checked by the validator in
-`tools/src/_shared/validate.ts`):
+`shared/validate.ts`):
 
 - `id` — matches the scenario_id slug.
 - `timeoutMs` — positive number; hard ceiling on scenario runtime (sim-ms).

@@ -15,7 +15,13 @@ import { BotRunner, type BotRunnerOptions } from './bot/BotRunner.js'
 import type { BotLogEntry } from './bot/BotClient.js'
 import type { PlayerRecordingManager } from './PlayerRecordingManager.js'
 import type { ScenarioSpec } from './ContentRegistry.js'
-import { computeHubAttachment, shiftMapToOrigin, type HubAttachment, type ExitAttachment } from './orchestration/hubAttachment.js'
+import { mergeMaps } from './orchestration/mergeMaps.js'
+import {
+  computeHubMergeArgs,
+  shiftMapToOrigin,
+  type ExitMergeArgs,
+} from './orchestration/hubAttachment.js'
+import { scopedRoomId } from '../../src/game/WorldSpec.js'
 
 const NPC_COLOR = '#888888'
 const SIM_MS_PER_TICK = 1000 / TICK_RATE_HZ
@@ -114,10 +120,6 @@ export interface MultiplayerRoomOptions {
   // seated player into a fresh initial-hallway MR. Only meaningful for
   // scenarios whose spec carries `exitConnection`.
   onExitScenario?: (scenarioId: string) => void
-  // Pre-computed attachment for an exit-hallway MR. When set, `acceptExitTransfer`
-  // uses it to arm the per-player reveal (drop both exit walls + enable the
-  // cross-instance edge once). Not used outside the exit-transfer target MR.
-  exitAttachment?: ExitAttachment
 }
 
 // A MultiplayerRoom owns one World, one ScenarioManager, the tick loop, and
@@ -167,10 +169,6 @@ export class MultiplayerRoom {
   private getRoomAtPositionFn: (x: number, z: number) => string | null = () => null
   private scheduledCbs: Array<{ targetTick: number; cb: () => void; cancelled: boolean }> = []
   private readonly readyPlayerIds: Set<string> = new Set()
-  // Per-player waiters fired on the next `world_reset_ack`. The hub transfer
-  // flow enqueues its reveal step here so walls drop only after the client
-  // has rebuilt its local world from the reset snapshot.
-  private readonly worldResetAckWaiters: Map<string, Array<() => void>> = new Map()
 
   // Hub attach declaration from the scenario, or undefined if this room is
   // not hub-capable. `hubSlotOpen` starts true iff hubConnection is present,
@@ -182,26 +180,14 @@ export class MultiplayerRoom {
   // Player id currently occupying the hub slot (waiting in the hallway after
   // transfer). Null outside transfer windows.
   private hubTransferPlayerId: string | null = null
-  // Attachment placement cache for the in-flight transfer. Used by the
-  // ack-gated reveal and the slot-release path.
-  private hubTransferAttachment: HubAttachment | null = null
   // Map-instance id of the temporarily attached hallway, cleared when the
-  // hallway is released.
+  // hallway is removed by `releaseHubTransferState`.
   private hubTransferHallwayInstanceId: string | null = null
-  // Timer that reopens the slot if the ack never arrives.
-  private hubTransferTimeoutCancel: (() => void) | null = null
   private readonly autoDestroyOnEmpty: boolean
-  // Exit-transfer state (target MR side). When set, the room was built by
-  // `executeExitTransfer` and carries a pre-computed attachment that
-  // `acceptExitTransfer` uses to arm per-player reveals.
-  private readonly exitAttachment: ExitAttachment | null
-  // Tracks whether the shared cross-instance adjacency edge has already been
-  // enabled for this exit-transfer room (idempotent across per-player reveals).
-  private exitEdgeEnabled = false
   private readonly onExitScenario?: (scenarioId: string) => void
 
   constructor(opts: MultiplayerRoomOptions) {
-    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnPosition, onScenarioTerminate, recordingManager, hubConnection, maxPlayers, autoDestroyOnEmpty, onExitScenario, exitAttachment } = opts
+    const { roomId, instanceIndex, tickRateHz, onCloseScenario, onRoomDone, spawnPosition, onScenarioTerminate, recordingManager, hubConnection, maxPlayers, autoDestroyOnEmpty, onExitScenario } = opts
     if (!Number.isInteger(maxPlayers) || maxPlayers < 1) {
       throw new Error(`[MultiplayerRoom:${roomId}] maxPlayers must be a positive integer, got ${maxPlayers}`)
     }
@@ -217,7 +203,6 @@ export class MultiplayerRoom {
     this.maxPlayers = maxPlayers
     this.autoDestroyOnEmpty = autoDestroyOnEmpty ?? false
     this.onExitScenario = onExitScenario
-    this.exitAttachment = exitAttachment ?? null
     this.tickRateHz = tickRateHz ?? TICK_RATE_HZ
     this.world = new World([], {
       scheduleSimMs: (ms, cb) => this.scheduleSimMs(ms, cb),
@@ -279,37 +264,36 @@ export class MultiplayerRoom {
   }
 
   // Send a `map_add` carrying a specific map's topology + flattened geometry
-  // + current connections snapshot to a single player. Used by the hub
-  // transfer so the arriving player's client picks up the hallway without
-  // leaking it to other players in the target MR.
-  sendMapAddToPlayer(playerId: string, mapInstanceId: string): void {
-    const map = this.attachedMaps.find(m => m.mapInstanceId === mapInstanceId)
-    if (!map) return
-    this.sendToPlayer(playerId, {
-      type: 'map_add',
-      map: serializeGameMap(map),
-      geometry: this.collectWireGeometryForMap(map),
-      connections: this.world.getConnectionsSnapshot(),
-    })
-  }
-
-  sendMapRemoveToPlayer(playerId: string, mapInstanceId: string): void {
-    this.sendToPlayer(playerId, { type: 'map_remove', mapInstanceId })
-  }
-
+  // + current connections snapshot to every player who has at least one room
+  // of that map currently visible. Players whose every room of the map is
+  // toggled off do NOT receive the message — they neither know nor need to
+  // know the map exists. (The "joining map invisible to existing target
+  // players" half of the merge-maps spec is enforced here on the wire.)
   broadcastMapAdd(mapInstanceId: string): void {
     const map = this.attachedMaps.find(m => m.mapInstanceId === mapInstanceId)
     if (!map) return
-    this.broadcast({
-      type: 'map_add',
+    const payload = {
+      type: 'map_add' as const,
       map: serializeGameMap(map),
       geometry: this.collectWireGeometryForMap(map),
       connections: this.world.getConnectionsSnapshot(),
-    })
+    }
+    for (const pid of this.players.keys()) {
+      if (this.world.playerHasMapVisible(pid, mapInstanceId)) {
+        this.sendToPlayer(pid, payload)
+      }
+    }
   }
 
+  // Same per-player visibility gate as `broadcastMapAdd`. Players who never
+  // had any room of this map visible never received the corresponding
+  // `map_add` either, so they don't need (and can't act on) the removal.
   broadcastMapRemove(mapInstanceId: string): void {
-    this.broadcast({ type: 'map_remove', mapInstanceId })
+    for (const pid of this.players.keys()) {
+      if (this.world.playerHasMapVisible(pid, mapInstanceId)) {
+        this.sendToPlayer(pid, { type: 'map_remove', mapInstanceId })
+      }
+    }
   }
 
   // Construct a Scenario that will attach to this room, without adding it.
@@ -400,33 +384,6 @@ export class MultiplayerRoom {
   handleAbilityUse(playerId: string, abilityId: string): void {
     if (!this.players.has(playerId)) return
     this.scenarios.forPlayer(playerId)?.handleAbilityUse(playerId, abilityId)
-  }
-
-  // Fires when the client confirms it has rebuilt its local World from a
-  // `world_reset`. Per-player callbacks registered via
-  // `onceWorldResetAcked` are invoked, then cleared. Used by the hub flow to
-  // gate the reveal (drop walls + enable the cross-instance adjacency edge)
-  // behind the client being ready to see the target scenario.
-  handleWorldResetAck(playerId: string): void {
-    const cbs = this.worldResetAckWaiters.get(playerId)
-    if (!cbs) return
-    this.worldResetAckWaiters.delete(playerId)
-    for (const cb of cbs) cb()
-  }
-
-  // Register a one-shot callback for the next `world_reset_ack` from this
-  // player. Returns a cancel function. Multiple waiters for the same player
-  // are queued and all fire on the next ack.
-  onceWorldResetAcked(playerId: string, cb: () => void): () => void {
-    let list = this.worldResetAckWaiters.get(playerId)
-    if (!list) { list = []; this.worldResetAckWaiters.set(playerId, list) }
-    list.push(cb)
-    return () => {
-      const arr = this.worldResetAckWaiters.get(playerId)
-      if (!arr) return
-      const i = arr.indexOf(cb)
-      if (i >= 0) arr.splice(i, 1)
-    }
   }
 
   private runTick(): void {
@@ -651,12 +608,7 @@ export class MultiplayerRoom {
       tickRateHz: this.tickRateHz,
     })
 
-    this.sendToPlayer(playerId, {
-      type: 'world_reset',
-      maps: this.attachedMaps.map(serializeGameMap),
-      geometry: this.collectWireGeometry(),
-      connections: this.world.getConnectionsSnapshot(),
-    })
+    this.sendToPlayer(playerId, this.buildWorldResetForPlayer(playerId))
 
     for (const [id, p] of this.players) {
       if (id === playerId) continue
@@ -719,11 +671,19 @@ export class MultiplayerRoom {
   // Transfer an arriving hub player into this room. The WebSocket is the
   // same connection the player held on their private solo-hallway MR — the
   // caller is expected to have called `releasePlayer` on the solo MR to
-  // detach without closing. Adds the initial hallway at the computed
-  // attachment origin, seats the player at the hallway's spawn (translated
-  // into this room's world frame), sends world_reset, and arms the reveal
-  // to fire on `world_reset_ack`. Closes the hub slot until the player
-  // crosses into the scenario's main rooms.
+  // detach without closing.
+  //
+  // Flow (no ceremony, no ack waiters):
+  //   1. Validate the hubConnection's dock geometry against the joining
+  //      hallway's hallway-room dimensions.
+  //   2. `mergeMaps` — attach the shifted hallway to this world and hide
+  //      every joining-map room from each existing player (server-side, so
+  //      the wire-filter on world_reset never ships hallway data to them).
+  //   3. Seat the joining player + attach to scenario.
+  //   4. Drop both dock walls per-player (visibility + collision) so the
+  //      new joiner walks through. The walls go back up for the joiner via
+  //      the scenario's `onPlayerEnterRoom(targetMain)` handler when the
+  //      player crosses into the main room.
   acceptHubTransfer(
     ws: WebSocket,
     browserUuid: string | null,
@@ -739,100 +699,83 @@ export class MultiplayerRoom {
     }
     const targetMap = this.attachedMaps[0]
     if (!targetMap) throw new Error(`[MultiplayerRoom:${this.roomId}] acceptHubTransfer with no attached target map`)
-    const attachment = computeHubAttachment(initialMap, targetMap, this.hubConnection)
 
-    const shiftedHallway = shiftMapToOrigin(initialMap, attachment.hallwayOrigin)
-    this.addMap(shiftedHallway)
+    const merge = computeHubMergeArgs(initialMap, targetMap, this.hubConnection)
+    const shiftedHallway = shiftMapToOrigin(initialMap, merge.hallwayOrigin)
+    const merged = mergeMaps({
+      target: this,
+      joiningMap: shiftedHallway,
+      joiningRoomId: merge.joiningRoomId,
+      joiningWall: 'north',
+      joiningWallPosition: 0.5,
+      targetRoomScopedId: scopedRoomId(targetMap.mapInstanceId, this.hubConnection.mainRoomId),
+      targetWall: 'south',
+      targetWallPosition: merge.targetWallPosition,
+      dockLength: merge.dockLength,
+    })
 
     const spawnWorld = {
-      x: attachment.hallwayOrigin.x + initialSpawnLocal.x,
-      z: attachment.hallwayOrigin.z + initialSpawnLocal.z,
+      x: merge.hallwayOrigin.x + initialSpawnLocal.x,
+      z: merge.hallwayOrigin.z + initialSpawnLocal.z,
     }
     const playerId = this.seatPlayer(ws, browserUuid, routingKey, spawnWorld)
     this.scenarios.attachPlayerToDefault(playerId)
 
     this.hubSlotOpen = false
     this.hubTransferPlayerId = playerId
-    this.hubTransferAttachment = attachment
-    this.hubTransferHallwayInstanceId = shiftedHallway.mapInstanceId
+    this.hubTransferHallwayInstanceId = merged.attachedMapInstanceId
 
-    // Arm the reveal, gated on the client confirming it rebuilt its local
-    // World from the world_reset snapshot. Also arm a timeout in case the
-    // ack never arrives — we don't want the slot stuck closed on a broken
-    // client.
-    const cancelWaiter = this.onceWorldResetAcked(playerId, () => {
-      this.hubTransferTimeoutCancel?.()
-      this.hubTransferTimeoutCancel = null
-      this.revealHubForPlayer(playerId)
-    })
-    this.hubTransferTimeoutCancel = this.scheduleSimMs(5000, () => {
-      cancelWaiter()
-      this.hubTransferTimeoutCancel = null
-      console.warn(`[MultiplayerRoom:${this.roomId}] hub transfer ack timeout for player ${playerId} — releasing slot`)
-      // Ack never came. Best-effort recover: disconnect the player, tear
-      // down the hallway, reopen the slot for someone else.
-      this.releaseHubTransferState()
-      if (this.players.has(playerId)) this.removePlayer(playerId)
-    })
+    this.dropDockWallsForPlayer(playerId, merge.joiningWallId, merged.joiningRoomScopedId, this.hubConnection.dockGeometryId, merged.targetRoomScopedId)
 
     console.log(`[MultiplayerRoom:${this.roomId}] hub transfer in: player=${playerId}`)
     return playerId
   }
 
-  // Drop the walls and enable the cross-instance adjacency for the
-  // transferred player's client. Sends to that player only — other MR
-  // occupants don't have the hallway in their local world, so broadcasting
-  // would spray state updates for geometry they can't render.
-  private revealHubForPlayer(playerId: string): void {
-    const attachment = this.hubTransferAttachment
-    if (!attachment) return
-    this.world.toggleGeometryOff(attachment.initialWallIdToDrop)
-    this.world.toggleGeometryOff(attachment.targetWallIdToDrop)
-    this.world.setConnectionEnabled(attachment.crossInstanceEdge.a, attachment.crossInstanceEdge.b, true)
+  // Drop the joining-side and target-side dock walls for `playerId` only.
+  // Lockstep visibility + collision: scenes/worlds carry both flips so the
+  // wall both renders away AND becomes passable for the joiner. Other
+  // players are unaffected (they may not even have the joining map in their
+  // local world). The script's `onPlayerEnterRoom` handler re-raises the
+  // walls per-player when the joiner crosses into the main scenario room.
+  private dropDockWallsForPlayer(
+    playerId: string,
+    joiningWallGeomId: string,
+    joiningRoomScopedId: string,
+    targetWallGeomId: string,
+    targetRoomScopedId: string,
+  ): void {
+    const scene = this.world.getScene()
+    const physics = this.world.getPhysics()
+    scene.toggleEntityVisibilityOff(joiningRoomScopedId, joiningWallGeomId, playerId)
+    scene.toggleEntityVisibilityOff(targetRoomScopedId, targetWallGeomId, playerId)
+    physics.toggleEntityCollisionsOff(joiningWallGeomId, playerId)
+    physics.toggleEntityCollisionsOff(targetWallGeomId, playerId)
     this.sendToPlayer(playerId, {
       type: 'geometry_state',
+      perPlayer: true,
       updates: [
-        { id: attachment.initialWallIdToDrop, visible: false },
-        { id: attachment.targetWallIdToDrop, visible: false },
+        { id: joiningWallGeomId, visible: false },
+        { id: targetWallGeomId, visible: false },
       ],
-    })
-    this.sendToPlayer(playerId, {
-      type: 'connections_state',
-      connections: this.world.getConnectionsSnapshot(),
     })
   }
 
-  // Detach the hub-transferred player's hallway: remove the map, clear the
-  // cross-instance edge, restore the target's south wall (so other players
-  // arriving later still see room1 as enclosed), reopen the slot.
+  // Detach the hub-transferred player's hallway after they have crossed
+  // into the main scenario rooms. Removes the map (which broadcasts a
+  // `map_remove` only to players with the hallway visible — i.e. the
+  // joiner) and reopens the slot. The per-player dock-wall toggles set up
+  // in `acceptHubTransfer` were already restored by the script's
+  // `onPlayerEnterRoom` handler before this fires; whatever entity-
+  // visibility / collision overrides remain are pruned by Scene/Physics
+  // when the geometry ids disappear via `removeMap`'s teardown.
   private releaseHubTransferState(): void {
-    const attachment = this.hubTransferAttachment
     const hallwayId = this.hubTransferHallwayInstanceId
-    const transferredPid = this.hubTransferPlayerId
-    if (attachment && hallwayId) {
-      // Tell the transferred player to drop the hallway from their local
-      // world. Target wall is restored (turned solid again) for both the
-      // world and the player's view so the next hub transfer starts clean.
-      this.world.toggleGeometryOn(attachment.targetWallIdToDrop)
-      this.world.setConnectionEnabled(attachment.crossInstanceEdge.a, attachment.crossInstanceEdge.b, false)
-      if (transferredPid && this.players.has(transferredPid)) {
-        this.sendToPlayer(transferredPid, {
-          type: 'geometry_state',
-          updates: [{ id: attachment.targetWallIdToDrop, visible: true }],
-        })
-        this.sendMapRemoveToPlayer(transferredPid, hallwayId)
-        this.sendToPlayer(transferredPid, {
-          type: 'connections_state',
-          connections: this.world.getConnectionsSnapshot(),
-        })
-      }
+    if (hallwayId) {
       this.removeMap(hallwayId)
+      this.broadcastMapRemove(hallwayId)
     }
-    this.hubTransferAttachment = null
     this.hubTransferHallwayInstanceId = null
     this.hubTransferPlayerId = null
-    this.hubTransferTimeoutCancel?.()
-    this.hubTransferTimeoutCancel = null
     if (this.hubConnection !== undefined && !this.closed) this.hubSlotOpen = true
   }
 
@@ -861,83 +804,59 @@ export class MultiplayerRoom {
     return out
   }
 
-  // Seat a player transferred in from an exit-source MR at a caller-supplied
-  // world position. Mirrors `acceptHubTransfer` structurally: the source map
-  // is pulled into THIS MR's world lazily on the first transfer (subsequent
-  // transfers short-circuit), the player is seated at their carry-over world
-  // position, `attachPlayerToDefault` fires so `onPlayerAttach` replays this
-  // MR's global runtime state (geometry / room-visibility), and the per-
-  // player reveal is armed on `world_reset_ack` to drop both exit-dock walls
-  // and enable the cross-instance adjacency edge.
+  // Seat a player transferred in from an exit-source MR. The first call on a
+  // freshly-built target MR performs the cross-instance merge (attaches the
+  // source map via `mergeMaps`); every subsequent call only seats + drops
+  // the per-player dock walls. There is no ack ceremony — the welcome /
+  // world_reset and the per-player toggles all ship in the same outbound
+  // bundle so the client sees a consistent state on rebuild.
   //
-  // The target MR is constructed with only the hallway + exit scenario (see
-  // `executeExitTransfer`); the source map's rooms and geometry arrive here
-  // via `addMap(sourceMap)` rather than being pre-attached at construction.
-  // This keeps target MR initialisation symmetric with every other MR (one
-  // map + one default scenario at construction time) and mirrors how
-  // `acceptHubTransfer` attaches the arriving-side hallway.
+  // The dock geometry comes from `mergeArgs` (computed in
+  // `executeExitTransfer` from the source scenario's `exitConnection`).
   acceptExitTransfer(
     ws: WebSocket,
     browserUuid: string | null,
     routingKey: string,
     sourceMap: GameMap,
     worldPos: { x: number; z: number },
+    mergeArgs: ExitMergeArgs,
   ): string {
     if (this.closed) {
       throw new Error(`[MultiplayerRoom:${this.roomId}] acceptExitTransfer called on a closed room`)
     }
-    const attachment = this.exitAttachment
-    if (!attachment) {
-      throw new Error(`[MultiplayerRoom:${this.roomId}] acceptExitTransfer called without exitAttachment`)
-    }
 
-    // Lazily attach the source map on the first transfer. Subsequent transfers
-    // short-circuit because all players share the same target world. We
-    // don't need to broadcast a `map_add` to existing players — the first
-    // transfer has no existing players, and later transfers see the source
-    // via their own `world_reset` below.
+    // Lazy first-time merge: the target MR was built with only the hallway
+    // attached. The first transferring player triggers the source-map
+    // attach + cross-instance edge wiring; later transfers short-circuit.
     const alreadyAttached = this.attachedMaps.some(m => m.mapInstanceId === sourceMap.mapInstanceId)
     if (!alreadyAttached) {
-      this.addMap(sourceMap)
+      mergeMaps({
+        target: this,
+        joiningMap: sourceMap,
+        joiningRoomId: mergeArgs.sourceRoomId,
+        joiningWall: 'north',
+        joiningWallPosition: mergeArgs.sourceWallPosition,
+        targetRoomScopedId: mergeArgs.targetRoomScopedId,
+        targetWall: 'south',
+        targetWallPosition: 0.5,
+        dockLength: mergeArgs.dockLength,
+      })
     }
 
     const playerId = this.seatPlayer(ws, browserUuid, routingKey, worldPos)
     this.scenarios.attachPlayerToDefault(playerId)
 
-    this.onceWorldResetAcked(playerId, () => {
-      this.revealExitForPlayer(playerId, attachment)
-    })
+    const sourceRoomScopedId = scopedRoomId(sourceMap.mapInstanceId, mergeArgs.sourceRoomId)
+    this.dropDockWallsForPlayer(
+      playerId,
+      mergeArgs.sourceWallId,
+      sourceRoomScopedId,
+      mergeArgs.targetWallId,
+      mergeArgs.targetRoomScopedId,
+    )
 
     console.log(`[MultiplayerRoom:${this.roomId}] exit transfer in: player=${playerId} at (${worldPos.x.toFixed(3)},${worldPos.z.toFixed(3)})`)
     return playerId
-  }
-
-  // Drop both exit-dock walls FOR THIS PLAYER ONLY and enable the
-  // cross-instance adjacency edge. The edge must be enabled globally (no
-  // per-player connection graph) and is idempotent. Wall drops are
-  // per-player overrides, so new joiners connecting to the same MR later
-  // still see the walls as solid (global state stays `on`). The script
-  // raises these walls back per-player on `onPlayerEnterRoom(hallway)`,
-  // which is what gives the "south wall closes behind me" effect.
-  private revealExitForPlayer(playerId: string, attachment: ExitAttachment): void {
-    if (!this.exitEdgeEnabled) {
-      this.world.setConnectionEnabled(attachment.crossInstanceEdge.a, attachment.crossInstanceEdge.b, true)
-      this.exitEdgeEnabled = true
-    }
-    this.world.toggleGeometryOff(attachment.initialWallIdToDrop, playerId)
-    this.world.toggleGeometryOff(attachment.sourceWallIdToDrop, playerId)
-    this.sendToPlayer(playerId, {
-      type: 'geometry_state',
-      perPlayer: true,
-      updates: [
-        { id: attachment.initialWallIdToDrop, visible: false },
-        { id: attachment.sourceWallIdToDrop, visible: false },
-      ],
-    })
-    this.sendToPlayer(playerId, {
-      type: 'connections_state',
-      connections: this.world.getConnectionsSnapshot(),
-    })
   }
 
   // Terminal cleanup after an exit transfer: all players have already been
@@ -978,7 +897,6 @@ export class MultiplayerRoom {
     this.world.removePlayer(playerId)
     this.pendingMoves.delete(playerId)
     this.readyPlayerIds.delete(playerId)
-    this.worldResetAckWaiters.delete(playerId)
     // No `player_left` broadcast — the WS is being handed off to another
     // MR, not closed. Do NOT finalize the recording here: the target MR's
     // `connectPlayerShared` will call `onPlayerConnected` with the new id
@@ -1094,7 +1012,6 @@ export class MultiplayerRoom {
     this.world.removePlayer(playerId)
     this.pendingMoves.delete(playerId)
     this.readyPlayerIds.delete(playerId)
-    this.worldResetAckWaiters.delete(playerId)
     // Stop any BotRunner bound to this player so its tick loop doesn't keep
     // ticking against a world that no longer has the player.
     const bot = this.bots.get(playerId)
@@ -1137,6 +1054,39 @@ export class MultiplayerRoom {
       for (const g of this.collectWireGeometryForMap(map)) out.push(g)
     }
     return out
+  }
+
+  // Build a `world_reset` payload filtered to the maps `playerId` has at
+  // least one visible room in. This is the wire half of the merge-maps spec:
+  // a player who has every room of a map toggled off doesn't see the map's
+  // topology / geometry / connections for that map at all. Connections
+  // incident to filtered-out maps are dropped from the snapshot too — they
+  // can't refer to rooms the player doesn't know about.
+  private buildWorldResetForPlayer(playerId: string): ServerMessage {
+    const visibleMaps = this.attachedMaps.filter(m =>
+      this.world.playerHasMapVisible(playerId, m.mapInstanceId),
+    )
+    const visibleScopedRoomIds = new Set<string>()
+    for (const m of visibleMaps) {
+      for (const r of m.rooms) visibleScopedRoomIds.add(`${m.mapInstanceId}_${r.id}`)
+    }
+    const geometry: WireGeometry[] = []
+    for (const m of visibleMaps) {
+      for (const g of this.collectWireGeometryForMap(m)) geometry.push(g)
+    }
+    const fullConnections = this.world.getConnectionsSnapshot()
+    const connections: Record<string, string[]> = {}
+    for (const [a, neighbours] of Object.entries(fullConnections)) {
+      if (!visibleScopedRoomIds.has(a)) continue
+      const filtered = neighbours.filter(n => visibleScopedRoomIds.has(n))
+      connections[a] = filtered
+    }
+    return {
+      type: 'world_reset',
+      maps: visibleMaps.map(serializeGameMap),
+      geometry,
+      connections,
+    }
   }
 
   private collectWireGeometryForMap(map: GameMap): WireGeometry[] {
@@ -1239,12 +1189,12 @@ export class MultiplayerRoom {
       tickRateHz: this.tickRateHz,
     })
 
-    msgs.push({
-      type: 'world_reset',
-      maps: this.attachedMaps.map(serializeGameMap),
-      geometry: this.collectWireGeometry(),
-      connections: this.world.getConnectionsSnapshot(),
-    })
+    // Observers see the same world_reset the observed player would see —
+    // filtered to the maps that player has at least one visible room in.
+    // Spectating a hub-scenario player who can't see the hallway means the
+    // observer also can't see the hallway, which is the desired behavior
+    // (otherwise the spectator's UI would render rooms the player can't).
+    msgs.push(this.buildWorldResetForPlayer(playerId))
 
     for (const [id, other] of this.players) {
       if (id === playerId) continue

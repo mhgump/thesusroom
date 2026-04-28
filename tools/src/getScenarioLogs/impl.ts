@@ -1,7 +1,7 @@
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
-import { parseRunResultKey } from '../_shared/backends/types.js'
-import { parseLogs } from '../_shared/logFormat.js'
+import { getBackends } from '../../../shared/backends/index.js'
+import { parseRunResultKey } from '../../../shared/backends/types.js'
+import { parseLogs } from '../../../shared/logFormat.js'
 import {
   GET_SCENARIO_LOGS_SPEC,
   type GetScenarioLogsInput,

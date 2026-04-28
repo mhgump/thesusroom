@@ -1,5 +1,5 @@
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
+import { getBackends } from '../../../shared/backends/index.js'
 import {
   RUN_SCENARIO_WITH_BOTS_TOOL,
   type RunScenarioWithBotsInput,

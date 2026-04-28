@@ -1,7 +1,7 @@
 import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
-import { PROJECT_ROOT } from '../_shared/paths.js'
+import { getBackends } from '../../../shared/backends/index.js'
+import { PROJECT_ROOT } from '../../../shared/paths.js'
 import {
   LIST_CONTENT_SPEC,
   type ListContentInput,

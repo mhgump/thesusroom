@@ -54,8 +54,8 @@ export function buildMapInstanceArtifacts(
     roomBounds.set(scopedId, {
       cx: p.x,
       cz: p.z,
-      hw: room.floorWidth / 2,
-      hd: room.floorDepth / 2,
+      hw: room.floorWidthX / 2,
+      hd: room.floorDepthY / 2,
     })
   }
 

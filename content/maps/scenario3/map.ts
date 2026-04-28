@@ -25,7 +25,7 @@ const EW_DEPTH  = 2 * (HD - bt)
 
 // Hub dock split: the middle 0.25-wide segment of the south wall is the
 // toggleable hallway dock; the two flanking segments stay solid. Matches
-// the initial hallway's 0.25 floorWidth so the faces meet exactly.
+// the initial hallway's 0.25 floorWidthX so the faces meet exactly.
 const HUB_DOCK_W = 0.25
 const S_SIDE_W   = (ROOM_SIZE - HUB_DOCK_W) / 2
 const S_SIDE_CX  = (ROOM_SIZE + HUB_DOCK_W) / 4
@@ -44,10 +44,11 @@ const BTN_TRIGGER_R = 0.0645
 const ROOMS: RoomSpec[] = [
   {
     id: 'main', name: 'Scenario 3',
-    floorWidth: ROOM_SIZE,
-    floorDepth: ROOM_SIZE,
+    floorWidthX: ROOM_SIZE,
+    floorDepthY: ROOM_SIZE,
     height: ROOM_H,
-    cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+    cameraExtentX: 0, cameraExtentY: 0,
+    transitionType: 'default',
     geometry: [
       { id: 's3_wnl', cx: -N_SIDE_CX,  cy: BY, cz: -WALL_C, width: N_SIDE_W,    height: bh, depth: bt },
       { id: 's3_wne', cx: 0,           cy: BY, cz: -WALL_C, width: EXIT_DOCK_W, height: bh, depth: bt },

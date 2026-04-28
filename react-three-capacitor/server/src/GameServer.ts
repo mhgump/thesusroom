@@ -18,7 +18,7 @@ import {
   getDataBackend,
   PlayerRegistry,
   PlayerRecordings,
-} from '../../../tools/src/_shared/backends/index.js'
+} from '../../../shared/backends/index.js'
 import { ConnectionDispatcher } from './connections/ConnectionDispatcher.js'
 import { ObserveHandler } from './connections/ObserveHandler.js'
 import { ReplayHandler } from './connections/ReplayHandler.js'
@@ -236,8 +236,6 @@ export class GameServer {
           // handled by game script manager via room if needed
         } else if (msg.type === 'ready') {
           binding.room.handlePlayerReady(binding.playerId)
-        } else if (msg.type === 'world_reset_ack') {
-          binding.room.handleWorldResetAck(binding.playerId)
         } else if (msg.type === 'ability_use') {
           binding.room.handleAbilityUse(binding.playerId, msg.abilityId)
         }

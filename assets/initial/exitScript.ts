@@ -4,7 +4,7 @@ import type {
   PlayerEnterRoomPayload,
 } from '../../react-three-capacitor/server/src/GameScript.js'
 import type { ScenarioConfig } from '../../react-three-capacitor/server/src/Scenario.js'
-import type { ExitAttachment } from '../../react-three-capacitor/server/src/orchestration/hubAttachment.js'
+import type { ExitMergeArgs } from '../../react-three-capacitor/server/src/orchestration/hubAttachment.js'
 import type { InstructionEventSpec } from '../../react-three-capacitor/src/game/GameSpec.js'
 
 // Sim-time delays (ms). Tick-driven, matching the canonical 20Hz tick rate.
@@ -25,14 +25,14 @@ export interface ExitState {
 }
 
 export interface BuildExitScriptArgs {
-  attachment: ExitAttachment
+  mergeArgs: ExitMergeArgs
   sourceMapInstanceId: string
   sourceScopedRoomIds: string[]
   hallwayScopedRoomId: string
 }
 
 // Factory: build the exit-hallway scenario script + config for one in-flight
-// exit transfer. Closes over the (immutable) attachment and source-map ids
+// exit transfer. Closes over the (immutable) merge args and source-map ids
 // so handler bodies can reference them without stashing in state. Each exit
 // transfer gets its own script instance — safe because the closed-over data
 // is per-transfer and never mutates.
@@ -41,7 +41,7 @@ export function buildExitScript(args: BuildExitScriptArgs): {
   script: GameScript<ExitState>
   config: Omit<ScenarioConfig, 'id' | 'script'>
 } {
-  const { attachment, sourceMapInstanceId, hallwayScopedRoomId } = args
+  const { mergeArgs, sourceMapInstanceId, hallwayScopedRoomId } = args
   void args.sourceScopedRoomIds  // reserved for parity with loop variant; not used here yet
 
   const checkAllEntered = (state: ExitState, ctx: GameScriptContext): void => {
@@ -91,7 +91,7 @@ export function buildExitScript(args: BuildExitScriptArgs): {
         // (per-player) means the hallway reads as a fully enclosed
         // corridor from their view, with no visible gap at the south face.
         ctx.setGeometryVisible(
-          [attachment.sourceWallIdToDrop, attachment.initialWallIdToDrop],
+          [mergeArgs.sourceWallId, mergeArgs.targetWallId],
           true,
           [playerId],
         )

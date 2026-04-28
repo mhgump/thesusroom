@@ -4,7 +4,7 @@ import type {
   PlayerRecordings,
   PlayerRecordingDoc,
   RecordingEvent,
-} from '../../../tools/src/_shared/backends/index.js'
+} from '../../../shared/backends/index.js'
 
 export const RECORDING_DURATION_MS = 60_000
 

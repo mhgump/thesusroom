@@ -6,7 +6,7 @@
 // stays fresh.
 
 import { spawn, spawnSync } from 'node:child_process'
-import type { ToolSpec } from '../framework.js'
+import type { ToolSpec } from '../tools/src/framework.js'
 
 const MODEL_ID = 'claude-opus-4-7'
 const API_VERSION = 'vertex-2023-10-16'

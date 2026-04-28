@@ -193,6 +193,12 @@ export class Scenario {
 
     // Seed World with scenario-level initial state. From here on the World
     // owns the live values; we don't keep a local mirror.
+    // TODO(refactor): split — `initialVisibility` is named for visibility, but
+    // the legacy `toggleGeometryOff` flips both visibility and collision.
+    // Existing scenarios rely on the combined behavior (a hidden wall is also
+    // passable). Once scenarios are audited individually, switch to the
+    // explicit Scene/Physics split: scene.toggleEntityVisibilityOff +
+    // physics.toggleEntityCollisionsOff.
     for (const [id, visible] of Object.entries(config.initialVisibility)) {
       if (!visible) this.deps.world.toggleGeometryOff(id)
     }
@@ -607,6 +613,13 @@ export class Scenario {
         self.deps.onTerminate?.()
       },
       setGeometryVisible(geometryIds, visible, playerIds) {
+        // TODO(refactor): split — the public API is named `setGeometryVisible`
+        // but the legacy world.toggleGeometryOn/Off it dispatches to flips
+        // both visibility (renderer) and collision (Rapier). All current
+        // scenario callers want the combined behavior (hidden = passable),
+        // so the deprecated convenience is fine here. To split, route
+        // through scene.toggleEntityVisibilityOn/Off and have callers pass a
+        // separate `setGeometryCollidable` for collision-only flips.
         const perPlayer = !!(playerIds && playerIds.length > 0)
         const updates = geometryIds.map(id => ({ id, visible }))
         if (perPlayer) {

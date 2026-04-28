@@ -3,7 +3,7 @@
 // Each wrapper (map-agent.ts, scenario-agent.ts, ...) passes its agent runner
 // here; this handles argv parsing, stdin fallback, and JSON output.
 
-import type { AgentRunResult } from '../src/_shared/agentLoop.js'
+import type { AgentRunResult } from '../../shared/agentLoop.js'
 
 export interface RunnerCliOptions<T> {
   // Name used in `Usage:` output and log prefix.

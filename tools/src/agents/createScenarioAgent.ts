@@ -15,9 +15,9 @@
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import type { Tool } from '../framework.js'
-import { PROJECT_ROOT } from '../_shared/paths.js'
-import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
-import { withRunLog } from '../_shared/logContext.js'
+import { PROJECT_ROOT } from '../../../shared/paths.js'
+import { runAgent, type AgentRunResult, type ResponseSpec } from '../../../shared/agentLoop.js'
+import { withRunLog } from '../../../shared/logContext.js'
 import { loadSkill } from './_loadPrompt.js'
 // Sub-agent tool wrappers.
 import { SCENARIO_PLAN_AGENT_TOOL } from '../scenarioPlanAgentTool/index.js'

@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getBackends } from '../_shared/backends/index.js'
-import { ADHOC_TEST_SPEC, formatRunResultKey } from '../_shared/backends/types.js'
+import { getBackends } from '../../../shared/backends/index.js'
+import { ADHOC_TEST_SPEC, formatRunResultKey } from '../../../shared/backends/types.js'
 import type { Tool } from '../framework.js'
 import {
   RUN_SCENARIO_SPEC,

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { CONTENT_DIR } from '../_shared/paths.js'
+import { CONTENT_DIR } from '../../../shared/paths.js'
 import {
   INSERT_SCENARIO_PLAN_SPEC,
   type InsertScenarioPlanInput,

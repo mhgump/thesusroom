@@ -36,22 +36,23 @@ const DOOR_GAP_W = 2 * D_HALF                 // 0.2  width of the gap (and ther
 // 0.25 wide) and is the toggleable one; `r1_sl` / `r1_sr` stay solid always,
 // so players already in scenario2 see the wall as an almost-continuous span
 // with a small opening when a hub transfer is in flight.
-const R1_S_SEG_W  = R1W / 3   // 0.25 — matches hallway floorWidth
+const R1_S_SEG_W  = R1W / 3   // 0.25 — matches hallway floorWidthX
 const R1_S_SEG_CX = R1W / 3   // 0.25 — half-room minus half-segment = 0.375 - 0.125
 
 // Room3's north wall is split the same way so the exit hallway can dock on
 // the middle segment (`r3_ne`) without exposing the north corners. Width of
-// the middle segment matches the hallway's 0.25 floorWidth.
+// the middle segment matches the hallway's 0.25 floorWidthX.
 const EXIT_DOCK_W  = 0.25
-const R3_N_SEG_W   = R3W / 3   // 0.25 — matches hallway floorWidth
+const R3_N_SEG_W   = R3W / 3   // 0.25 — matches hallway floorWidthX
 const R3_N_SEG_CX  = R3W / 3   // 0.25
 
 const ROOMS: RoomSpec[] = [
   {
     id: 'room1', name: 'Room 1',
-    floorWidth: R1W, floorDepth: R1D,
+    floorWidthX: R1W, floorDepthY: R1D,
     height: ROOM_H,
-    cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
+    cameraExtentX: 0.375, cameraExtentY: 0.375,
+    transitionType: 'default',
     // south (three segments; middle `r1_s` drops on hub transfer) + E/W
     // (E/W extend north so the north-east/west corners are sealed). North
     // boundary is owned by room2's south wall (authored on room2 below).
@@ -65,9 +66,10 @@ const ROOMS: RoomSpec[] = [
   },
   {
     id: 'room2', name: 'Room 2',
-    floorWidth: R2W, floorDepth: R2D,
+    floorWidthX: R2W, floorDepthY: R2D,
     height: ROOM_H,
-    cameraRect: { xMin: -0.375, xMax: 0.375, zMin: -0.375, zMax: 0.375 },
+    cameraExtentX: 0.375, cameraExtentY: 0.375,
+    transitionType: 'default',
     // South (split at door gap for room1) + E/W (extend to north edge so
     // the corners are sealed even when room2_north_wall is absent).
     // room2_north_wall is the toggleable centre span of the north wall —
@@ -85,9 +87,15 @@ const ROOMS: RoomSpec[] = [
   },
   {
     id: 'room3', name: 'Room 3',
-    floorWidth: R3W, floorDepth: R3D,
+    floorWidthX: R3W, floorDepthY: R3D,
     height: ROOM_H,
-    cameraRect: { xMin: -0.375, xMax: 0.375, zMin: 0.125, zMax: 0.375 },
+    // Original cameraRect was { xMin: -0.375, xMax: 0.375, zMin: 0.125, zMax: 0.375 },
+    // a non-centered rect biased toward the room's north half. The migrated
+    // shape requires a half-extent centered on the room; using max(|0.125|, |0.375|)
+    // for cameraExtentY preserves all originally-reachable camera positions
+    // (camera can now also pan the south half — slight expansion, no removal).
+    cameraExtentX: 0.375, cameraExtentY: 0.375,
+    transitionType: 'default',
     // North (three segments; middle `r3_ne` is the exit dock) + E/W. South
     // boundary is owned by room2's north wall (room2_north_wall) — room3 has
     // no south wall of its own so it reads as open-to-room2 once that
@@ -102,30 +110,23 @@ const ROOMS: RoomSpec[] = [
   },
 ]
 
+// NOTE (Task 1 migration): the previous shape authored an explicit
+// `cameraTransition.corners` polygon on each connection. That field is gone;
+// `transitionRegion: 'toEdge'` is the new opt-in marker — Task 4 will
+// synthesize the polygon from this. Until Task 4 lands, the camera will
+// clamp to per-room rects only, with no inter-room bridge polygons.
 const CONNECTIONS: RoomConnection[] = [
   {
-    roomIdA: 'room1', wallA: 'north', positionA: 0.5,
-    roomIdB: 'room2', wallB: 'south', positionB: 0.5,
-    width: DOOR_WIDTH,
-    cameraTransition: {
-      corners: [
-        { x:  0,    z:  0     },
-        { x:  0.05, z: -0.375 },
-        { x: -0.05, z: -0.375 },
-      ],
-    },
+    roomIdA: 'room1',
+    roomIdB: 'room2',
+    room1: { wall: 'north', length: DOOR_WIDTH, position: 0.5, transitionRegion: 'toEdge' },
+    room2: { wall: 'south', length: DOOR_WIDTH, position: 0.5, transitionRegion: 'toEdge' },
   },
   {
-    roomIdA: 'room2', wallA: 'north', positionA: 0.5,
-    roomIdB: 'room3', wallB: 'south', positionB: 0.5,
-    width: DOOR_WIDTH,
-    cameraTransition: {
-      corners: [
-        { x:  0,    z:  0     },
-        { x:  0.05, z: -0.375 },
-        { x: -0.05, z: -0.375 },
-      ],
-    },
+    roomIdA: 'room2',
+    roomIdB: 'room3',
+    room1: { wall: 'north', length: DOOR_WIDTH, position: 0.5, transitionRegion: 'toEdge' },
+    room2: { wall: 'south', length: DOOR_WIDTH, position: 0.5, transitionRegion: 'toEdge' },
   },
 ]
 

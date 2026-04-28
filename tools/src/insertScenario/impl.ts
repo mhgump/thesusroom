@@ -4,8 +4,8 @@ import {
   VettedScenarios,
   getBackends,
   getDataBackend,
-} from '../_shared/backends/index.js'
-import { validateWrittenFile } from '../_shared/validate.js'
+} from '../../../shared/backends/index.js'
+import { validateWrittenFile } from '../../../shared/validate.js'
 import {
   INSERT_SCENARIO_SPEC,
   type InsertScenarioInput,

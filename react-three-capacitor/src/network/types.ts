@@ -56,5 +56,4 @@ export type ClientMessage =
   | { type: 'move'; tick: number; inputs: MoveInput[] }
   | { type: 'choice'; eventId: string; optionId: string }
   | { type: 'ready' }
-  | { type: 'world_reset_ack' }
   | { type: 'ability_use'; abilityId: string }

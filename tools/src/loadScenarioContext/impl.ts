@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { CONTENT_DIR, PROJECT_ROOT } from '../_shared/paths.js'
-import type { RunScenarioSpec } from '../_shared/runScenarioSpec.js'
+import { CONTENT_DIR, PROJECT_ROOT } from '../../../shared/paths.js'
+import type { RunScenarioSpec } from '../../../shared/runScenarioSpec.js'
 import {
   LOAD_SCENARIO_CONTEXT_SPEC,
   type LoadScenarioContextInput,

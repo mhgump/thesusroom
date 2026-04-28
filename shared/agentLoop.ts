@@ -14,7 +14,7 @@
 // knows what to produce; its implementation simply records whatever is passed.
 // (Agents cannot emit free text as a final answer — they must call record.)
 
-import type { JsonSchemaObject, Tool, ToolSpec } from '../framework.js'
+import type { JsonSchemaObject, Tool, ToolSpec } from '../tools/src/framework.js'
 import {
   createMessage,
   type AnthropicMessage,

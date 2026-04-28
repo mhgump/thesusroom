@@ -1,6 +1,6 @@
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
-import { validateWrittenFile } from '../_shared/validate.js'
+import { getBackends } from '../../../shared/backends/index.js'
+import { validateWrittenFile } from '../../../shared/validate.js'
 import { INSERT_MAP_SPEC, type InsertMapInput, type InsertMapOutput } from './spec.js'
 
 function validateInput(input: unknown): InsertMapInput {

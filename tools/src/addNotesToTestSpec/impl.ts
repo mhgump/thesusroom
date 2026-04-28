@@ -1,5 +1,5 @@
 import type { Tool } from '../framework.js'
-import { getBackends } from '../_shared/backends/index.js'
+import { getBackends } from '../../../shared/backends/index.js'
 import {
   ADD_NOTES_TO_TEST_SPEC_SPEC,
   type AddNotesToTestSpecInput,

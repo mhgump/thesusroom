@@ -58,9 +58,10 @@ const H_CX = H_HW - bt / 2
 const ROOMS: RoomSpec[] = [
   {
     id: 'center', name: 'Center',
-    floorWidth: CTR_W, floorDepth: CTR_D,
+    floorWidthX: CTR_W, floorDepthY: CTR_D,
     height: ROOM_H,
-    cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+    cameraExtentX: 0, cameraExtentY: 0,
+    transitionType: 'default',
     geometry: [
       // North wall — flanking solid segments; the 0.25 doorway in the
       // middle is intentionally absent (the connection to north_hall fills
@@ -77,9 +78,14 @@ const ROOMS: RoomSpec[] = [
   },
   {
     id: 'north_hall', name: 'North Hallway',
-    floorWidth: HALL_W, floorDepth: HALL_D,
+    floorWidthX: HALL_W, floorDepthY: HALL_D,
     height: ROOM_H,
-    cameraRect: { xMin: -HALL_W / 2, xMax: HALL_W / 2, zMin: -HALL_D / 2 + 0.5, zMax: HALL_D / 2 },
+    // Original cameraRect had asymmetric z (zMin=0.125, zMax=0.375 → north-biased).
+    // The migrated centered half-extent uses max(|0.125|, |0.375|) so the camera
+    // can still reach every previously-reachable position; it can also pan into
+    // the south half now (slight expansion, no removal).
+    cameraExtentX: HALL_W / 2, cameraExtentY: HALL_D / 2,
+    transitionType: 'default',
     geometry: [
       { id: 's4_n_n',  cx: 0,      cy: BY, cz: -H_WALL_C, width: HALL_W, height: bh, depth: bt },
       { id: 's4_n_sl', cx: -H_CX,  cy: BY, cz:  H_WALL_C, width: bt,     height: bh, depth: bt },
@@ -90,18 +96,17 @@ const ROOMS: RoomSpec[] = [
   },
 ]
 
+// NOTE (Task 1 migration): the previous shape authored an explicit
+// `cameraTransition.corners` polygon. That field is gone;
+// `transitionRegion: 'toEdge'` is the new opt-in marker — Task 4 will
+// synthesize the polygon from this. Until Task 4 lands, the camera clamps
+// to per-room rects only, with no inter-room bridge polygons.
 const CONNECTIONS: RoomConnection[] = [
   {
-    roomIdA: 'center', wallA: 'north', positionA: 0.5,
-    roomIdB: 'north_hall', wallB: 'south', positionB: 0.5,
-    width: HALL_W,
-    cameraTransition: {
-      corners: [
-        { x:  0,          z:  0         },
-        { x:  HALL_W / 2, z: -CTR_D / 2 },
-        { x: -HALL_W / 2, z: -CTR_D / 2 },
-      ],
-    },
+    roomIdA: 'center',
+    roomIdB: 'north_hall',
+    room1: { wall: 'north', length: HALL_W, position: 0.5, transitionRegion: 'toEdge' },
+    room2: { wall: 'south', length: HALL_W, position: 0.5, transitionRegion: 'toEdge' },
   },
 ]
 

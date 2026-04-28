@@ -12,8 +12,8 @@ import type {
 // Type-only imports of the runtime shapes scenarios and maps evaluate to. These
 // live in the server / client source trees respectively; resolving them here
 // does not pull the server or client runtime into this package.
-import type { ScenarioSpec } from '../../../../react-three-capacitor/server/src/ContentRegistry.js'
-import type { GameMap } from '../../../../react-three-capacitor/src/game/GameMap.js'
+import type { ScenarioSpec } from '../../react-three-capacitor/server/src/ContentRegistry.js'
+import type { GameMap } from '../../react-three-capacitor/src/game/GameMap.js'
 
 // Scenario runs need an atomic "next index" per (scenario, test_spec) to
 // assign fresh keys before put().

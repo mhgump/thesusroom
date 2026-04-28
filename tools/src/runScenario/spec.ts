@@ -22,7 +22,7 @@ export interface RunScenarioInput {
 // Wire shape of content/scenario_runs/{scenario}/{test_spec}/{index}/response.json.
 // The writer (react-three-capacitor/server/scripts/run-scenario.ts) produces
 // this; readers in tools/src/ parse `logs` / `server_logs` with parseLogs()
-// from _shared/logFormat.ts.
+// from shared/logFormat.ts.
 export interface ScenarioRunResult {
   // Canonical string form of the RunResultKey: "<scenario>/<test_spec>/<index>".
   run_id: string
@@ -36,7 +36,7 @@ export interface ScenarioRunResult {
     log_bot_indices: number[] | null
     effective_timeout_ms: number
   }
-  // Text block, one LogEntry per line — see _shared/logFormat.ts.
+  // Text block, one LogEntry per line — see shared/logFormat.ts.
   logs: string
   termination_metadata: {
     terminated_by: 'scenario' | 'timeout'
@@ -50,7 +50,7 @@ export interface ScenarioRunResult {
       survivor_player_ids: string[]
     }
   }
-  // Text block, one LogEntry per line — see _shared/logFormat.ts.
+  // Text block, one LogEntry per line — see shared/logFormat.ts.
   server_logs: string
 }
 

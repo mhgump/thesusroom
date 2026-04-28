@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { CONTENT_DIR, SCENARIO_RUNS_DIR } from '../../paths.js'
 import type { ScenarioBackend } from '../index.js'
 import type { ScenarioKey, TsSource } from '../types.js'
-import type { ScenarioSpec } from '../../../../../react-three-capacitor/server/src/ContentRegistry.js'
+import type { ScenarioSpec } from '../../../react-three-capacitor/server/src/ContentRegistry.js'
 
 const SCENARIOS_DIR = path.join(CONTENT_DIR, 'scenarios')
 const BOTS_DIR = path.join(CONTENT_DIR, 'bots')

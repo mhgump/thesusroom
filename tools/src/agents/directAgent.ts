@@ -1,6 +1,6 @@
 import type { Tool } from '../framework.js'
-import { runAgent, type AgentRunResult, type ResponseSpec } from '../_shared/agentLoop.js'
-import { withRunLog } from '../_shared/logContext.js'
+import { runAgent, type AgentRunResult, type ResponseSpec } from '../../../shared/agentLoop.js'
+import { withRunLog } from '../../../shared/logContext.js'
 import { LOAD_SCENARIO_CONTEXT_TOOL } from '../loadScenarioContext/index.js'
 import { INSERT_MAP_TOOL } from '../insertMap/index.js'
 import { INSERT_SCENARIO_TOOL } from '../insertScenario/index.js'

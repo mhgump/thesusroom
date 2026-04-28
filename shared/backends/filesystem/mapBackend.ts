@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { CONTENT_DIR } from '../../paths.js'
 import type { MapBackend } from '../index.js'
 import type { MapKey, TsSource } from '../types.js'
-import type { GameMap } from '../../../../../react-three-capacitor/src/game/GameMap.js'
+import type { GameMap } from '../../../react-three-capacitor/src/game/GameMap.js'
 
 const MAPS_DIR = path.join(CONTENT_DIR, 'maps')
 

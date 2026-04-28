@@ -4,7 +4,7 @@ import type { MultiplayerRoom } from '../Room.js'
 import type { MultiplayerRoomRegistry } from '../MultiplayerRoomRegistry.js'
 import type { PlayerRecordingManager } from '../PlayerRecordingManager.js'
 import type { RoomOrchestration } from '../orchestration/RoomOrchestration.js'
-import type { PlayerRecordings } from '../../../../tools/src/_shared/backends/index.js'
+import type { PlayerRecordings } from '../../../../shared/backends/index.js'
 import type { ScenarioRunRegistry } from '../scenarioRun/ScenarioRunRegistry.js'
 
 // Top-level abstraction for a class of WebSocket client. Each URL shape maps

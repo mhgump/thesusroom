@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { SKILLS_DIR } from '../_shared/paths.js'
+import { SKILLS_DIR } from '../../../shared/paths.js'
 
 const SKILL_DOC = 'SKILL.md'
 

@@ -8,10 +8,10 @@ import type { ScenarioConfig } from '../Scenario.js'
 import { MultiplayerRoom } from '../Room.js'
 import { scopedRoomId } from '../../../src/game/WorldSpec.js'
 import {
-  computeExitAttachment,
+  computeExitMergeArgs,
   renameMapInstance,
   shiftMapToOrigin,
-  type ExitAttachment,
+  type ExitMergeArgs,
 } from './hubAttachment.js'
 import { MAP as INITIAL_MAP } from '../../../../assets/initial/map.js'
 import { buildExitScript } from '../../../../assets/initial/exitScript.js'
@@ -24,7 +24,11 @@ import { buildExitScript } from '../../../../assets/initial/exitScript.js'
 let exitHallwayCounter = 0
 
 export interface BuildTargetScenarioArgs {
-  attachment: ExitAttachment
+  // Per-player merge args (dock geometry ids on both sides + cross-instance
+  // edge metadata). Replaces the legacy `attachment` field — scripts that
+  // need the dock-wall ids can pull them from `mergeArgs.sourceWallId` /
+  // `mergeArgs.targetWallId`.
+  mergeArgs: ExitMergeArgs
   // Renamed source map instance id — the id actually attached to the target
   // world. Scripts that want to drop the source map later must use this id,
   // not the original one.
@@ -78,9 +82,9 @@ export interface ExitTransferResult {
   // same chain — otherwise attachment math would treat the source as
   // centred on origin and the player would land outside the new source.
   targetHallwayMap: GameMap
-  // Attachment used for this transfer. Exposed for telemetry / callers
+  // Merge args used for this transfer. Exposed for telemetry / callers
   // building their own next-step state.
-  attachment: ExitAttachment
+  mergeArgs: ExitMergeArgs
 }
 
 // Hand off every seated player from `sourceRoom` into a fresh initial-hallway
@@ -125,25 +129,25 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
     dockGeometryId: renameGeomId(exit.dockGeometryId),
   }
 
-  const attachment = computeExitAttachment(renamedSource, INITIAL_MAP, renamedExit)
+  const mergeArgs = computeExitMergeArgs(renamedSource, INITIAL_MAP, renamedExit)
 
   const hallwayScopedRoomId = scopedRoomId(INITIAL_MAP.mapInstanceId, INITIAL_MAP.rooms[0].id)
   const sourceScopedRoomIds = renamedSource.rooms.map(r => scopedRoomId(renamedSource.mapInstanceId, r.id))
   const targetBuild = buildTargetScenario({
-    attachment,
+    mergeArgs,
     sourceMapInstanceId: renamedSource.mapInstanceId,
     sourceScopedRoomIds,
     hallwayScopedRoomId,
   })
 
   // New connections arriving mid-cycle spawn inside the new hallway. The
-  // hallway is placed at `attachment.hallwayOrigin`; add the hallway's local
+  // hallway is placed at `mergeArgs.hallwayOrigin`; add the hallway's local
   // spawn offset so we land near the entrance (not exactly on the boundary
   // wall, which overlap-resolve would push off).
   const hallwayLocalSpawn = { x: 0, z: 0.5 }
   const targetSpawn = {
-    x: attachment.hallwayOrigin.x + hallwayLocalSpawn.x,
-    z: attachment.hallwayOrigin.z + hallwayLocalSpawn.z,
+    x: mergeArgs.hallwayOrigin.x + hallwayLocalSpawn.x,
+    z: mergeArgs.hallwayOrigin.z + hallwayLocalSpawn.z,
   }
 
   const target = new MultiplayerRoom({
@@ -152,7 +156,6 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
     maxPlayers: targetMaxPlayers ?? sourceRoom.maxPlayers,
     spawnPosition: targetSpawn,
     recordingManager,
-    exitAttachment: attachment,
     onExitScenario: targetOnExitScenario ? () => targetOnExitScenario(target) : undefined,
     onScenarioTerminate: targetOnScenarioTerminate
       ? (scenarioId) => targetOnScenarioTerminate(target, scenarioId)
@@ -172,12 +175,10 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
   })
 
   // Attach ONLY the shifted hallway at construction. The renamed source is
-  // pulled in lazily by the first `acceptExitTransfer` call below, so the
-  // target MR is structurally symmetric with any other MR (one authored map +
-  // one default scenario at construction time) — the same shape as the
-  // scenario MR that the entrance flow targets, where the arriving-side
-  // hallway is attached by `acceptHubTransfer` rather than pre-seeded.
-  const shiftedHallway = shiftMapToOrigin(INITIAL_MAP, attachment.hallwayOrigin)
+  // pulled in lazily by the first `acceptExitTransfer` call below (via
+  // `mergeMaps`), so the target MR is structurally symmetric with any other
+  // MR (one authored map + one default scenario at construction time).
+  const shiftedHallway = shiftMapToOrigin(INITIAL_MAP, mergeArgs.hallwayOrigin)
   const hallwayRoomIds = target.addMap(shiftedHallway)
 
   const scenario = target.buildScenario(
@@ -197,7 +198,7 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
   console.log(
     `[exitTransfer] ${sourceRoom.roomId} → ${targetRoomId} ` +
     `(scenario=${sourceScenario.id}, players=${handles.length}, ` +
-    `hallway@(${attachment.hallwayOrigin.x.toFixed(3)},${attachment.hallwayOrigin.z.toFixed(3)}))`,
+    `hallway@(${mergeArgs.hallwayOrigin.x.toFixed(3)},${mergeArgs.hallwayOrigin.z.toFixed(3)}))`,
   )
 
   for (const handle of handles) {
@@ -205,7 +206,7 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
     sourceRoom.releasePlayer(handle.playerId)
     // World-space position carries over 1:1 — the source map is attached at
     // its authored origin inside target (the first `acceptExitTransfer` call
-    // addMaps it), matching where the source MR had it, so the player stays
+    // mergeMaps it), matching where the source MR had it, so the player stays
     // physically in place from the client's perspective.
     const newPlayerId = target.acceptExitTransfer(
       handle.ws,
@@ -213,6 +214,7 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
       targetRoutingKey,
       renamedSource,
       { x: handle.x, z: handle.z },
+      mergeArgs,
     )
     rebindWs(handle.ws, target, newPlayerId)
   }
@@ -222,5 +224,5 @@ export function executeExitTransfer(args: ExecuteExitTransferArgs): ExitTransfer
   // retry — acceptable for v1.
   sourceRoom.closeAndDestroy()
 
-  return { targetRoom: target, targetHallwayMap: shiftedHallway, attachment }
+  return { targetRoom: target, targetHallwayMap: shiftedHallway, mergeArgs }
 }

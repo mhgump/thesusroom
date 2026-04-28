@@ -39,6 +39,9 @@ COPY react-three-capacitor/server/src/ ./react-three-capacitor/server/src/
 # Shared game source (server/src/World.ts re-exports from ../../src/game/World.js)
 COPY react-three-capacitor/src/ ./react-three-capacitor/src/
 
+# Shared persistence layer (DataBackend, PlayerRegistry, etc. — imported by server at runtime)
+COPY shared/ ./shared/
+
 # Shared content (server maps & scenarios — imported at runtime via relative TS paths)
 COPY content/ ./content/
 COPY assets/ ./assets/

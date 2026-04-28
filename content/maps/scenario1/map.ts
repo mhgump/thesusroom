@@ -147,10 +147,11 @@ const finalSouthSegments = [
 const ROOMS: RoomSpec[] = [
   {
     id: 'main', name: 'Scenario 1',
-    floorWidth: ROOM_W,
-    floorDepth: ROOM_D,
+    floorWidthX: ROOM_W,
+    floorDepthY: ROOM_D,
     height: ROOM_H,
-    cameraRect: { xMin: -0.4028, xMax: 0.4028, zMin: 0, zMax: 0 },
+    cameraExtentX: 0.4028, cameraExtentY: 0,
+    transitionType: 'default',
     geometry: [
       ...northSegments,
       { id: 's1_wsl', cx: -S_SIDE_CX,  cy: BY, cz:  WALL_CZ, width: S_SIDE_W,   height: bh, depth: bt },
@@ -163,34 +164,39 @@ const ROOMS: RoomSpec[] = [
   },
   {
     id: 'p1', name: "Player 1's Room",
-    floorWidth: SUB_W, floorDepth: SUB_D, height: ROOM_H,
-    cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+    floorWidthX: SUB_W, floorDepthY: SUB_D, height: ROOM_H,
+    cameraExtentX: 0, cameraExtentY: 0,
+    transitionType: 'default',
     geometry: subGeometry('s1_p1'),
   },
   {
     id: 'p2', name: "Player 2's Room",
-    floorWidth: SUB_W, floorDepth: SUB_D, height: ROOM_H,
-    cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+    floorWidthX: SUB_W, floorDepthY: SUB_D, height: ROOM_H,
+    cameraExtentX: 0, cameraExtentY: 0,
+    transitionType: 'default',
     geometry: subGeometry('s1_p2'),
   },
   {
     id: 'p3', name: "Player 3's Room",
-    floorWidth: SUB_W, floorDepth: SUB_D, height: ROOM_H,
-    cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+    floorWidthX: SUB_W, floorDepthY: SUB_D, height: ROOM_H,
+    cameraExtentX: 0, cameraExtentY: 0,
+    transitionType: 'default',
     geometry: subGeometry('s1_p3'),
   },
   {
     id: 'p4', name: "Player 4's Room",
-    floorWidth: SUB_W, floorDepth: SUB_D, height: ROOM_H,
-    cameraRect: { xMin: 0, xMax: 0, zMin: 0, zMax: 0 },
+    floorWidthX: SUB_W, floorDepthY: SUB_D, height: ROOM_H,
+    cameraExtentX: 0, cameraExtentY: 0,
+    transitionType: 'default',
     geometry: subGeometry('s1_p4'),
   },
   {
     id: 'final', name: 'Final Room',
-    floorWidth: ROOM_W,
-    floorDepth: ROOM_D,
+    floorWidthX: ROOM_W,
+    floorDepthY: ROOM_D,
     height: ROOM_H,
-    cameraRect: { xMin: -0.4028, xMax: 0.4028, zMin: 0, zMax: 0 },
+    cameraExtentX: 0.4028, cameraExtentY: 0,
+    transitionType: 'default',
     geometry: [
       ...finalSouthSegments,
       ...finalNorthSegments,
@@ -202,23 +208,25 @@ const ROOMS: RoomSpec[] = [
 
 const SUB_IDS = ['p1', 'p2', 'p3', 'p4']
 
-// Each sub-room's south wall midpoint (positionB=0.5) attaches to main's
+// Each sub-room's south wall midpoint (room2.position=0.5) attaches to main's
 // north wall at the circle's x — so BFS places each sub-room centered on
 // its circle, 0.5 units north of main. Each sub-room's north wall midpoint
-// (positionA=0.5) attaches to `final`'s south wall at the same circle x —
+// (room1.position=0.5) attaches to `final`'s south wall at the same circle x —
 // BFS places `final` centered on x=0, 0.5 units north of the sub-rooms
 // (final center world z = -1.25). All four sub→final connections agree on
 // the same final position; validateWorldSpec will reject any drift.
 const CONNECTIONS: RoomConnection[] = [
   ...VOTE_X.map((vx, i): RoomConnection => ({
-    roomIdA: 'main', wallA: 'north', positionA: (vx + HW) / ROOM_W,
-    roomIdB: SUB_IDS[i], wallB: 'south', positionB: 0.5,
-    width: DOOR_W,
+    roomIdA: 'main',
+    roomIdB: SUB_IDS[i],
+    room1: { wall: 'north', length: DOOR_W, position: (vx + HW) / ROOM_W, transitionRegion: 'none' },
+    room2: { wall: 'south', length: DOOR_W, position: 0.5,                 transitionRegion: 'none' },
   })),
   ...VOTE_X.map((vx, i): RoomConnection => ({
-    roomIdA: SUB_IDS[i], wallA: 'north', positionA: 0.5,
-    roomIdB: 'final', wallB: 'south', positionB: (vx + HW) / ROOM_W,
-    width: DOOR_W,
+    roomIdA: SUB_IDS[i],
+    roomIdB: 'final',
+    room1: { wall: 'north', length: DOOR_W, position: 0.5,                 transitionRegion: 'none' },
+    room2: { wall: 'south', length: DOOR_W, position: (vx + HW) / ROOM_W, transitionRegion: 'none' },
   })),
 ]
 

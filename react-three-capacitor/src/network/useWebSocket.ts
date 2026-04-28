@@ -176,10 +176,6 @@ export function useWebSocket(): void {
           // grants from a previous world don't persist into the new one.
           // The scenario re-grants whatever it wants via ability_grant.
           for (const a of useGameStore.getState().abilities) store.revokeAbility(a.abilityId)
-          // Ack the reset so the server can proceed with post-transfer state
-          // changes (e.g. the hub reveal that drops walls + enables the
-          // cross-instance adjacency edge).
-          getClient().send({ type: 'world_reset_ack' })
           break
         }
 

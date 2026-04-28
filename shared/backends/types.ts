@@ -1,6 +1,6 @@
 // Canonical shape lives in tools/src/runScenario/spec.ts — the writer tool
 // owns the contract. Re-exported here so backend callers have one import.
-export type { ScenarioRunResult } from '../../runScenario/spec.js'
+export type { ScenarioRunResult } from '../../tools/src/runScenario/spec.js'
 
 export type BotKey = { scenario_id: string; bot_id: string }
 export type MapKey = string // map_id
@@ -30,7 +30,7 @@ export function parseRunResultKey(id: string): RunResultKey | null {
 
 // Generic storage for the three TS-source content types. We only persist the
 // source text — validation (duck-typed shape check) is orthogonal and stays
-// in tools/src/_shared/validate.ts.
+// in shared/validate.ts.
 export interface TsSource {
   source: string
 }

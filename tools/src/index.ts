@@ -50,7 +50,7 @@ export type {
   RunScenarioSpecBot,
   RunScenarioSpecNote,
   RunScenarioSpecOpts,
-} from './_shared/runScenarioSpec.js'
+} from '../../shared/runScenarioSpec.js'
 export * from './mapAgentTool/index.js'
 export * from './scenarioAgentTool/index.js'
 export * from './botAgentTool/index.js'
@@ -79,8 +79,8 @@ export type {
   CreateScenarioFailedOutcome,
 } from './agents/createScenarioAgent.js'
 
-export { runAgent, RECORD_TOOL_NAME } from './_shared/agentLoop.js'
-export type { AgentRunParams, AgentRunResult, ResponseSpec } from './_shared/agentLoop.js'
+export { runAgent, RECORD_TOOL_NAME } from '../../shared/agentLoop.js'
+export type { AgentRunParams, AgentRunResult, ResponseSpec } from '../../shared/agentLoop.js'
 
 // The canonical list of tools exposed to agent loops. Add new tools here.
 export const ALL_TOOLS: Tool[] = [

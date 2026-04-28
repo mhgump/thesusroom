@@ -1,9 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Tool } from '../framework.js'
-import { TestSpecList, getBackends, getDataBackend } from '../_shared/backends/index.js'
-import { PROJECT_ROOT } from '../_shared/paths.js'
-import type { RunScenarioSpec, RunScenarioSpecNote } from '../_shared/runScenarioSpec.js'
+import { TestSpecList, getBackends, getDataBackend } from '../../../shared/backends/index.js'
+import { PROJECT_ROOT } from '../../../shared/paths.js'
+import type { RunScenarioSpec, RunScenarioSpecNote } from '../../../shared/runScenarioSpec.js'
 import {
   INSERT_RUN_SCENARIO_SPEC_SPEC,
   type InsertRunScenarioSpecInput,

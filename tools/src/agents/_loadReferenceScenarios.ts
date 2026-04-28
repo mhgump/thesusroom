@@ -13,7 +13,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { CONTENT_DIR } from '../_shared/paths.js'
+import { CONTENT_DIR } from '../../../shared/paths.js'
 
 function readIfExists(abs: string): string | null {
   try { return fs.readFileSync(abs, 'utf8') } catch (err) {

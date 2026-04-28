@@ -1,11 +1,12 @@
 import type RAPIER_TYPE from '@dimforge/rapier2d-compat'
-import { buildMapInstanceArtifacts, type MapInstanceArtifacts } from './MapInstance.js'
 import type { GameMap } from './GameMap.js'
 import type { ButtonConfig, ButtonSpec, ButtonState, VoteRegionSpec } from './GameSpec.js'
-import type { RoomSpec } from './RoomSpec.js'
-import type { RoomWorldPos } from './WorldSpec.js'
-import { scopedRoomId } from './WorldSpec.js'
-import { buildCameraConstraintShapes, type CameraConstraintShapes, type CameraRect, type CameraZone } from './CameraConstraint.js'
+import type { RoomSpec, Wall } from './RoomSpec.js'
+import type { RoomWorldPos, TransitionRegion } from './WorldSpec.js'
+import type { CameraConstraintShapes } from './CameraConstraint.js'
+import { RoomManager, type PhysicsAdapter } from './RoomManager.js'
+import { Physics } from './Physics.js'
+import { Scene } from './Scene.js'
 
 export type AnimationState = 'IDLE' | 'WALKING'
 export type WorldEventType =
@@ -39,8 +40,7 @@ export interface DamageEvent {
 
 // ── Map-authored overlays ────────────────────────────────────────────────────
 
-// A button entered `pressed` state. Scenarios react to this via onButtonPress
-// handlers; the Room broadcasts the wire `button_state` message.
+// A button entered `pressed` state.
 export interface ButtonPressEvent {
   type: 'button_press'
   buttonId: string
@@ -48,9 +48,7 @@ export interface ButtonPressEvent {
   occupancy: number
 }
 
-// A button left `pressed` state (occupants dropped below requiredPlayers and
-// the button does not hold-after-release). The `next` state is the state the
-// World is transitioning into (`idle` or `cooldown`).
+// A button left `pressed` state.
 export interface ButtonReleaseEvent {
   type: 'button_release'
   buttonId: string
@@ -58,10 +56,6 @@ export interface ButtonReleaseEvent {
   occupancy: number
 }
 
-// The `ButtonStateChangeEvent` covers every button-state transition the World
-// makes, including cooldown→idle. Useful for the Room to broadcast a
-// `button_state` wire message uniformly without reconstructing the state from
-// press/release events.
 export interface ButtonStateChangeEvent {
   type: 'button_state_change'
   buttonId: string
@@ -69,30 +63,18 @@ export interface ButtonStateChangeEvent {
   occupancy: number
 }
 
-// Fired when a scenario patches a button's mutable config at runtime.
 export interface ButtonConfigChangeEvent {
   type: 'button_config_change'
   buttonId: string
   changes: Partial<ButtonConfig>
 }
 
-// Fired when the set of players inside each active vote region changes. The
-// Room uses this to broadcast the wire `vote_assignment_change` message;
-// scenarios use this to drive `onVoteChanged` handlers.
 export interface VoteRegionChangeEvent {
   type: 'vote_region_change'
-  // Player id → active region id (or null if the player is not inside any
-  // active region). Contains every tracked player.
   assignments: Record<string, string | null>
-  // Region ids whose membership changed this frame. Scenarios filter their
-  // listeners' `regionIds` against this set.
   changedRegionIds: string[]
 }
 
-// Fired when per-player or global room visibility changes. `scope` is the
-// target list: `playerIds` when the change is per-player, `'all'` when
-// global. The Room forwards a `room_visibility_state` message to the
-// appropriate recipients.
 export interface RoomVisibilityChangeEvent {
   type: 'room_visibility_change'
   scope: 'all' | { playerIds: string[] }
@@ -122,9 +104,10 @@ export interface WorldPlayerState {
 
 export const TICK_RATE_HZ = 20
 
-const MOVE_SPEED = 0.645
-const CAPSULE_RADIUS = 0.0282
 const ANIM_THRESHOLD = 0.05
+// CAPSULE_RADIUS lives on Physics; the touch radius here is purely a
+// player-vs-player distance check that doesn't need the Rapier value.
+const CAPSULE_RADIUS = 0.0282
 const TOUCH_RADIUS = CAPSULE_RADIUS * 2 + 0.0081
 
 // ── Rapier singleton ─────────────────────────────────────────────────────────
@@ -141,21 +124,8 @@ export async function initPhysics(): Promise<void> {
 
 // ── Internal types ───────────────────────────────────────────────────────────
 
-interface CharBody {
-  body: RAPIER_TYPE.RigidBody
-  collider: RAPIER_TYPE.Collider
-}
-
 // Global-coord AABB of a room's floor (for the stay-in-rooms constraint).
 export interface RoomBounds { cx: number; cz: number; hw: number; hd: number }
-
-// Global-coord 2D AABB of a single piece of geometry (the XZ projection Rapier
-// uses for collision). Kept alongside the Rapier collider so `resolveOverlap`
-// can compute push-out directions without re-querying Rapier.
-interface GeometryCollider {
-  cx: number; cz: number; hw: number; hd: number
-  collider: RAPIER_TYPE.Collider
-}
 
 export interface MoveInput { jx: number; jz: number; dt: number }
 
@@ -178,217 +148,142 @@ export interface WorldRoomView {
   worldPos: RoomWorldPos
 }
 
-// Internal bookkeeping per added map. Keeps the artifacts handy for rendering
-// accessors, plus the lists of ids the map introduced so `removeMap` can tear
-// them down precisely.
-interface WorldMapInstanceInternal {
-  mapInstanceId: string
-  scopedRoomIds: string[]
-  map: GameMap
-  artifacts: MapInstanceArtifacts
-  cameraShapes: CameraConstraintShapes
-  rooms: WorldRoomView[]
-  geometryIds: string[]
+// Per-map ids whose lifecycle is tied to addMap/removeMap. After Task 3 the
+// visibility/collision state for geometries is split (Scene/Physics own the
+// per-id maps) but the World still tracks geometryIds per-map so it can
+// clean up the per-player overrides on removeMap.
+interface WorldMapOverlayIds {
   voteRegionIds: string[]
   buttonIds: string[]
+  geometryIds: string[]
 }
 
 // A point-in-time snapshot of everything a World owns that can't be rederived
-// from the code in `GameMap`s. The Rapier state and per-room AABBs *are*
-// rederivable, so they aren't in the dump — restore rebuilds them by
-// re-running `addMap` with the same GameMap (caller-provided) and `addPlayer`
-// for each dumped player. Safe to JSON.stringify.
+// from the code in `GameMap`s.
 export interface WorldDump {
   disabledEvents: WorldEventType[]
-  // mapInstanceIds in the order `addMap` was called. Restore requires the
-  // caller to supply the matching GameMap for each id.
   mapInstanceIds: string[]
   players: WorldPlayerState[]
   playerRules: Record<string, string[]>
   playerRoom: Record<string, string | null>
   playerAccessibleRoomsOverride: Record<string, string[]>
-  // Current (possibly scenario-mutated) room adjacency. One entry per
-  // scoped room id mapping to its enabled neighbours.
   connections: Record<string, string[]>
-  // Per-geometry solid/passable flag. Unlisted ids default to solid.
+  // Per-geometry collision flag. Unlisted ids default to solid. Named for
+  // backwards compat with the pre-Task-3 dump format; this is the COLLISION
+  // half. After the visibility/collision split there is also a separate
+  // `entityVisibility` field for the visibility half.
   geometryState: Record<string, boolean>
-  // Per-player geometry override: { playerId: { geomId: visible } }.
+  // Per-player collision override: { playerId: { geomId: solid } }. Renamed
+  // internally to playerCollisionOverride; the dump key keeps the legacy
+  // name for backwards-compat with archived dumps.
   playerGeomOverride: Record<string, Record<string, boolean>>
-  // Ordered touching-pair keys in "a:b" form (lexicographic by id).
+  // Per-geometry visibility flag (split out of the legacy geometryState).
+  globalEntityVisible: Record<string, boolean>
+  playerEntityVisible: Record<string, Record<string, boolean>>
   touchingPairs: string[]
-  // Pending moves not yet consumed by `processTick()`.
   moveQueue: Record<string, MoveInput[]>
-  // Per-button mutable config (scenarios may have patched it away from spec).
   buttonConfigs: Record<string, ButtonConfig>
-  // Per-button current state (idle | pressed | cooldown | disabled).
   buttonStates: Record<string, ButtonState>
-  // Per-button current occupant player ids.
   buttonOccupants: Record<string, string[]>
-  // Per-button pending cooldown deadline, expressed as sim-tick at which the
-  // cooldown fires. Only present while a cooldown is in flight.
   buttonCooldownFireAtTick: Record<string, number>
-  // Scoped region id → true for every active vote region.
   activeVoteRegions: string[]
-  // Player id → region id they are currently inside (or null).
   playerVoteRegion: Record<string, string | null>
-  // Globally-visible room ids (scoped). Unlisted ids default to "visible".
   globalRoomVisible: Record<string, boolean>
-  // Per-player room visibility override.
   playerRoomVisible: Record<string, Record<string, boolean>>
 }
 
-// Optional deps supplied to the World constructor. The server wires these so
-// World's cooldown timers participate in the same sim-clock the Scenario uses
-// for its timers; the client (local predictor) leaves them unset and runs
-// button-less.
 export interface WorldDeps {
   scheduleSimMs?: (ms: number, cb: () => void) => () => void
   getServerTick?: () => number
   getSimMsPerTick?: () => number
 }
 
-// The per-tick World output, split between events attributed to a specific
-// moving player (touched, update_animation_state, damage from collisions) and
-// events that are broadcast-worthy and not player-scoped (button transitions,
-// vote region changes, room visibility changes). The Room handles each half
-// separately but both come out of the same `processTick()` call.
 export interface ProcessTickResult {
   perPlayer: Map<string, WorldEvent[]>
   global: WorldEvent[]
 }
 
-// ── World class ──────────────────────────────────────────────────────────────
+// ── World class (facade over RoomManager + Physics + Scene) ──────────────────
 
+// World is now a thin facade. It owns:
+//   - the player state map (WorldPlayerState records)
+//   - button + vote-region state
+//   - the disabled-events filter and the move queue
+//
+// It delegates:
+//   - room graph / map instances → RoomManager
+//   - Rapier collision + character controller → Physics
+//   - per-player room/entity visibility + processMove orchestration → Scene
+//
+// Public API is preserved for existing callers (Room.ts, scenarios). The
+// legacy `toggleGeometryOn/Off` methods are kept (deprecated) and now
+// internally fan out to BOTH the Scene visibility setter and the Physics
+// collision setter so today's combined behavior is preserved.
 export class World {
+  // Player records live on World because they're shared across Physics
+  // (kinematic body), Scene (currentRoom) and the button/vote/touched
+  // logic (still on World). A single source of truth keeps the touch/anim
+  // events local to World without an extra plumbing layer.
   readonly players: Map<string, WorldPlayerState> = new Map()
   private readonly playerRules: Map<string, string[]> = new Map()
   private readonly disabledEvents: Set<WorldEventType>
   private readonly touchingPairs: Set<string> = new Set()
   private moveQueue: Map<string, MoveInput[]> = new Map()
 
-  // Registered map instances, keyed by mapInstanceId.
-  private readonly mapInstances: Map<string, WorldMapInstanceInternal> = new Map()
+  // Three-class composition. RoomManager constructed first; Physics is given
+  // a ref to it so it can answer adjacency questions during overlap
+  // resolution and the stay-in-rooms check; Scene composes the two.
+  private readonly roomManager: RoomManager = new RoomManager()
+  private readonly physics: Physics
+  private readonly scene: Scene
 
-  // Cache of scoped-id → room view for fast lookups in getRoomByScopedId.
-  private readonly roomViewByScopedId: Map<string, WorldRoomView> = new Map()
+  // Per-map overlay state that World still owns: button + vote-region ids
+  // introduced by each map, and the geometry ids (so per-player overrides
+  // can be cleaned up on removeMap).
+  private readonly mapOverlayIds: Map<string, WorldMapOverlayIds> = new Map()
+  private readonly attachedMaps: Map<string, GameMap> = new Map()
 
-  // Union of overlap sets from every attached map's artifacts. Kept flat so
-  // isRoomOverlapping can answer in O(1) without touching each instance.
-  private readonly overlappingRoomIds: Set<string> = new Set()
-
-  // Subscribers re-rendered when the set of attached maps changes (addMap /
-  // removeMap). The React hook `useClientWorld` wires into this.
-  private readonly changeSubscribers: Set<() => void> = new Set()
-  private mapsVersion = 0
-
-  // Per-room world-space floor AABB, keyed by scoped room id. Populated by addMap.
-  private readonly roomBounds: Map<string, RoomBounds> = new Map()
-
-  // Current world-level adjacency (symmetric). Seeded from map connections;
-  // scenarios mutate via setConnectionEnabled.
-  private readonly connections: Map<string, Set<string>> = new Map()
-
-  // Per-player scoped room id of the room the player is in, or null if
-  // unresolved (not yet moved since spawn).
-  private readonly playerRoom: Map<string, string | null> = new Map()
-
-  // Per-player override of accessible rooms (scoped ids). When set, replaces
-  // the default `{currentRoom} ∪ connections(currentRoom)` derivation.
-  private readonly playerAccessibleRoomsOverride: Map<string, Set<string>> = new Map()
-
-  // Rapier state. Required — initPhysics() must be awaited before `new World()`.
-  private readonly rapier: RapierModule
-  private readonly rapierWorld: RAPIER_TYPE.World
-  private readonly controller: RAPIER_TYPE.KinematicCharacterController
-  private readonly charBodies: Map<string, CharBody> = new Map()
-
-  // Every geometry piece is a solid Rapier collider by default. Scenarios
-  // toggle individual pieces off (passable) globally or per-player.
-  private readonly geometries: Map<string, GeometryCollider> = new Map()
-  private readonly geometryState: Map<string, boolean> = new Map()  // true=solid (default)
-  private readonly playerGeomOverride: Map<string, Map<string, boolean>> = new Map()
-  // Scoped roomId that each geometry belongs to. Populated by addMap; used
-  // by processMove to mark colliders passable when their owning room is
-  // toggled off for the moving player.
-  private readonly geometryRoomId: Map<string, string> = new Map()
-
-  // ── Map-authored overlays ────────────────────────────────────────────────
-  // Button authoring lives on the GameMap (`map.buttons`). World owns the
-  // runtime state for each authored button: its (possibly scenario-patched)
-  // config, current state, and occupant set. Press / release criteria are
-  // re-evaluated during processTick when occupancy or config changes.
+  // Map-authored overlays still live on World.
   private readonly buttonSpecs: Map<string, ButtonSpec> = new Map()
   private readonly buttonConfigs: Map<string, ButtonConfig> = new Map()
   private readonly buttonStates: Map<string, ButtonState> = new Map()
   private readonly buttonOccupants: Map<string, Set<string>> = new Map()
   private readonly buttonCooldownCancels: Map<string, () => void> = new Map()
-  // Sim-tick at which a pending cooldown will fire. Present only while the
-  // button is in `cooldown` state. Dumped/restored so restore can re-arm the
-  // cooldown at the same deadline on the new tick clock.
   private readonly buttonCooldownFireAtTick: Map<string, number> = new Map()
 
-  // Vote region authoring lives on the GameMap. Activation is scenario-
-  // controlled via setVoteRegionActive(); World tracks per-player region
-  // assignments and emits vote_region_change events when they shift.
   private readonly voteRegionSpecs: Map<string, { id: string; x: number; z: number; radius: number }> = new Map()
   private readonly activeVoteRegions: Set<string> = new Set()
   private readonly playerVoteRegion: Map<string, string | null> = new Map()
 
-  // Room visibility is authored by scenarios, not by maps. Stored here so
-  // dump/restore covers it and events flow through the same channel as other
-  // world-level changes.
-  private readonly globalRoomVisible: Map<string, boolean> = new Map()
-  private readonly playerRoomVisible: Map<string, Map<string, boolean>> = new Map()
-
-  // Queue of world-level events produced between processTick() calls. The
-  // cooldown scheduler appends state-change events here; processTick drains
-  // them into its `global` output on the next tick.
+  // World-level event queue (drained by processTick). Scene appends room/
+  // entity-visibility changes here too — World pulls Scene's queue at drain
+  // time and concatenates.
   private pendingGlobalEvents: WorldEvent[] = []
 
   private readonly deps: WorldDeps
 
   constructor(disabledEvents: WorldEventType[] = [], deps: WorldDeps = {}) {
     if (!rapierModule) throw new Error('initPhysics() must be awaited before `new World()`')
-    this.rapier = rapierModule
-    this.rapierWorld = new this.rapier.World({ x: 0.0, y: 0.0 })
-    this.controller = this.rapierWorld.createCharacterController(0.0)
+    this.physics = new Physics(rapierModule, this.roomManager)
+    this.scene = new Scene(this.roomManager, this.physics)
     this.disabledEvents = new Set(disabledEvents)
     this.deps = deps
   }
 
+  // PhysicsAdapter forwarded to RoomManager. Rapier collider lifecycle now
+  // lives on Physics; RoomManager calls add/removeGeometry on it directly.
+  private readonly physicsAdapter: PhysicsAdapter = {
+    addGeometry: (g) => this.physics.addGeometry(g),
+    removeGeometry: (id) => this.physics.removeGeometry(id),
+  }
+
   // ── Map registration ───────────────────────────────────────────────────────
 
-  // Register a map with this world: place rooms in world space from
-  // connections, load the default adjacency, instantiate every geometry piece
-  // as a Rapier collider in global coords.
   addMap(map: GameMap): WorldMapInstance {
-    const artifacts = buildMapInstanceArtifacts(map, map.mapInstanceId)
-    const { scopedRoomIds, roomBounds, geometry, adjacency, roomPositions } = artifacts
+    const before = new Set(this.collectGeometryIds())
+    const installed = this.roomManager.addMap(map, this.physicsAdapter)
+    const geometryIds = this.collectGeometryIds().filter(id => !before.has(id))
 
-    for (const [scopedId, bounds] of roomBounds) {
-      this.roomBounds.set(scopedId, bounds)
-    }
-
-    for (const [scopedId, neighbours] of adjacency) {
-      const existing = this.connections.get(scopedId) ?? new Set<string>()
-      for (const n of neighbours) existing.add(n)
-      this.connections.set(scopedId, existing)
-    }
-
-    const geometryIds: string[] = []
-    for (const g of geometry) {
-      const body = this.rapierWorld.createRigidBody(this.rapier.RigidBodyDesc.fixed())
-      const desc = this.rapier.ColliderDesc.cuboid(g.hw, g.hd).setTranslation(g.cx, g.cz)
-      const collider = this.rapierWorld.createCollider(desc, body)
-      this.geometries.set(g.id, { cx: g.cx, cz: g.cz, hw: g.hw, hd: g.hd, collider })
-      this.geometryState.set(g.id, true)
-      this.geometryRoomId.set(g.id, g.roomId)
-      geometryIds.push(g.id)
-    }
-
-    // Load map-authored buttons. Each gets its initial config (copied from the
-    // spec so scenarios can mutate without touching the author-time shape), its
-    // initial state, and an empty occupant set.
     const buttonIds: string[] = []
     for (const btn of map.buttons ?? []) {
       this.buttonSpecs.set(btn.id, btn)
@@ -402,401 +297,256 @@ export class World {
       this.buttonOccupants.set(btn.id, new Set())
       buttonIds.push(btn.id)
     }
-
-    // Load map-authored vote region geometries. Active/inactive is scenario-
-    // controlled and starts empty.
     const voteRegionIds: string[] = []
     for (const region of map.voteRegions) {
       this.voteRegionSpecs.set(region.id, region)
       voteRegionIds.push(region.id)
     }
 
-    // Build the room views that rendering code iterates.
-    const rooms: WorldRoomView[] = []
-    for (const room of map.rooms) {
-      const scopedId = scopedRoomId(map.mapInstanceId, room.id)
-      const worldPos = roomPositions.get(scopedId)
-      if (!worldPos) continue
-      const view: WorldRoomView = {
-        scopedId,
-        mapInstanceId: map.mapInstanceId,
-        localRoomId: room.id,
-        room,
-        worldPos,
-      }
-      rooms.push(view)
-      this.roomViewByScopedId.set(scopedId, view)
-    }
-
-    const cameraShapes = buildCameraConstraintShapes(map, new Map(
-      map.rooms.map(r => [r.id, roomPositions.get(scopedRoomId(map.mapInstanceId, r.id))!]),
-    ))
-
-    // Recompute the union overlap set so it reflects every currently-attached
-    // map. We rebuild from scratch because a new map may have created
-    // overlaps between rooms from different instances as well — but the
-    // MapInstance artifacts only flag within-map overlaps, so the union
-    // suffices.
-    this.overlappingRoomIds.clear()
-    for (const inst of this.mapInstances.values()) {
-      for (const sid of inst.scopedRoomIds) {
-        if (inst.artifacts.isRoomOverlapping(sid)) this.overlappingRoomIds.add(sid)
-      }
-    }
-    for (const sid of scopedRoomIds) {
-      if (artifacts.isRoomOverlapping(sid)) this.overlappingRoomIds.add(sid)
-    }
-
-    this.rapierWorld.step()
-
-    const internal: WorldMapInstanceInternal = {
-      mapInstanceId: map.mapInstanceId,
-      scopedRoomIds,
-      map,
-      artifacts,
-      cameraShapes,
-      rooms,
-      geometryIds,
-      voteRegionIds,
-      buttonIds,
-    }
-    this.mapInstances.set(map.mapInstanceId, internal)
-    this.notifyChange()
-    return { mapInstanceId: internal.mapInstanceId, scopedRoomIds: internal.scopedRoomIds }
+    this.physics.step()
+    this.attachedMaps.set(map.mapInstanceId, map)
+    this.mapOverlayIds.set(map.mapInstanceId, { voteRegionIds, buttonIds, geometryIds })
+    return installed
   }
 
-  // Remove a previously-added map. Tears down every collider, bound,
-  // adjacency edge, button, vote region, and per-player override the map
-  // introduced. Safe to call while players remain in the world — any player
-  // whose current room or accessible-room override referenced the removed
-  // map's rooms is cleared, and the caller is expected to reposition them.
-  removeMap(mapInstanceId: string): void {
-    const instance = this.mapInstances.get(mapInstanceId)
-    if (!instance) return
-    const scoped = new Set(instance.scopedRoomIds)
+  addRoom(args: {
+    targetRoomScopedId: string
+    connectionAtTarget: { wall: Wall; length: number; position: number; transitionRegion: TransitionRegion }
+    connectionAtNew: { wall: Wall; length: number; position: number; transitionRegion: TransitionRegion }
+    newRoom: RoomSpec
+  }): { scopedRoomId: string } {
+    const before = new Set(this.collectGeometryIds())
+    const result = this.roomManager.addRoom(args, this.physicsAdapter)
+    const geometryIds = this.collectGeometryIds().filter(id => !before.has(id))
+    const view = this.roomManager.getRoomByScopedId(result.scopedRoomId)
+    if (view) {
+      this.mapOverlayIds.set(view.mapInstanceId, { voteRegionIds: [], buttonIds: [], geometryIds })
+    }
+    this.physics.step()
+    return result
+  }
 
-    for (const geomId of instance.geometryIds) {
-      const gc = this.geometries.get(geomId)
-      if (gc) {
-        const body = gc.collider.parent()
-        if (body) this.rapierWorld.removeRigidBody(body)
-        this.geometries.delete(geomId)
+  attachMap(args: {
+    map: GameMap
+    targetRoomScopedId: string
+    connectionAtTarget: { wall: Wall; length: number; position: number; transitionRegion: TransitionRegion }
+    mapRoomId: string
+    connectionAtMapRoom: { wall: Wall; length: number; position: number; transitionRegion: TransitionRegion }
+  }): WorldMapInstance {
+    const before = new Set(this.collectGeometryIds())
+    const installed = this.roomManager.attachMap(args, this.physicsAdapter)
+    const geometryIds = this.collectGeometryIds().filter(id => !before.has(id))
+
+    const buttonIds: string[] = []
+    for (const btn of args.map.buttons ?? []) {
+      this.buttonSpecs.set(btn.id, btn)
+      this.buttonConfigs.set(btn.id, {
+        requiredPlayers: btn.requiredPlayers,
+        holdAfterRelease: btn.holdAfterRelease,
+        cooldownMs: btn.cooldownMs,
+        enableClientPress: btn.enableClientPress,
+      })
+      this.buttonStates.set(btn.id, btn.initialState ?? 'idle')
+      this.buttonOccupants.set(btn.id, new Set())
+      buttonIds.push(btn.id)
+    }
+    const voteRegionIds: string[] = []
+    for (const region of args.map.voteRegions) {
+      this.voteRegionSpecs.set(region.id, region)
+      voteRegionIds.push(region.id)
+    }
+
+    this.physics.step()
+    this.attachedMaps.set(args.map.mapInstanceId, args.map)
+    this.mapOverlayIds.set(args.map.mapInstanceId, { voteRegionIds, buttonIds, geometryIds })
+    return installed
+  }
+
+  removeRoom(scopedRoomIdToRemove: string): { ok: true } | { ok: false; reason: 'would-disconnect' | 'not-found' | 'is-root' } {
+    const view = this.roomManager.getRoomByScopedId(scopedRoomIdToRemove)
+    const before = new Set(this.collectGeometryIds())
+    const result = this.roomManager.removeRoom(scopedRoomIdToRemove, this.physicsAdapter)
+    if (!result.ok) return result
+    const removed = before.size === 0 ? new Set<string>() : new Set([...before].filter(id => !this.physics.getCollisionStateSnapshot().has(id)))
+    if (view) {
+      this.scene.onMapRemoved(new Set([view.scopedId]), removed)
+      for (const [pid, rid] of [...this.players.entries()]) {
+        if (rid && this.scene.getPlayerRoom(pid) === view.scopedId) this.scene.setPlayerRoom(pid, null)
+        void rid
       }
-      this.geometryState.delete(geomId)
-      this.geometryRoomId.delete(geomId)
+    }
+    this.physics.step()
+    return { ok: true }
+  }
+
+  saveAsMapSpec(mapInstanceId: string): ReturnType<RoomManager['saveAsMapSpec']> {
+    return this.roomManager.saveAsMapSpec(mapInstanceId)
+  }
+
+  removeMap(mapInstanceId: string): void {
+    const overlay = this.mapOverlayIds.get(mapInstanceId)
+    const result = this.roomManager.removeMap(mapInstanceId, this.physicsAdapter)
+    const removedScoped = new Set(result.removedScopedRoomIds)
+    const removedGeomIds = new Set(result.removedGeometryIds)
+
+    this.scene.onMapRemoved(removedScoped, removedGeomIds)
+
+    if (overlay) {
+      for (const bid of overlay.buttonIds) {
+        this.buttonSpecs.delete(bid)
+        this.buttonConfigs.delete(bid)
+        this.buttonStates.delete(bid)
+        this.buttonOccupants.delete(bid)
+        const cancel = this.buttonCooldownCancels.get(bid)
+        if (cancel) { cancel(); this.buttonCooldownCancels.delete(bid) }
+        this.buttonCooldownFireAtTick.delete(bid)
+      }
+      const removedVoteRegionIds = new Set(overlay.voteRegionIds)
+      for (const rid of removedVoteRegionIds) {
+        this.voteRegionSpecs.delete(rid)
+        this.activeVoteRegions.delete(rid)
+      }
+      for (const [pid, rid] of this.playerVoteRegion) {
+        if (rid && removedVoteRegionIds.has(rid)) this.playerVoteRegion.set(pid, null)
+      }
     }
 
-    for (const sid of scoped) {
-      this.roomBounds.delete(sid)
-      this.connections.delete(sid)
-      this.roomViewByScopedId.delete(sid)
-      this.globalRoomVisible.delete(sid)
-      this.overlappingRoomIds.delete(sid)
-    }
-    for (const neighbours of this.connections.values()) {
-      for (const sid of scoped) neighbours.delete(sid)
-    }
-    for (const m of this.playerRoomVisible.values()) {
-      for (const sid of scoped) m.delete(sid)
-    }
-    for (const set of this.playerAccessibleRoomsOverride.values()) {
-      for (const sid of scoped) set.delete(sid)
-    }
-    for (const [pid, rid] of this.playerRoom) {
-      if (rid && scoped.has(rid)) this.playerRoom.set(pid, null)
-    }
-
-    for (const bid of instance.buttonIds) {
-      this.buttonSpecs.delete(bid)
-      this.buttonConfigs.delete(bid)
-      this.buttonStates.delete(bid)
-      this.buttonOccupants.delete(bid)
-      const cancel = this.buttonCooldownCancels.get(bid)
-      if (cancel) { cancel(); this.buttonCooldownCancels.delete(bid) }
-      this.buttonCooldownFireAtTick.delete(bid)
-    }
-
-    const removedVoteRegionIds = new Set(instance.voteRegionIds)
-    for (const rid of removedVoteRegionIds) {
-      this.voteRegionSpecs.delete(rid)
-      this.activeVoteRegions.delete(rid)
-    }
-    for (const [pid, rid] of this.playerVoteRegion) {
-      if (rid && removedVoteRegionIds.has(rid)) this.playerVoteRegion.set(pid, null)
-    }
-    for (const m of this.playerGeomOverride.values()) {
-      for (const gid of instance.geometryIds) m.delete(gid)
-    }
-
-    this.mapInstances.delete(mapInstanceId)
-    this.rapierWorld.step()
-    this.notifyChange()
+    this.mapOverlayIds.delete(mapInstanceId)
+    this.attachedMaps.delete(mapInstanceId)
+    this.physics.step()
   }
 
   getMapInstance(mapInstanceId: string): WorldMapInstance | undefined {
-    const inst = this.mapInstances.get(mapInstanceId)
-    return inst ? { mapInstanceId: inst.mapInstanceId, scopedRoomIds: [...inst.scopedRoomIds] } : undefined
+    return this.roomManager.getMapInstance(mapInstanceId)
   }
 
   getRoomsInMapInstance(mapInstanceId: string): string[] {
-    const instance = this.mapInstances.get(mapInstanceId)
-    return instance ? [...instance.scopedRoomIds] : []
+    return this.roomManager.getRoomsInMapInstance(mapInstanceId)
   }
 
   getMapInstanceIds(): string[] {
-    return [...this.mapInstances.keys()]
+    return this.roomManager.getMapInstanceIds()
   }
 
-  // Snapshot of the current adjacency state, as a plain-JSON record. Bundles
-  // both each map's default connections (seeded by addMap) and any runtime
-  // mutations from `setConnectionEnabled` into one payload the wire can
-  // carry. Clients apply the whole thing verbatim after adding maps.
   getConnectionsSnapshot(): Record<string, string[]> {
-    const out: Record<string, string[]> = {}
-    for (const [a, neigh] of this.connections) out[a] = [...neigh]
-    return out
+    return this.roomManager.getConnectionsSnapshot()
   }
 
-  // Replace the current adjacency with the supplied snapshot. Used by the
-  // client to apply a `world_reset` payload. Callers are responsible for
-  // ensuring `addMap` has been invoked for every map referenced in the
-  // snapshot — otherwise room AABBs will be missing and moves will fail.
   applyConnectionsSnapshot(snapshot: Record<string, string[]>): void {
-    this.connections.clear()
-    for (const [a, neigh] of Object.entries(snapshot)) {
-      this.connections.set(a, new Set(neigh))
-    }
+    this.roomManager.applyConnectionsSnapshot(snapshot)
   }
+
+  getRoomManager(): RoomManager { return this.roomManager }
+  getPhysics(): Physics { return this.physics }
+  getScene(): Scene { return this.scene }
 
   // ── Rendering-facing accessors ─────────────────────────────────────────────
-  // Everything below is read by client rendering code (GameScene, HUD, etc.)
-  // via the `useClientWorld` hook. Server usage should stick to the existing
-  // room-bound / connection primitives above.
 
-  // Every room across every attached map instance, with its world-space
-  // centre. Order is stable per `addMap` call (map order → room order within
-  // each map).
   getAllRooms(): WorldRoomView[] {
-    const out: WorldRoomView[] = []
-    for (const inst of this.mapInstances.values()) out.push(...inst.rooms)
-    return out
+    return this.roomManager.getAllRooms()
   }
 
   getRoomByScopedId(scopedId: string): WorldRoomView | undefined {
-    return this.roomViewByScopedId.get(scopedId)
+    return this.roomManager.getRoomByScopedId(scopedId)
   }
 
-  // Return the union of every map's camera rects and zones. The camera
-  // constraint clamps to this union, so players in either the hallway or a
-  // scenario room get a sensible follow target.
   getCameraShapes(): CameraConstraintShapes {
-    const rects: CameraRect[] = []
-    const zones: CameraZone[] = []
-    for (const inst of this.mapInstances.values()) {
-      for (const r of inst.cameraShapes.rects) rects.push(r)
-      for (const z of inst.cameraShapes.zones) zones.push(z)
-    }
-    return { rects, zones }
+    return this.roomManager.getCameraShapes()
   }
 
-  // Adjacent rooms per the world's current connection state (default
-  // adjacency plus any runtime mutations from `setConnectionEnabled`).
   getAdjacentRoomIds(scopedRoomId: string): string[] {
-    const set = this.connections.get(scopedRoomId)
-    return set ? [...set] : []
+    return this.roomManager.getAdjacentRoomIds(scopedRoomId)
   }
 
-  // Returns the scoped id of the containing room, or null if (x, z) lies in
-  // no attached map's floor AABB. Iterates per-map so a point inside two
-  // overlapping rooms falls out as the first match.
   getRoomAtPosition(x: number, z: number): string | null {
-    for (const inst of this.mapInstances.values()) {
-      const sid = inst.artifacts.getRoomAtPosition(x, z)
-      if (sid !== null) return sid
-    }
-    return null
+    return this.roomManager.getRoomAtPosition(x, z)
   }
 
   isRoomOverlapping(scopedRoomId: string): boolean {
-    return this.overlappingRoomIds.has(scopedRoomId)
+    return this.roomManager.isRoomOverlapping(scopedRoomId)
   }
 
-  // Full vote region specs with the scoped containing-room id baked in. The
-  // client uses the scoped room id to gate rendering by room visibility.
   getAllVoteRegions(): Array<VoteRegionSpec & { roomId: string | null }> {
     const out: Array<VoteRegionSpec & { roomId: string | null }> = []
-    for (const inst of this.mapInstances.values()) {
-      for (const region of inst.map.voteRegions) {
+    for (const map of this.attachedMaps.values()) {
+      for (const region of map.voteRegions) {
         out.push({ ...region, roomId: this.getRoomAtPosition(region.x, region.z) })
       }
     }
     return out
   }
 
-  // Version bumped on every add/removeMap. Subscribers are notified
-  // synchronously; the React `useClientWorld` hook wires this into a
-  // re-render.
-  getMapsVersion(): number { return this.mapsVersion }
+  getMapsVersion(): number { return this.roomManager.getMapsVersion() }
 
   subscribeToMapChanges(cb: () => void): () => void {
-    this.changeSubscribers.add(cb)
-    return () => { this.changeSubscribers.delete(cb) }
+    return this.roomManager.subscribeToMapChanges(cb)
   }
 
-  private notifyChange(): void {
-    this.mapsVersion++
-    for (const cb of this.changeSubscribers) cb()
-  }
-
-  // ── Rooms & accessibility ──────────────────────────────────────────────────
+  // ── Rooms & accessibility (delegates to Scene) ─────────────────────────────
 
   getPlayerRoom(playerId: string): string | null {
-    return this.playerRoom.get(playerId) ?? null
+    return this.scene.getPlayerRoom(playerId)
   }
 
   setPlayerRoom(playerId: string, scopedRoomId: string | null): void {
-    this.playerRoom.set(playerId, scopedRoomId)
+    this.scene.setPlayerRoom(playerId, scopedRoomId)
   }
 
-  // Enable or disable an adjacency link between two rooms. Symmetric.
-  // Scenarios call this to open/close room-to-room traversal independently of
-  // any physical barrier geometry (callers typically pair it with a matching
-  // geometry toggle, but the two concerns are kept orthogonal on purpose).
   setConnectionEnabled(scopedRoomIdA: string, scopedRoomIdB: string, enabled: boolean): void {
-    const getOrCreate = (id: string) => {
-      let s = this.connections.get(id)
-      if (!s) { s = new Set(); this.connections.set(id, s) }
-      return s
-    }
-    if (enabled) {
-      getOrCreate(scopedRoomIdA).add(scopedRoomIdB)
-      getOrCreate(scopedRoomIdB).add(scopedRoomIdA)
-    } else {
-      this.connections.get(scopedRoomIdA)?.delete(scopedRoomIdB)
-      this.connections.get(scopedRoomIdB)?.delete(scopedRoomIdA)
-    }
+    this.roomManager.setConnectionEnabled(scopedRoomIdA, scopedRoomIdB, enabled)
   }
 
   isConnectionEnabled(scopedRoomIdA: string, scopedRoomIdB: string): boolean {
-    return this.connections.get(scopedRoomIdA)?.has(scopedRoomIdB) ?? false
+    return this.roomManager.isConnectionEnabled(scopedRoomIdA, scopedRoomIdB)
   }
 
-  // The set of rooms a player may currently be in. Resolution order:
-  //   1. per-player override, if set — used as-is
-  //   2. else {currentRoom} ∪ enabled-connections(currentRoom)
-  // If the player has no currentRoom yet, it is resolved from the player's
-  // present position by looking up containing room AABBs.
   getAccessibleRooms(playerId: string): Set<string> {
-    const override = this.playerAccessibleRoomsOverride.get(playerId)
-    if (override) return new Set(override)
-
-    const current = this.resolveCurrentRoom(playerId)
-    if (!current) return new Set()
-    const out = new Set<string>([current])
-    for (const n of this.connections.get(current) ?? []) out.add(n)
-    return out
+    return this.scene.getAccessibleRooms(playerId, (id) => {
+      const p = this.players.get(id); return p ? { x: p.x, z: p.z } : undefined
+    })
   }
 
   setAccessibleRoomsOverride(playerId: string, scopedRoomIds: string[] | null): void {
-    if (scopedRoomIds === null) this.playerAccessibleRoomsOverride.delete(playerId)
-    else this.playerAccessibleRoomsOverride.set(playerId, new Set(scopedRoomIds))
+    this.scene.setAccessibleRoomsOverride(playerId, scopedRoomIds)
   }
 
-  // ── Geometry toggles ───────────────────────────────────────────────────────
+  // ── Geometry toggles (legacy convenience; deprecated) ──────────────────────
 
+  // @deprecated Prefer Scene.toggleEntityVisibilityOn (visibility) and
+  // Physics.toggleEntityCollisionsOn (collision) for the split semantics.
+  // This convenience flips both at once to preserve pre-Task-3 behavior for
+  // existing callers (Room.ts hub-transfer, scenarios using setGeometryVisible).
   toggleGeometryOn(id: string, playerId?: string): void {
-    if (playerId !== undefined) {
-      let m = this.playerGeomOverride.get(playerId)
-      if (!m) { m = new Map(); this.playerGeomOverride.set(playerId, m) }
-      m.set(id, true)
-      this.resolveOverlap(playerId, id)
-    } else {
-      this.geometryState.set(id, true)
-      for (const pid of this.players.keys()) this.resolveOverlap(pid, id)
-    }
+    this.scene.setEntityVisibleLegacy(id, true, playerId)
+    this.physics.toggleEntityCollisionsOn(
+      id,
+      playerId,
+      {
+        getPlayer: (pid) => this.players.get(pid),
+        setPlayerPosition: (pid, x, z) => this.setPlayerPosition(pid, x, z),
+      },
+      (pid) => this.getAccessibleRooms(pid),
+    )
   }
 
+  // @deprecated See toggleGeometryOn.
   toggleGeometryOff(id: string, playerId?: string): void {
-    if (playerId !== undefined) {
-      let m = this.playerGeomOverride.get(playerId)
-      if (!m) { m = new Map(); this.playerGeomOverride.set(playerId, m) }
-      m.set(id, false)
-    } else {
-      this.geometryState.set(id, false)
-    }
-  }
-
-  // When a collider turns solid on top of a player, eject the player. Choose
-  // the push direction by (a) the axis of minimum penetration and (b) the
-  // player's recent velocity (fall back: reverse). The eject target must lie
-  // inside one of the player's accessible rooms — otherwise the player is
-  // pushed through the far face (or left in place if neither is valid).
-  private resolveOverlap(playerId: string, geomId: string): void {
-    const player = this.players.get(playerId)
-    const geom = this.geometries.get(geomId)
-    if (!player || !geom) return
-
-    const ox = (geom.hw + CAPSULE_RADIUS) - Math.abs(player.x - geom.cx)
-    const oz = (geom.hd + CAPSULE_RADIUS) - Math.abs(player.z - geom.cz)
-    if (ox <= 0 || oz <= 0) return  // no overlap
-
-    const clearNegX = geom.cx - geom.hw - CAPSULE_RADIUS
-    const clearPosX = geom.cx + geom.hw + CAPSULE_RADIUS
-    const clearNegZ = geom.cz - geom.hd - CAPSULE_RADIUS
-    const clearPosZ = geom.cz + geom.hd + CAPSULE_RADIUS
-
-    let primaryX = 0, primaryZ = 0, reverseX = 0, reverseZ = 0
-    if (ox <= oz) {
-      const goNeg = player.vx < 0 || (player.vx === 0 && player.x <= geom.cx)
-      primaryX = (goNeg ? clearNegX : clearPosX) - player.x
-      reverseX = (goNeg ? clearPosX : clearNegX) - player.x
-    } else {
-      const goNeg = player.vz < 0 || (player.vz === 0 && player.z <= geom.cz)
-      primaryZ = (goNeg ? clearNegZ : clearPosZ) - player.z
-      reverseZ = (goNeg ? clearPosZ : clearNegZ) - player.z
-    }
-
-    const allowed = this.getAccessibleRooms(playerId)
-    const inAccessible = (nx: number, nz: number) => this.isInRoomSet(nx, nz, allowed)
-
-    const candidates: Array<[number, number]> = [
-      [player.x + primaryX, player.z + primaryZ],
-      [player.x + reverseX, player.z + reverseZ],
-    ]
-    for (const [nx, nz] of candidates) {
-      const remOx = (geom.hw + CAPSULE_RADIUS) - Math.abs(nx - geom.cx)
-      const remOz = (geom.hd + CAPSULE_RADIUS) - Math.abs(nz - geom.cz)
-      if (remOx > 0 && remOz > 0) continue  // still inside geometry
-      if (!inAccessible(nx, nz)) continue
-      this.setPlayerPosition(playerId, nx, nz)
-      return
-    }
-    // No valid candidate — leave the player in place.
+    this.scene.setEntityVisibleLegacy(id, false, playerId)
+    this.physics.toggleEntityCollisionsOff(id, playerId)
   }
 
   // ── Players ────────────────────────────────────────────────────────────────
 
   addPlayer(id: string, x = 0, z = 0): void {
     this.players.set(id, { id, x, z, animState: 'IDLE', hp: 2, vx: 0, vz: 0 })
-    this.playerGeomOverride.set(id, new Map())
-    const body = this.rapierWorld.createRigidBody(
-      this.rapier.RigidBodyDesc.kinematicPositionBased().setTranslation(x, z),
-    )
-    const collider = this.rapierWorld.createCollider(
-      this.rapier.ColliderDesc.ball(CAPSULE_RADIUS), body,
-    )
-    this.charBodies.set(id, { body, collider })
-    this.rapierWorld.step()
+    this.physics.addPlayer(id, x, z)
   }
 
   removePlayer(id: string): void {
     this.players.delete(id)
     this.playerRules.delete(id)
-    this.playerGeomOverride.delete(id)
-    this.playerRoom.delete(id)
-    this.playerAccessibleRoomsOverride.delete(id)
+    this.scene.removePlayer(id)
     this.playerVoteRegion.delete(id)
-    this.playerRoomVisible.delete(id)
     for (const [bid, occupants] of this.buttonOccupants) {
       if (occupants.delete(id)) this.evaluateButton(bid)
     }
@@ -804,12 +554,7 @@ export class World {
       const [a, b] = key.split(':')
       if (a === id || b === id) this.touchingPairs.delete(key)
     }
-    const charData = this.charBodies.get(id)
-    if (charData) {
-      this.rapierWorld.removeRigidBody(charData.body)
-      this.charBodies.delete(id)
-    }
-    // The occupancy change above may have flipped a region's population, too.
+    this.physics.removePlayer(id)
     this.recomputeVoteAssignments()
   }
 
@@ -831,11 +576,7 @@ export class World {
       const [a, b] = key.split(':')
       if (a === id || b === id) this.touchingPairs.delete(key)
     }
-    const charData = this.charBodies.get(id)
-    if (charData) {
-      charData.body.setNextKinematicTranslation({ x, y: z })
-      this.rapierWorld.step()
-    }
+    this.physics.setPlayerPosition(id, x, z)
     this.advancePlayerRoom(id)
   }
 
@@ -845,96 +586,50 @@ export class World {
     const player = this.players.get(playerId)
     if (!player) return []
 
-    const events: WorldEvent[] = []
-    const safeDt = Math.min(dt, 0.1)
-    const charData = this.charBodies.get(playerId)!
-
-    const desired = { x: jx * MOVE_SPEED * safeDt, y: jz * MOVE_SPEED * safeDt }
-    const playerOverride = this.playerGeomOverride.get(playerId)
-    const passableHandles = new Set<number>()
-    // Collision precedence: a geometry is solid for a player iff its effective
-    // per-player geometry state is `solid` AND its owning room is ON for that
-    // player. Either layer saying "off/passable" makes the collider passable —
-    // mirrors the render side, where a piece is hidden if either the per-piece
-    // visibility OR the owning room's visibility is off.
-    for (const [id, geom] of this.geometries) {
-      const globalOn = this.geometryState.get(id) ?? true
-      const effectiveOn = playerOverride?.has(id) ? playerOverride.get(id)! : globalOn
-      if (!effectiveOn) { passableHandles.add(geom.collider.handle); continue }
-      const rid = this.geometryRoomId.get(id)
-      if (rid && this.isRoomOffForPlayer(playerId, rid)) passableHandles.add(geom.collider.handle)
-    }
-    for (const [id, other] of this.charBodies) {
-      if (id !== playerId) passableHandles.add(other.collider.handle)
-    }
-
-    this.controller.computeColliderMovement(
-      charData.collider,
-      desired,
-      undefined,
-      undefined,
-      (collider: RAPIER_TYPE.Collider) => {
-        if (collider.handle === charData.collider.handle) return false
-        if (passableHandles.has(collider.handle)) return false
-        return true
+    // Delegate to Scene.processMove with accessors that bridge into World's
+    // player state and event sourcing (animation + touched events stay here
+    // since the player records they read live on World).
+    const result = this.scene.processMove(playerId, jx, jz, dt, {
+      getPlayer: (id) => this.players.get(id),
+      writePlayerPos: (id, x, z, prevX, prevZ) => {
+        const p = this.players.get(id)
+        if (!p) return
+        p.x = x; p.z = z
+        p.vx = x - prevX; p.vz = z - prevZ
       },
-    )
-
-    const movement = this.controller.computedMovement()
-    const prevX = player.x
-    const prevZ = player.z
-    let nx = player.x + movement.x
-    let nz = player.z + movement.y
-
-    // Stay-in-rooms constraint: the post-move position must lie inside the
-    // AABB union of the player's currently accessible rooms. If not, try
-    // keeping only one axis, then fall back to full revert.
-    const accessible = this.getAccessibleRooms(playerId)
-    if (accessible.size > 0 && !this.isInRoomSet(nx, nz, accessible)) {
-      if (this.isInRoomSet(nx, prevZ, accessible)) { nz = prevZ }
-      else if (this.isInRoomSet(prevX, nz, accessible)) { nx = prevX }
-      else { nx = prevX; nz = prevZ }
-    }
-
-    player.x = nx; player.z = nz
-    player.vx = nx - prevX
-    player.vz = nz - prevZ
-    charData.body.setNextKinematicTranslation({ x: player.x, y: player.z })
-    this.rapierWorld.step()
-
-    // Maintain the sticky playerRoom mapping: stay in the prior room if its
-    // AABB still contains the new position, else step into a connected
-    // neighbour, else first-match. Required so that overlap-zone positions
-    // don't cause the player's tracked room to flip to the other overlapping
-    // room (which would invert collision/visibility gates mid-move).
-    this.advancePlayerRoom(playerId)
-
-    const newAnimState: AnimationState = Math.hypot(jx, jz) > ANIM_THRESHOLD ? 'WALKING' : 'IDLE'
-    if (newAnimState !== player.animState) {
-      player.animState = newAnimState
-      if (!this.disabledEvents.has('update_animation_state')) {
-        events.push({ type: 'update_animation_state', playerId, animState: newAnimState })
-      }
-    }
-
-    if (!this.disabledEvents.has('touched')) {
-      for (const [otherId, other] of this.players) {
-        if (otherId === playerId) continue
-        const a = playerId < otherId ? playerId : otherId
-        const b = playerId < otherId ? otherId : playerId
-        const pairKey = `${a}:${b}`
-        const nowTouching = Math.hypot(player.x - other.x, player.z - other.z) < TOUCH_RADIUS
-        const wasTouching = this.touchingPairs.has(pairKey)
-        if (nowTouching && !wasTouching) {
-          this.touchingPairs.add(pairKey)
-          events.push({ type: 'touched', playerIdA: playerId, playerIdB: otherId })
-        } else if (!nowTouching && wasTouching) {
-          this.touchingPairs.delete(pairKey)
+      animationStateUpdate: (id, jjx, jjz) => {
+        const p = this.players.get(id)
+        if (!p) return null
+        const newAnimState: AnimationState = Math.hypot(jjx, jjz) > ANIM_THRESHOLD ? 'WALKING' : 'IDLE'
+        if (newAnimState === p.animState) return null
+        p.animState = newAnimState
+        if (this.disabledEvents.has('update_animation_state')) return null
+        return { type: 'update_animation_state', playerId: id, animState: newAnimState }
+      },
+      touchUpdate: (id) => {
+        if (this.disabledEvents.has('touched')) return []
+        const out: WorldEvent[] = []
+        const p = this.players.get(id)
+        if (!p) return out
+        for (const [otherId, other] of this.players) {
+          if (otherId === id) continue
+          const a = id < otherId ? id : otherId
+          const b = id < otherId ? otherId : id
+          const pairKey = `${a}:${b}`
+          const nowTouching = Math.hypot(p.x - other.x, p.z - other.z) < TOUCH_RADIUS
+          const wasTouching = this.touchingPairs.has(pairKey)
+          if (nowTouching && !wasTouching) {
+            this.touchingPairs.add(pairKey)
+            out.push({ type: 'touched', playerIdA: id, playerIdB: otherId })
+          } else if (!nowTouching && wasTouching) {
+            this.touchingPairs.delete(pairKey)
+          }
         }
-      }
-    }
+        return out
+      },
+    })
 
-    return events
+    return result.events
   }
 
   queueMove(playerId: string, inputs: MoveInput[]): void {
@@ -952,12 +647,11 @@ export class World {
     }
     this.moveQueue.clear()
 
-    // Re-evaluate map-authored overlays in response to the frame's position
-    // updates. Each evaluator appends to `pendingGlobalEvents` as it emits.
     this.recomputeButtonOccupancy()
     this.recomputeVoteAssignments()
 
-    const global = this.pendingGlobalEvents
+    const sceneEvents = this.scene.drainPendingGlobalEvents()
+    const global = [...this.pendingGlobalEvents, ...sceneEvents]
     this.pendingGlobalEvents = []
     return { perPlayer, global }
   }
@@ -972,11 +666,8 @@ export class World {
     return { type: 'damage', targetId, newHp }
   }
 
-  // ── Buttons ────────────────────────────────────────────────────────────────
+  // ── Buttons (unchanged — World still owns the button machinery) ────────────
 
-  // Patch a button's mutable config (requiredPlayers, cooldownMs, etc.) at
-  // runtime. Emits a button_config_change global event, then re-evaluates the
-  // button so a patched threshold can tip the state immediately.
   setButtonConfig(buttonId: string, changes: Partial<ButtonConfig>): void {
     const cfg = this.buttonConfigs.get(buttonId)
     if (!cfg) return
@@ -985,8 +676,6 @@ export class World {
     this.evaluateButton(buttonId)
   }
 
-  // Overwrite a button's state directly (used by scenarios to force
-  // `disabled`, re-arm an `idle`, etc.). Cancels any in-flight cooldown.
   setButtonState(buttonId: string, state: ButtonState): void {
     const current = this.buttonStates.get(buttonId)
     if (current === undefined) return
@@ -997,9 +686,6 @@ export class World {
     this.pendingGlobalEvents.push({ type: 'button_state_change', buttonId, state, occupancy })
   }
 
-  // Snapshot data used to send a `button_init` wire message on player connect
-  // or observer attach. Returns every button's authored spec merged with its
-  // current mutable config, state, and occupancy.
   getButtonInitData(): Array<ButtonSpec & { state: ButtonState; occupancy: number }> {
     const out: Array<ButtonSpec & { state: ButtonState; occupancy: number }> = []
     for (const [id, spec] of this.buttonSpecs) {
@@ -1020,14 +706,10 @@ export class World {
     return set ? [...set] : []
   }
 
-  // Recompute occupancy for every button based on current player positions.
-  // Any button whose config/occupancy crosses a threshold gets evaluated and
-  // may emit press / release / state-change events.
   private recomputeButtonOccupancy(): void {
     for (const [id, spec] of this.buttonSpecs) {
       const occupants = this.buttonOccupants.get(id)!
       let changed = false
-      // Drop absent players first, then walk current players.
       for (const pid of [...occupants]) {
         if (!this.players.has(pid)) { occupants.delete(pid); changed = true }
       }
@@ -1041,8 +723,6 @@ export class World {
     }
   }
 
-  // Examine a button's (state, occupancy, config) triple and, if a transition
-  // fires, update state and enqueue the matching global events.
   private evaluateButton(buttonId: string): void {
     const state = this.buttonStates.get(buttonId)
     const occupants = this.buttonOccupants.get(buttonId)
@@ -1074,9 +754,6 @@ export class World {
     }
   }
 
-  // Schedule the cooldown-end transition. Uses the Room-provided
-  // `scheduleSimMs` when present — which ties the deadline to the sim tick
-  // clock — or falls back to real-time setTimeout for standalone usage.
   private armCooldown(buttonId: string, durationMs: number): void {
     const cancelPrev = this.buttonCooldownCancels.get(buttonId)
     if (cancelPrev) cancelPrev()
@@ -1093,8 +770,6 @@ export class World {
       this.pendingGlobalEvents.push({
         type: 'button_state_change', buttonId, state: 'idle', occupancy: size,
       })
-      // Give the button a chance to re-press if occupants are still above
-      // threshold after the cooldown window.
       this.evaluateButton(buttonId)
     }
     const cancel = this.deps.scheduleSimMs
@@ -1105,9 +780,6 @@ export class World {
 
   // ── Vote regions ───────────────────────────────────────────────────────────
 
-  // Mark a scoped region id as active or inactive. Activation updates which
-  // regions the occupancy tracker watches; any region that transitions
-  // inactive triggers an immediate reassignment sweep.
   setVoteRegionActive(regionId: string, active: boolean): void {
     if (active) this.activeVoteRegions.add(regionId)
     else this.activeVoteRegions.delete(regionId)
@@ -1118,16 +790,10 @@ export class World {
     return this.activeVoteRegions.has(regionId)
   }
 
-  // Player id → active region id (or null). Players not currently tracked by
-  // the world are absent from the returned map.
   getVoteAssignments(): Map<string, string | null> {
     return new Map(this.playerVoteRegion)
   }
 
-  // Recompute the current region assignment for every player against every
-  // active region. Emits a single vote_region_change event when anything
-  // moves. Called after player-position updates each tick and whenever the
-  // active set mutates.
   private recomputeVoteAssignments(): void {
     const changed: string[] = []
     const next: Record<string, string | null> = {}
@@ -1146,7 +812,6 @@ export class World {
         if (found) changed.push(found)
       }
     }
-    // Drop entries for players that have left the world.
     for (const pid of [...this.playerVoteRegion.keys()]) {
       if (!this.players.has(pid)) {
         this.playerVoteRegion.delete(pid)
@@ -1158,74 +823,65 @@ export class World {
     }
   }
 
-  // ── Room visibility ────────────────────────────────────────────────────────
+  // ── Room visibility (delegates to Scene) ───────────────────────────────────
 
-  // Show or hide a set of rooms. When `playerIds` is supplied the change is
-  // per-player; otherwise it is global (every player currently tracked). The
-  // caller is responsible for supplying only scoped room ids that exist in
-  // the world — unknown ids are stored as-is (the client decides what to do
-  // with an unknown id).
   setRoomVisible(roomIds: string[], visible: boolean, playerIds?: string[]): void {
-    if (playerIds && playerIds.length > 0) {
-      for (const pid of playerIds) {
-        let m = this.playerRoomVisible.get(pid)
-        if (!m) { m = new Map(); this.playerRoomVisible.set(pid, m) }
-        for (const rid of roomIds) m.set(rid, visible)
-      }
-      const updates = roomIds.map(roomId => ({ roomId, visible }))
-      this.pendingGlobalEvents.push({ type: 'room_visibility_change', scope: { playerIds: [...playerIds] }, updates })
-    } else {
-      for (const rid of roomIds) this.globalRoomVisible.set(rid, visible)
-      const updates = roomIds.map(roomId => ({ roomId, visible }))
-      this.pendingGlobalEvents.push({ type: 'room_visibility_change', scope: 'all', updates })
-    }
+    this.scene.setRoomVisible(roomIds, visible, playerIds)
+  }
+
+  // Whether a given player has at least one visible room in the named map
+  // instance. Used by the wire layer to filter `map_add` / `map_remove` /
+  // `world_reset` payloads so a player whose every room is toggled off
+  // doesn't see the map's topology + geometry sprayed at them.
+  playerHasMapVisible(playerId: string, mapInstanceId: string): boolean {
+    return this.scene.playerHasMapVisible(playerId, mapInstanceId)
   }
 
   getGlobalRoomVisibility(): Map<string, boolean> {
-    return new Map(this.globalRoomVisible)
+    return this.scene.getGlobalRoomVisibility()
   }
 
   getPlayerRoomVisibility(playerId: string): Map<string, boolean> {
-    return new Map(this.playerRoomVisible.get(playerId) ?? [])
+    return this.scene.getPlayerRoomVisibility(playerId)
   }
 
   // ── Read-only snapshots used by scenarios + Room ───────────────────────────
 
   getGeometryStateSnapshot(): Map<string, boolean> {
-    return new Map(this.geometryState)
+    // Pre-Task-3 callers expected this to be the combined state used to
+    // hydrate `geometry_state` wire messages on the client (which drives
+    // both renderer visibility and predicted collision). After the
+    // visibility/collision split, the wire message still carries one bit
+    // per id and the deprecated `toggleGeometry*` API keeps visibility +
+    // collision in lockstep — so reading from the visibility side is
+    // correct for the wire payload semantically (and matches the legacy
+    // pre-split bit when only the deprecated path is used). Callers that
+    // need the raw Rapier-side flag should use Physics directly.
+    return this.scene.getGlobalEntityVisibility()
   }
 
   getPlayerGeometrySnapshot(playerId: string): Map<string, boolean> {
-    return new Map(this.playerGeomOverride.get(playerId) ?? [])
+    return this.scene.getPlayerEntityVisibility(playerId)
   }
 
   getActiveVoteRegions(): string[] {
     return [...this.activeVoteRegions]
   }
 
-  // Drop any queued world-level events. Called during scenario initial
-  // seeding so the initial room-visibility / button setup (which enqueues
-  // events) doesn't produce wire broadcasts for a room that has no players
-  // yet.
   clearPendingGlobalEvents(): void {
     this.pendingGlobalEvents = []
+    this.scene.clearPendingGlobalEvents()
   }
 
-  // Pull and clear any world-level events queued since the last call. The
-  // Room uses this after its scheduled callbacks fire so cooldown-triggered
-  // state changes are broadcast in the same tick they happened in.
   drainPendingGlobalEvents(): WorldEvent[] {
-    const out = this.pendingGlobalEvents
+    const sceneEvents = this.scene.drainPendingGlobalEvents()
+    const out = [...this.pendingGlobalEvents, ...sceneEvents]
     this.pendingGlobalEvents = []
     return out
   }
 
   // ── Dump / restore ─────────────────────────────────────────────────────────
 
-  // Produce a JSON-serializable snapshot of everything the World owns that
-  // can't be rederived from the GameMaps attached via `addMap`. See
-  // `WorldDump` for the shape. Use `restoreState` on a fresh World (same
-  // disabledEvents, same maps re-added in order) to round-trip.
   dumpState(): WorldDump {
     const players: WorldPlayerState[] = []
     for (const p of this.players.values()) {
@@ -1234,25 +890,17 @@ export class World {
     const playerRules: Record<string, string[]> = {}
     for (const [pid, rules] of this.playerRules) playerRules[pid] = [...rules]
 
-    const playerRoom: Record<string, string | null> = {}
-    for (const [pid, rid] of this.playerRoom) playerRoom[pid] = rid
+    const sceneVis = this.scene.dumpVisibilityState()
 
-    const playerAccessibleRoomsOverride: Record<string, string[]> = {}
-    for (const [pid, set] of this.playerAccessibleRoomsOverride) {
-      playerAccessibleRoomsOverride[pid] = [...set]
-    }
+    const collisionState: Record<string, boolean> = {}
+    for (const [gid, solid] of this.physics.getCollisionStateSnapshot()) collisionState[gid] = solid
 
-    const connections: Record<string, string[]> = {}
-    for (const [a, neigh] of this.connections) connections[a] = [...neigh]
-
-    const geometryState: Record<string, boolean> = {}
-    for (const [gid, visible] of this.geometryState) geometryState[gid] = visible
-
-    const playerGeomOverride: Record<string, Record<string, boolean>> = {}
-    for (const [pid, m] of this.playerGeomOverride) {
+    const playerCollisionOverride: Record<string, Record<string, boolean>> = {}
+    for (const pid of this.players.keys()) {
+      const m = this.physics.getPlayerCollisionSnapshot(pid)
       const o: Record<string, boolean> = {}
       for (const [gid, v] of m) o[gid] = v
-      playerGeomOverride[pid] = o
+      playerCollisionOverride[pid] = o
     }
 
     const moveQueue: Record<string, MoveInput[]> = {}
@@ -1272,25 +920,18 @@ export class World {
     const playerVoteRegion: Record<string, string | null> = {}
     for (const [pid, rid] of this.playerVoteRegion) playerVoteRegion[pid] = rid
 
-    const globalRoomVisible: Record<string, boolean> = {}
-    for (const [rid, visible] of this.globalRoomVisible) globalRoomVisible[rid] = visible
-    const playerRoomVisible: Record<string, Record<string, boolean>> = {}
-    for (const [pid, m] of this.playerRoomVisible) {
-      const o: Record<string, boolean> = {}
-      for (const [rid, v] of m) o[rid] = v
-      playerRoomVisible[pid] = o
-    }
-
     return {
       disabledEvents: [...this.disabledEvents],
-      mapInstanceIds: [...this.mapInstances.keys()],
+      mapInstanceIds: this.roomManager.getMapInstanceIds(),
       players,
       playerRules,
-      playerRoom,
-      playerAccessibleRoomsOverride,
-      connections,
-      geometryState,
-      playerGeomOverride,
+      playerRoom: sceneVis.playerRoom,
+      playerAccessibleRoomsOverride: sceneVis.playerAccessibleRoomsOverride,
+      connections: this.roomManager.getConnectionsSnapshot(),
+      geometryState: collisionState,
+      playerGeomOverride: playerCollisionOverride,
+      globalEntityVisible: sceneVis.globalEntityVisible,
+      playerEntityVisible: sceneVis.playerEntityVisible,
       touchingPairs: [...this.touchingPairs],
       moveQueue,
       buttonConfigs,
@@ -1299,43 +940,23 @@ export class World {
       buttonCooldownFireAtTick,
       activeVoteRegions: [...this.activeVoteRegions],
       playerVoteRegion,
-      globalRoomVisible,
-      playerRoomVisible,
+      globalRoomVisible: sceneVis.globalRoomVisible,
+      playerRoomVisible: sceneVis.playerRoomVisible,
     }
   }
 
-  // Rehydrate a fresh World from a dump. The World must have been constructed
-  // with `disabledEvents` matching the dump and must have no maps or players
-  // attached yet; the caller supplies the GameMaps keyed by mapInstanceId
-  // (same instances as when the dump was produced). Re-runs `addMap` and
-  // `addPlayer` to rebuild Rapier state, then overlays the dumped logical
-  // state verbatim — bypassing side-effectful setters like `toggleGeometryOn`
-  // so restore doesn't re-trigger player ejects.
   restoreState(dump: WorldDump, mapsByInstance: Map<string, GameMap>): void {
-    if (this.players.size > 0 || this.mapInstances.size > 0) {
+    if (this.players.size > 0 || this.roomManager.getMapInstanceIds().length > 0) {
       throw new Error('World.restoreState called on a non-empty World')
     }
-    // Reattach maps in original order. addMap populates roomBounds, seeds
-    // `connections` with defaults, and creates Rapier geometry colliders.
     for (const mid of dump.mapInstanceIds) {
       const map = mapsByInstance.get(mid)
       if (!map) throw new Error(`World.restoreState: missing GameMap for instance '${mid}'`)
       this.addMap(map)
     }
-    // Overwrite connections with the dumped set (scenarios may have mutated
-    // the defaults via setConnectionEnabled).
-    this.connections.clear()
-    for (const [a, neigh] of Object.entries(dump.connections)) {
-      this.connections.set(a, new Set(neigh))
-    }
-    // Geometry state overlay. addMap set every known geometry to `true`; the
-    // dump may flip some to `false`. Unknown ids are allowed (scenario-only
-    // ids referenced before the geometry exists).
-    for (const [gid, visible] of Object.entries(dump.geometryState)) {
-      this.geometryState.set(gid, visible)
-    }
-    // Players: recreate Rapier bodies at their dumped positions, then
-    // restore per-player fields.
+    this.roomManager.applyConnectionsSnapshot(dump.connections)
+    this.physics.applyCollisionState(dump.geometryState)
+
     for (const p of dump.players) {
       this.addPlayer(p.id, p.x, p.z)
       const ps = this.players.get(p.id)!
@@ -1347,24 +968,24 @@ export class World {
     for (const [pid, rules] of Object.entries(dump.playerRules)) {
       this.playerRules.set(pid, [...rules])
     }
-    for (const [pid, rid] of Object.entries(dump.playerRoom)) {
-      this.playerRoom.set(pid, rid)
-    }
-    for (const [pid, rooms] of Object.entries(dump.playerAccessibleRoomsOverride)) {
-      this.playerAccessibleRoomsOverride.set(pid, new Set(rooms))
-    }
+    // Restore visibility-side state via Scene; collision-side via Physics.
+    this.scene.restoreVisibilityState({
+      globalRoomVisible: dump.globalRoomVisible,
+      playerRoomVisible: dump.playerRoomVisible,
+      // Older dumps may not carry the entity-visibility split. Default to
+      // empty maps when missing — the renderer will fall back to "visible".
+      globalEntityVisible: dump.globalEntityVisible ?? {},
+      playerEntityVisible: dump.playerEntityVisible ?? {},
+      playerAccessibleRoomsOverride: dump.playerAccessibleRoomsOverride,
+      playerRoom: dump.playerRoom,
+    })
     for (const [pid, overrides] of Object.entries(dump.playerGeomOverride)) {
-      const m = new Map<string, boolean>()
-      for (const [gid, v] of Object.entries(overrides)) m.set(gid, v)
-      this.playerGeomOverride.set(pid, m)
+      this.physics.applyPlayerCollisionOverride(pid, overrides)
     }
     for (const key of dump.touchingPairs) this.touchingPairs.add(key)
     for (const [pid, inputs] of Object.entries(dump.moveQueue)) {
       this.moveQueue.set(pid, inputs.map(i => ({ jx: i.jx, jz: i.jz, dt: i.dt })))
     }
-    // Button state overlay. addMap seeded configs from specs; the dump may
-    // have scenario-patched values. Re-arm any pending cooldown at the same
-    // fireAtTick using the restored scheduler.
     for (const [id, cfg] of Object.entries(dump.buttonConfigs)) {
       this.buttonConfigs.set(id, { ...cfg })
     }
@@ -1385,91 +1006,33 @@ export class World {
       this.armCooldown(id, ms)
       this.buttonCooldownFireAtTick.set(id, fireAt)
     }
-    // Vote region + room visibility state.
     for (const rid of dump.activeVoteRegions) this.activeVoteRegions.add(rid)
     for (const [pid, rid] of Object.entries(dump.playerVoteRegion)) {
       this.playerVoteRegion.set(pid, rid)
-    }
-    for (const [rid, visible] of Object.entries(dump.globalRoomVisible)) {
-      this.globalRoomVisible.set(rid, visible)
-    }
-    for (const [pid, overrides] of Object.entries(dump.playerRoomVisible)) {
-      const m = new Map<string, boolean>()
-      for (const [rid, v] of Object.entries(overrides)) m.set(rid, v)
-      this.playerRoomVisible.set(pid, m)
     }
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  // Resolve the containing room for a position using a sticky rule:
-  //   1. if `prevRoomId` still contains (x, z), stay there (keeps players in
-  //      their own room when they step into an overlap zone with another
-  //      room's AABB);
-  //   2. otherwise pick any adjacent (connected) room whose AABB contains
-  //      the position — this enforces "you can only leave your current room
-  //      into a connected neighbour";
-  //   3. otherwise fall back to first-match across every attached map (used
-  //      for initial spawn, teleports, and the observer view).
+  // The list of geometry ids currently registered in Physics. Used to
+  // compute the per-map geometryIds set when adding a map.
+  private collectGeometryIds(): string[] {
+    return [...this.physics.getCollisionStateSnapshot().keys()]
+  }
+
   resolveRoomSticky(prevRoomId: string | null, x: number, z: number): string | null {
-    if (prevRoomId) {
-      const b = this.roomBounds.get(prevRoomId)
-      if (b && Math.abs(x - b.cx) <= b.hw && Math.abs(z - b.cz) <= b.hd) return prevRoomId
-      for (const nid of this.connections.get(prevRoomId) ?? []) {
-        const nb = this.roomBounds.get(nid)
-        if (nb && Math.abs(x - nb.cx) <= nb.hw && Math.abs(z - nb.cz) <= nb.hd) return nid
-      }
-    }
-    return this.getRoomAtPosition(x, z)
+    return this.scene.resolveRoomSticky(prevRoomId, x, z)
   }
 
-  // Apply the sticky rule against the player's stored room and write the
-  // resolved value back. Called at the end of processMove so that
-  // getPlayerRoom always reflects the authoritative room even inside overlap
-  // zones. Returns the new room id.
   advancePlayerRoom(playerId: string): string | null {
-    const p = this.players.get(playerId)
-    if (!p) return null
-    const prev = this.playerRoom.get(playerId) ?? null
-    const next = this.resolveRoomSticky(prev, p.x, p.z)
-    if (next !== prev) this.playerRoom.set(playerId, next)
-    return next
+    return this.scene.advancePlayerRoom(playerId, (id) => {
+      const p = this.players.get(id); return p ? { x: p.x, z: p.z } : undefined
+    })
   }
 
-  // Whether a room should be treated as "off" (invisible + non-collidable)
-  // for the given player. Precedence, highest first:
-  //   1. explicit per-player room visibility override
-  //   2. auto-hide for overlapping rooms that aren't the player's current room
-  //      (matches the client render gate — relies on the invariant "every
-  //      room that overlaps the player's current room is toggled off")
-  //   3. global room visibility (default: on)
   isRoomOffForPlayer(playerId: string, scopedRoomId: string): boolean {
-    const pOverride = this.playerRoomVisible.get(playerId)?.get(scopedRoomId)
-    if (pOverride !== undefined) return !pOverride
-    if (this.overlappingRoomIds.has(scopedRoomId)) {
-      const current = this.resolveCurrentRoom(playerId)
-      if (scopedRoomId !== current) return true
-    }
-    return this.globalRoomVisible.get(scopedRoomId) === false
-  }
-
-  private resolveCurrentRoom(playerId: string): string | null {
-    const stored = this.playerRoom.get(playerId)
-    if (stored) return stored
-    const p = this.players.get(playerId)
-    if (!p) return null
-    for (const [scopedId, b] of this.roomBounds) {
-      if (Math.abs(p.x - b.cx) <= b.hw && Math.abs(p.z - b.cz) <= b.hd) return scopedId
-    }
-    return null
-  }
-
-  private isInRoomSet(x: number, z: number, rooms: Set<string>): boolean {
-    for (const id of rooms) {
-      const b = this.roomBounds.get(id)
-      if (!b) continue
-      if (Math.abs(x - b.cx) <= b.hw && Math.abs(z - b.cz) <= b.hd) return true
-    }
-    return false
+    return this.scene.isRoomOffForPlayer(playerId, scopedRoomId, (id) => {
+      const p = this.players.get(id); return p ? { x: p.x, z: p.z } : undefined
+    })
   }
 }

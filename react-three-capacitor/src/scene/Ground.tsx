@@ -6,7 +6,7 @@ import { Textures } from '../game/textures';
 const FALLBACK_TILE = 0.32  // world units per fallback tile
 
 export function Ground({ room }: { room: RoomSpec }) {
-  const { floorWidth: fw, floorDepth: fd, floorTextures } = room
+  const { floorWidthX: fw, floorDepthY: fd, floorTextures } = room
   const spec = floorTextures?.[0]
 
   const texture = useMemo(() => {

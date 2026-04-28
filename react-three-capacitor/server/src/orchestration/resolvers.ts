@@ -21,7 +21,7 @@ import {
   getDataBackend,
   ScenarioList,
   VettedScenarios,
-} from '../../../../tools/src/_shared/backends/index.js'
+} from '../../../../shared/backends/index.js'
 
 // Initial hallway's authored spawn — the solo MR seeds the player here and
 // the hub transfer translates it into the target MR's world frame.

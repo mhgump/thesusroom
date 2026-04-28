@@ -1,5 +1,5 @@
 import type { ToolSpec } from '../framework.js'
-import type { RunScenarioSpec } from '../_shared/runScenarioSpec.js'
+import type { RunScenarioSpec } from '../../../shared/runScenarioSpec.js'
 
 export interface ReadTestSpecInput {
   scenario_id: string

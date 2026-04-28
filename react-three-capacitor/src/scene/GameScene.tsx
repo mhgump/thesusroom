@@ -66,7 +66,12 @@ export function GameScene() {
     const cam = state.camera;
     if (!(cam instanceof THREE.OrthographicCamera)) return;
     if (!world) return;
-    const { x: tx, z: tz } = clampToShapes(world.getCameraShapes(), localPlayerPos.x, localPlayerPos.z);
+    // Filter the camera shape union to the local player's current room so the
+    // camera can never snap to a position outside it. When `currentRoomId` is
+    // empty (initial frames before the server assigns a room) RoomManager
+    // falls back to the unfiltered union, preventing a snap-to-origin.
+    const cameraShapes = world.getRoomManager().getCameraShapes({ currentRoomScopedId: currentRoomId });
+    const { x: tx, z: tz } = clampToShapes(cameraShapes, localPlayerPos.x, localPlayerPos.z);
 
     // Initialise target on first frame to avoid a visible jump from origin.
     if (!camTargetRef.current) {
